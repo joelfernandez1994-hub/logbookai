@@ -22,6 +22,7 @@ import More from './pages/More';
 import Compliance from './pages/Compliance';
 import Assistant from './pages/Assistant';
 import Documents from './pages/Documents';
+import EngineTests from './pages/EngineTests';
 
 const AuthenticatedApp = () => {
   const { isLoadingAuth, isLoadingPublicSettings, authError, navigateToLogin } = useAuth();
@@ -64,6 +65,7 @@ const AuthenticatedApp = () => {
           <Route path="/compliance" element={<Compliance />} />
           <Route path="/assistant" element={<Assistant />} />
           <Route path="/documents" element={<Documents />} />
+          <Route path="/engine-tests" element={<EngineTests />} />
         </Route>
       </Route>
       <Route path="*" element={<PageNotFound />} />

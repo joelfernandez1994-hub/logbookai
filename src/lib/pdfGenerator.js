@@ -1,15 +1,16 @@
 import { jsPDF } from 'jspdf';
-import { getDailyGrid, computeCycle, fmtHours } from './hosEngine';
+import { getDailyGrid, computeCycle, computeHOS, fmtHours, fmtDur } from './hosEngine';
 
 const STATUS_ROWS = ['OFF_DUTY', 'SLEEPER_BERTH', 'DRIVING', 'ON_DUTY'];
 const STATUS_LABELS = { OFF_DUTY: 'OFF DUTY', SLEEPER_BERTH: 'SLEEPER', DRIVING: 'DRIVING', ON_DUTY: 'ON DUTY' };
 
-function drawDay(doc, driver, carrier, events, dateStr, timezone, certification, cycleInfo, isFirst) {
+function drawDay(doc, driver, carrier, events, dateStr, timezone, certification, cycleInfo, isFirst, cycleType) {
   const W = doc.internal.pageSize.getWidth();
   const margin = 8;
   if (!isFirst) doc.addPage();
   let y = margin;
   const grid = getDailyGrid(events, dateStr, timezone);
+  const hos = computeHOS(events, cycleType, timezone, grid.dayEnd, { historyComplete: true });
 
   doc.setFontSize(14); doc.setFont(undefined, 'bold');
   doc.text("Driver's Record of Duty Status", margin, y + 4);
@@ -74,6 +75,9 @@ function drawDay(doc, driver, carrier, events, dateStr, timezone, certification,
     doc.text(`Today: ${(cycleInfo.dailyTotals[cycleInfo.dailyTotals.length - 1]?.onDutyHours || 0).toFixed(2)} · Used: ${cycleInfo.cycleUsedHours.toFixed(2)} · Available: ${cycleInfo.cycleRemainingHours.toFixed(2)} · Back tomorrow: ${cycleInfo.returningTomorrowHours.toFixed(2)}`, margin + 50, yy);
     yy += 5;
   }
+  const splitLabel = hos.split.status === 'active' ? 'Split sleeper active (clocks recalculated)' : hos.split.status === 'incomplete' ? 'Split sleeper incomplete' : 'No split pairing';
+  doc.text(`Driving rem: ${fmtDur(hos.driving.drivingRemainingMs)} · 14-hr window rem: ${fmtDur(hos.window14.remainingMs)} · ${splitLabel}`, margin, yy);
+  yy += 5;
   doc.text('Remarks:', margin, yy); yy += 4;
   doc.setFontSize(7);
   grid.remarks.slice(0, 28).forEach((r) => {
@@ -99,7 +103,7 @@ export function generateLogsPdf(driver, carrier, events, dateStrs, timezone, cer
   dateStrs.forEach((dateStr, i) => {
     const cert = certifications.find(c => c.log_date === dateStr && !c.is_superseded);
     const cycle = computeCycle(events, cycleType, timezone, new Date(dateStr + 'T12:00:00'));
-    drawDay(doc, driver, carrier, events, dateStr, timezone, cert, cycle, i === 0);
+    drawDay(doc, driver, carrier, events, dateStr, timezone, cert, cycle, i === 0, cycleType);
   });
   return doc;
 }

@@ -158,15 +158,22 @@ export default function Today() {
           </div>
         </div>
       )}
-      {hos.split.hasCandidate && (
-        <div className="rounded-xl border border-blue-200 bg-blue-50 p-3 mb-3">
-          <div className="flex items-center gap-2 text-sm font-medium text-blue-900">
-            <Moon className="w-4 h-4" /> Split Sleeper Candidate
+      {hos.split.status !== 'none' && (
+        <div className={`rounded-xl border p-3 mb-3 ${hos.split.status === 'active' ? 'border-blue-200 bg-blue-50' : 'border-amber-200 bg-amber-50'}`}>
+          <div className={`flex items-center gap-2 text-sm font-medium ${hos.split.status === 'active' ? 'text-blue-900' : 'text-amber-900'}`}>
+            <Moon className="w-4 h-4" /> {hos.split.status === 'active' ? 'Split Sleeper Active' : 'Split Sleeper Incomplete'}
           </div>
-          <div className="text-xs text-blue-700 mt-1">{hos.split.note}</div>
-          <div className="text-xs text-blue-600 mt-1">
-            {hos.split.isValid ? 'Valid pairing — clocks recalculated.' : `Required: ${fmtDur(hos.split.requiredSecondMs)} Sleeper Berth`}
-          </div>
+          <div className={`text-xs mt-1 ${hos.split.status === 'active' ? 'text-blue-700' : 'text-amber-700'}`}>{hos.split.note}</div>
+          {hos.split.status === 'active' && hos.split.firstPeriod && hos.split.secondPeriod && (
+            <div className="text-xs text-blue-700 mt-1">
+              Paired periods: {fmtDur(hos.split.firstPeriod.duration)} {hos.split.firstPeriod.status === 'SLEEPER_BERTH' ? 'Sleeper Berth' : 'Off Duty'} + {fmtDur(hos.split.secondPeriod.duration)} {hos.split.secondPeriod.status === 'SLEEPER_BERTH' ? 'Sleeper Berth' : 'Off Duty'} · 11-hr & 14-hr clocks recalculated from the first qualifying period.
+            </div>
+          )}
+          {hos.split.status === 'incomplete' && (
+            <div className="text-xs text-amber-700 mt-1">
+              Required second period: at least {fmtDur(hos.split.requiredSecondMs)}{hos.split.secondPeriod ? ` (${fmtDur(hos.split.secondPeriod.duration)} taken so far, ${fmtDur(hos.split.additionalMs)} more)` : ''}.
+            </div>
+          )}
         </div>
       )}
       {!profile?.entered_prior_history && (

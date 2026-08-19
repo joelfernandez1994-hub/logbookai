@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect } from 'react';
 import { useDriverData } from '@/hooks/useDriverData';
-import { getDailyGrid, computeCycle, dateKeyInTz } from '@/lib/hosEngine';
+import { getDailyGrid, computeCycle, computeHOS, fmtDur, dateKeyInTz } from '@/lib/hosEngine';
 import LogGraph from '@/components/LogGraph';
 import { getCertifications, getAllEvents } from '@/lib/driverData';
 import { generateLogsPdf } from '@/lib/pdfGenerator';
@@ -42,6 +42,7 @@ export default function Inspection() {
   const selectedKey = dayKeys[Math.max(0, Math.min(7, dayOffset + 7))];
   const grid = useMemo(() => getDailyGrid(events, selectedKey, tz), [events, selectedKey, tz]);
   const cycle = useMemo(() => computeCycle(events, cycleType, tz, new Date(selectedKey + 'T12:00:00')), [events, cycleType, tz, selectedKey]);
+  const hosForDay = useMemo(() => computeHOS(events, cycleType, tz, grid.dayEnd, { historyComplete: true }), [events, cycleType, tz, grid.dayEnd]);
   const cert = certifications.find(c => c.log_date === selectedKey && !c.is_superseded);
 
   const generatePdf = (range = false) => {
@@ -118,6 +119,22 @@ export default function Inspection() {
           <div>Available: {cycle.cycleRemainingHours.toFixed(2)}</div>
           <div>Today: {(cycle.dailyTotals[cycle.dailyTotals.length - 1]?.onDutyHours || 0).toFixed(2)}</div>
           <div>Back tomorrow: {cycle.returningTomorrowHours.toFixed(2)}</div>
+        </div>
+      </div>
+
+      {/* HOS clocks (split-aware) as of end of selected day */}
+      <div className="bg-slate-800 rounded-xl p-3 mb-3 text-sm">
+        <div className="font-semibold mb-1">HOS Clocks (end of day)</div>
+        <div className="grid grid-cols-2 gap-1 text-xs text-slate-300">
+          <div>Driving remaining: {fmtDur(hosForDay.driving.drivingRemainingMs)}</div>
+          <div>14-hr window remaining: {fmtDur(hosForDay.window14.remainingMs)}</div>
+          <div className="col-span-2 text-slate-400 pt-1">
+            {hosForDay.split.status === 'active'
+              ? 'Split sleeper active — 11-hr & 14-hr clocks recalculated from the qualifying pairing.'
+              : hosForDay.split.status === 'incomplete'
+                ? 'Split sleeper incomplete — not applied.'
+                : 'No split-sleeper pairing in effect.'}
+          </div>
         </div>
       </div>
 

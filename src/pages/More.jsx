@@ -90,6 +90,7 @@ export default function More() {
         <div className="rounded-xl border border-slate-300 bg-slate-50 p-4 mb-4">
           <div className="flex items-center gap-2 font-semibold text-sm mb-3"><Shield className="w-4 h-4" /> Administrator Controls</div>
           <div className="space-y-3">
+            <Button size="sm" variant="outline" className="w-full" onClick={() => navigate('/engine-tests')}>HOS Engine Tests</Button>
             <div className="flex items-center justify-between">
               <span className="text-sm">AI enabled globally</span>
               <input type="checkbox" checked={settings?.ai_enabled_global ?? true}

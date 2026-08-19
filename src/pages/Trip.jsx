@@ -47,9 +47,10 @@ export default function Trip() {
     if (!estimate) return null;
     const neededHours = estimate.hours;
     const drivingRemaining = hos.driving.drivingRemainingMs / 3600000;
+    const windowRemaining = hos.window14.remainingMs / 3600000;
     const cycleRemaining = hos.cycle.cycleRemainingHours;
-    const achievable = neededHours <= drivingRemaining && neededHours <= cycleRemaining;
-    return { neededHours, drivingRemaining, cycleRemaining, achievable };
+    const achievable = neededHours <= drivingRemaining && neededHours <= windowRemaining && neededHours <= cycleRemaining;
+    return { neededHours, drivingRemaining, windowRemaining, cycleRemaining, achievable };
   };
   const feasibility = checkFeasibility();
 
@@ -62,7 +63,7 @@ export default function Trip() {
       mileage: estimate?.miles, estimated_travel_hours: estimate?.hours,
       estimated_route: estimate?.notes || '',
       is_achievable: feasibility?.achievable,
-      feasibility_note: feasibility ? (feasibility.achievable ? 'Likely achievable under current HOS.' : `Not achievable. Limiting clock: ${feasibility.neededHours > feasibility.drivingRemaining ? '11-hour driving' : 'cycle'}.`) : '',
+      feasibility_note: feasibility ? (feasibility.achievable ? 'Likely achievable under current HOS.' : `Not achievable. Limiting clock: ${feasibility.neededHours > feasibility.drivingRemaining ? '11-hour driving' : feasibility.neededHours > feasibility.windowRemaining ? '14-hour window' : 'cycle'}.`) : '',
       commodity: '',
     });
     loadTrips();
@@ -82,10 +83,19 @@ export default function Trip() {
           <div className="font-bold">{fmtDur(hos.driving.drivingRemainingMs)}</div>
         </div>
         <div className="rounded-xl border border-slate-200 bg-white p-3 text-sm">
+          <div className="text-xs text-slate-500">14-hr window available</div>
+          <div className="font-bold">{fmtDur(hos.window14.remainingMs)}</div>
+        </div>
+        <div className="rounded-xl border border-slate-200 bg-white p-3 text-sm">
           <div className="text-xs text-slate-500">Cycle available</div>
           <div className="font-bold">{hos.cycle.cycleRemainingHours.toFixed(1)} hr</div>
         </div>
       </div>
+      {hos.split.status === 'active' && (
+        <div className="rounded-xl border border-blue-200 bg-blue-50 p-2 mb-4 text-xs text-blue-800">
+          Split sleeper active — driving & 14-hr window recalculated from the qualifying pairing.
+        </div>
+      )}
 
       {/* Trip form */}
       <div className="rounded-xl border border-slate-200 bg-white p-4 mb-4 space-y-3">
@@ -120,7 +130,7 @@ export default function Trip() {
                 {feasibility.achievable ? <><Check className="w-4 h-4" /> Likely achievable</> : <><X className="w-4 h-4" /> Not achievable under current hours</>}
               </div>
               <div className="text-xs text-slate-600 mt-1">
-                Need {feasibility.neededHours} hr · Have {feasibility.drivingRemaining.toFixed(1)} driving / {feasibility.cycleRemaining.toFixed(1)} cycle.
+                Need {feasibility.neededHours} hr · Have {feasibility.drivingRemaining.toFixed(1)} driving / {feasibility.windowRemaining.toFixed(1)} 14-hr window / {feasibility.cycleRemaining.toFixed(1)} cycle.
                 {!feasibility.achievable && ` Stop and rest before resuming. Do not exceed limits or speed.`}
               </div>
             </div>
