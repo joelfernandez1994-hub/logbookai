@@ -1,0 +1,36 @@
+{
+  "name": "AIUsageLog",
+  "type": "object",
+  "properties": {
+    "month": {
+      "type": "string"
+    },
+    "count": {
+      "type": "number",
+      "default": 0
+    },
+    "last_used_at": {
+      "type": "string",
+      "format": "date-time"
+    }
+  },
+  "required": [
+    "month"
+  ],
+  "rls": {
+    "read": {
+      "created_by_id": "{{user.id}}"
+    },
+    "create": {
+      "created_by_id": "{{user.id}}"
+    },
+    "update": {
+      "created_by_id": "{{user.id}}"
+    },
+    "delete": {
+      "user_condition": {
+        "role": "admin"
+      }
+    }
+  }
+}

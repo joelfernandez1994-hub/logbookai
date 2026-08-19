@@ -1,0 +1,60 @@
+{
+  "name": "TripStop",
+  "type": "object",
+  "properties": {
+    "trip_id": {
+      "type": "string"
+    },
+    "stop_type": {
+      "type": "string",
+      "enum": [
+        "pickup",
+        "delivery",
+        "fuel",
+        "rest",
+        "break",
+        "stop"
+      ]
+    },
+    "city": {
+      "type": "string"
+    },
+    "state": {
+      "type": "string"
+    },
+    "appointment_time": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "planned": {
+      "type": "boolean",
+      "default": true
+    },
+    "sequence": {
+      "type": "number"
+    },
+    "remark": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "trip_id",
+    "stop_type",
+    "city",
+    "state"
+  ],
+  "rls": {
+    "read": {
+      "created_by_id": "{{user.id}}"
+    },
+    "create": {
+      "created_by_id": "{{user.id}}"
+    },
+    "update": {
+      "created_by_id": "{{user.id}}"
+    },
+    "delete": {
+      "created_by_id": "{{user.id}}"
+    }
+  }
+}

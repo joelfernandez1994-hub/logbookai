@@ -1,0 +1,66 @@
+{
+  "name": "BillOfLading",
+  "type": "object",
+  "properties": {
+    "bol_number": {
+      "type": "string"
+    },
+    "shipper": {
+      "type": "string"
+    },
+    "receiver": {
+      "type": "string"
+    },
+    "commodity": {
+      "type": "string"
+    },
+    "origin_city": {
+      "type": "string"
+    },
+    "origin_state": {
+      "type": "string"
+    },
+    "destination_city": {
+      "type": "string"
+    },
+    "destination_state": {
+      "type": "string"
+    },
+    "pickup_appointment": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "delivery_appointment": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "file_url": {
+      "type": "string"
+    },
+    "document_id": {
+      "type": "string"
+    },
+    "trip_id": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "bol_number",
+    "origin_city",
+    "destination_city"
+  ],
+  "rls": {
+    "read": {
+      "created_by_id": "{{user.id}}"
+    },
+    "create": {
+      "created_by_id": "{{user.id}}"
+    },
+    "update": {
+      "created_by_id": "{{user.id}}"
+    },
+    "delete": {
+      "created_by_id": "{{user.id}}"
+    }
+  }
+}

@@ -1,0 +1,52 @@
+{
+  "name": "EventVersion",
+  "type": "object",
+  "properties": {
+    "original_event_id": {
+      "type": "string"
+    },
+    "version_number": {
+      "type": "number"
+    },
+    "snapshot": {
+      "type": "object"
+    },
+    "edited_by": {
+      "type": "string"
+    },
+    "edit_reason": {
+      "type": "string"
+    },
+    "action": {
+      "type": "string",
+      "enum": [
+        "created",
+        "edited",
+        "deleted",
+        "corrected"
+      ]
+    }
+  },
+  "required": [
+    "original_event_id",
+    "version_number",
+    "snapshot",
+    "action"
+  ],
+  "rls": {
+    "read": {
+      "created_by_id": "{{user.id}}"
+    },
+    "create": {
+      "created_by_id": "{{user.id}}"
+    },
+    "update": {
+      "created_by_id": "{{user.id}}"
+    },
+    "delete": {
+      "user_condition": {
+        "role": "admin"
+      }
+    }
+  }
+}

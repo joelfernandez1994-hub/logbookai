@@ -1,0 +1,97 @@
+{
+  "name": "DutyStatusEvent",
+  "type": "object",
+  "properties": {
+    "log_date": {
+      "type": "string",
+      "format": "date"
+    },
+    "start_timestamp": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "end_timestamp": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "duty_status": {
+      "type": "string",
+      "enum": [
+        "OFF_DUTY",
+        "SLEEPER_BERTH",
+        "DRIVING",
+        "ON_DUTY"
+      ]
+    },
+    "city": {
+      "type": "string"
+    },
+    "state": {
+      "type": "string"
+    },
+    "latitude": {
+      "type": "number"
+    },
+    "longitude": {
+      "type": "number"
+    },
+    "remark": {
+      "type": "string"
+    },
+    "tractor_number": {
+      "type": "string"
+    },
+    "trailer_numbers": {
+      "type": "string"
+    },
+    "carrier_name": {
+      "type": "string"
+    },
+    "method_of_creation": {
+      "type": "string",
+      "enum": [
+        "Manual",
+        "Voice AI",
+        "Typed AI",
+        "Receipt Import",
+        "BOL Import",
+        "GPS Assisted",
+        "Correction"
+      ],
+      "default": "Manual"
+    },
+    "original_event_id": {
+      "type": "string"
+    },
+    "certification_id": {
+      "type": "string"
+    },
+    "is_current_version": {
+      "type": "boolean",
+      "default": true
+    },
+    "is_ongoing": {
+      "type": "boolean",
+      "default": false
+    }
+  },
+  "required": [
+    "log_date",
+    "start_timestamp",
+    "duty_status"
+  ],
+  "rls": {
+    "read": {
+      "created_by_id": "{{user.id}}"
+    },
+    "create": {
+      "created_by_id": "{{user.id}}"
+    },
+    "update": {
+      "created_by_id": "{{user.id}}"
+    },
+    "delete": {
+      "created_by_id": "{{user.id}}"
+    }
+  }
+}

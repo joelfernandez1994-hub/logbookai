@@ -1,12 +1,27 @@
 import { Toaster } from "@/components/ui/toaster"
 import { QueryClientProvider } from '@tanstack/react-query'
 import { queryClientInstance } from '@/lib/query-client'
-import { BrowserRouter as Router, Route, Routes } from 'react-router-dom';
+import { BrowserRouter as Router, Route, Routes, Navigate } from 'react-router-dom';
 import PageNotFound from './lib/PageNotFound';
 import { AuthProvider, useAuth } from '@/lib/AuthContext';
 import UserNotRegisteredError from '@/components/UserNotRegisteredError';
 import ScrollToTop from './components/ScrollToTop';
 // Add page imports here
+import ProtectedRoute from '@/components/ProtectedRoute';
+import Layout from '@/components/Layout';
+import Login from '@/pages/Login';
+import Register from '@/pages/Register';
+import ForgotPassword from '@/pages/ForgotPassword';
+import ResetPassword from '@/pages/ResetPassword';
+import Onboarding from './pages/Onboarding';
+import Today from './pages/Today';
+import Logs from './pages/Logs';
+import Trip from './pages/Trip';
+import Inspection from './pages/Inspection';
+import More from './pages/More';
+import Compliance from './pages/Compliance';
+import Assistant from './pages/Assistant';
+import Documents from './pages/Documents';
 
 const AuthenticatedApp = () => {
   const { isLoadingAuth, isLoadingPublicSettings, authError, navigateToLogin } = useAuth();
@@ -34,7 +49,23 @@ const AuthenticatedApp = () => {
   // Render the main app
   return (
     <Routes>
-      {/* Add your page Route elements here */}
+      <Route path="/login" element={<Login />} />
+      <Route path="/register" element={<Register />} />
+      <Route path="/forgot-password" element={<ForgotPassword />} />
+      <Route path="/reset-password" element={<ResetPassword />} />
+      <Route element={<ProtectedRoute unauthenticatedElement={<Navigate to="/login" replace />} />}>
+        <Route path="/onboarding" element={<Onboarding />} />
+        <Route element={<Layout />}>
+          <Route path="/" element={<Today />} />
+          <Route path="/logs" element={<Logs />} />
+          <Route path="/trip" element={<Trip />} />
+          <Route path="/inspection" element={<Inspection />} />
+          <Route path="/more" element={<More />} />
+          <Route path="/compliance" element={<Compliance />} />
+          <Route path="/assistant" element={<Assistant />} />
+          <Route path="/documents" element={<Documents />} />
+        </Route>
+      </Route>
       <Route path="*" element={<PageNotFound />} />
     </Routes>
   );

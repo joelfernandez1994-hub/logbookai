@@ -1,0 +1,52 @@
+{
+  "name": "Document",
+  "type": "object",
+  "properties": {
+    "category": {
+      "type": "string",
+      "enum": [
+        "Fuel Receipt",
+        "Bill of Lading",
+        "Scale Ticket",
+        "Toll Receipt",
+        "Repair Receipt",
+        "Inspection Document",
+        "Other"
+      ]
+    },
+    "file_url": {
+      "type": "string"
+    },
+    "trip_id": {
+      "type": "string"
+    },
+    "log_date": {
+      "type": "string",
+      "format": "date"
+    },
+    "event_id": {
+      "type": "string"
+    },
+    "description": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "category",
+    "file_url"
+  ],
+  "rls": {
+    "read": {
+      "created_by_id": "{{user.id}}"
+    },
+    "create": {
+      "created_by_id": "{{user.id}}"
+    },
+    "update": {
+      "created_by_id": "{{user.id}}"
+    },
+    "delete": {
+      "created_by_id": "{{user.id}}"
+    }
+  }
+}

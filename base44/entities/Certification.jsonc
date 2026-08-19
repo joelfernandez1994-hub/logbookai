@@ -1,0 +1,50 @@
+{
+  "name": "Certification",
+  "type": "object",
+  "properties": {
+    "log_date": {
+      "type": "string",
+      "format": "date"
+    },
+    "certified_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "signature_data": {
+      "type": "string"
+    },
+    "signature_name": {
+      "type": "string"
+    },
+    "certification_text": {
+      "type": "string",
+      "default": "I certify that these entries are true and correct."
+    },
+    "is_superseded": {
+      "type": "boolean",
+      "default": false
+    },
+    "superseded_by": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "log_date",
+    "certified_at",
+    "signature_name"
+  ],
+  "rls": {
+    "read": {
+      "created_by_id": "{{user.id}}"
+    },
+    "create": {
+      "created_by_id": "{{user.id}}"
+    },
+    "update": {
+      "created_by_id": "{{user.id}}"
+    },
+    "delete": {
+      "created_by_id": "{{user.id}}"
+    }
+  }
+}

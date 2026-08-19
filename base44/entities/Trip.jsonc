@@ -1,0 +1,79 @@
+{
+  "name": "Trip",
+  "type": "object",
+  "properties": {
+    "status": {
+      "type": "string",
+      "enum": [
+        "planned",
+        "active",
+        "completed"
+      ],
+      "default": "planned"
+    },
+    "pickup_city": {
+      "type": "string"
+    },
+    "pickup_state": {
+      "type": "string"
+    },
+    "pickup_appointment": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "delivery_city": {
+      "type": "string"
+    },
+    "delivery_state": {
+      "type": "string"
+    },
+    "delivery_appointment": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "mileage": {
+      "type": "number"
+    },
+    "estimated_route": {
+      "type": "string"
+    },
+    "estimated_travel_hours": {
+      "type": "number"
+    },
+    "current_location": {
+      "type": "string"
+    },
+    "bol_id": {
+      "type": "string"
+    },
+    "commodity": {
+      "type": "string"
+    },
+    "is_achievable": {
+      "type": "boolean"
+    },
+    "feasibility_note": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "pickup_city",
+    "pickup_state",
+    "delivery_city",
+    "delivery_state"
+  ],
+  "rls": {
+    "read": {
+      "created_by_id": "{{user.id}}"
+    },
+    "create": {
+      "created_by_id": "{{user.id}}"
+    },
+    "update": {
+      "created_by_id": "{{user.id}}"
+    },
+    "delete": {
+      "created_by_id": "{{user.id}}"
+    }
+  }
+}

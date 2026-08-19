@@ -1,0 +1,71 @@
+{
+  "name": "DriverProfile",
+  "type": "object",
+  "properties": {
+    "legal_name": {
+      "type": "string"
+    },
+    "co_driver_id": {
+      "type": "string"
+    },
+    "co_driver_name": {
+      "type": "string"
+    },
+    "license_number": {
+      "type": "string"
+    },
+    "license_state": {
+      "type": "string"
+    },
+    "signature_data": {
+      "type": "string"
+    },
+    "signature_type": {
+      "type": "string",
+      "enum": [
+        "drawn",
+        "typed"
+      ],
+      "default": "typed"
+    },
+    "email": {
+      "type": "string"
+    },
+    "phone": {
+      "type": "string"
+    },
+    "home_terminal_timezone": {
+      "type": "string",
+      "default": "America/Chicago"
+    },
+    "has_acknowledged_non_eld": {
+      "type": "boolean",
+      "default": false
+    },
+    "onboarded": {
+      "type": "boolean",
+      "default": false
+    },
+    "entered_prior_history": {
+      "type": "boolean",
+      "default": false
+    }
+  },
+  "required": [
+    "legal_name"
+  ],
+  "rls": {
+    "read": {
+      "created_by_id": "{{user.id}}"
+    },
+    "create": {
+      "created_by_id": "{{user.id}}"
+    },
+    "update": {
+      "created_by_id": "{{user.id}}"
+    },
+    "delete": {
+      "created_by_id": "{{user.id}}"
+    }
+  }
+}

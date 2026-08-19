@@ -1,0 +1,17 @@
+{
+  "name": "User",
+  "type": "object",
+  "properties": {
+    "role": {
+      "type": "string",
+      "default": "user"
+    },
+    "ai_allowance_override": {
+      "type": "number"
+    },
+    "ai_disabled": {
+      "type": "boolean",
+      "default": false
+    }
+  }
+}

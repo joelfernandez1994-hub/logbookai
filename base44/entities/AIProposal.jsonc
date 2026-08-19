@@ -1,0 +1,53 @@
+{
+  "name": "AIProposal",
+  "type": "object",
+  "properties": {
+    "request_text": {
+      "type": "string"
+    },
+    "request_type": {
+      "type": "string",
+      "enum": [
+        "text",
+        "voice"
+      ]
+    },
+    "interpretation": {
+      "type": "string"
+    },
+    "proposed_changes": {
+      "type": "object"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "pending",
+        "applied",
+        "rejected",
+        "expired"
+      ],
+      "default": "pending"
+    },
+    "compliance_check": {
+      "type": "object"
+    }
+  },
+  "required": [
+    "request_text",
+    "interpretation"
+  ],
+  "rls": {
+    "read": {
+      "created_by_id": "{{user.id}}"
+    },
+    "create": {
+      "created_by_id": "{{user.id}}"
+    },
+    "update": {
+      "created_by_id": "{{user.id}}"
+    },
+    "delete": {
+      "created_by_id": "{{user.id}}"
+    }
+  }
+}

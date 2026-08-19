@@ -1,0 +1,72 @@
+{
+  "name": "FuelReceipt",
+  "type": "object",
+  "properties": {
+    "vendor": {
+      "type": "string"
+    },
+    "receipt_date": {
+      "type": "string",
+      "format": "date"
+    },
+    "receipt_time": {
+      "type": "string"
+    },
+    "city": {
+      "type": "string"
+    },
+    "state": {
+      "type": "string"
+    },
+    "gallons": {
+      "type": "number"
+    },
+    "amount": {
+      "type": "number"
+    },
+    "receipt_number": {
+      "type": "string"
+    },
+    "file_url": {
+      "type": "string"
+    },
+    "document_id": {
+      "type": "string"
+    },
+    "logged_event_id": {
+      "type": "string"
+    },
+    "conflict_status": {
+      "type": "string",
+      "enum": [
+        "none",
+        "conflict",
+        "resolved"
+      ],
+      "default": "none"
+    },
+    "conflict_note": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "vendor",
+    "receipt_date",
+    "city",
+    "state"
+  ],
+  "rls": {
+    "read": {
+      "created_by_id": "{{user.id}}"
+    },
+    "create": {
+      "created_by_id": "{{user.id}}"
+    },
+    "update": {
+      "created_by_id": "{{user.id}}"
+    },
+    "delete": {
+      "created_by_id": "{{user.id}}"
+    }
+  }
+}

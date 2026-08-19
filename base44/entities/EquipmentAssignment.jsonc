@@ -1,0 +1,44 @@
+{
+  "name": "EquipmentAssignment",
+  "type": "object",
+  "properties": {
+    "effective_from": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "effective_to": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "tractor_number": {
+      "type": "string"
+    },
+    "trailer_numbers": {
+      "type": "string"
+    },
+    "location": {
+      "type": "string"
+    },
+    "remark": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "effective_from",
+    "tractor_number"
+  ],
+  "rls": {
+    "read": {
+      "created_by_id": "{{user.id}}"
+    },
+    "create": {
+      "created_by_id": "{{user.id}}"
+    },
+    "update": {
+      "created_by_id": "{{user.id}}"
+    },
+    "delete": {
+      "created_by_id": "{{user.id}}"
+    }
+  }
+}
