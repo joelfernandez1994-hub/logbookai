@@ -1,0 +1,62 @@
+import { useState, useRef } from 'react';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Mic, Send, Square } from 'lucide-react';
+
+export default function AssistantInput({ onSend, disabled }) {
+  const [input, setInput] = useState('');
+  const [transcript, setTranscript] = useState('');
+  const [listening, setListening] = useState(false);
+  const recRef = useRef(null);
+
+  const startVoice = () => {
+    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SR) { alert('Voice input is not supported on this device. You can type instead.'); return; }
+    const rec = new SR();
+    rec.lang = 'en-US'; rec.interimResults = false;
+    rec.onresult = (e) => {
+      const t = e.results[0][0].transcript;
+      setTranscript(t); setInput(t);
+    };
+    rec.onerror = () => setListening(false);
+    rec.onend = () => setListening(false);
+    recRef.current = rec;
+    rec.start(); setListening(true);
+  };
+
+  const stopVoice = () => { try { recRef.current?.stop(); } catch {} setListening(false); };
+
+  const send = () => {
+    const text = (input || '').trim();
+    if (!text) return;
+    onSend(text, transcript ? 'voice' : 'text');
+    setInput(''); setTranscript('');
+  };
+
+  return (
+    <div className="rounded-xl border border-slate-200 bg-white p-3 mb-3">
+      <div className="flex gap-2">
+        <Input
+          value={input}
+          onChange={(e) => { setInput(e.target.value); setTranscript(''); }}
+          placeholder="Tell LogbookAI what happened or what you want to do…"
+          onKeyDown={(e) => e.key === 'Enter' && send()}
+          disabled={disabled}
+        />
+        <Button variant="outline" onClick={listening ? stopVoice : startVoice} disabled={disabled}>
+          {listening ? <Square className="w-4 h-4 text-red-500 animate-pulse" /> : <Mic className="w-4 h-4" />}
+        </Button>
+        <Button onClick={send} disabled={disabled || !input}>
+          <Send className="w-4 h-4" />
+        </Button>
+      </div>
+      {transcript && (
+        <div className="rounded-lg border border-blue-200 bg-blue-50 p-2 mt-2 text-xs">
+          <span className="font-medium text-blue-700">Heard: </span>
+          <span className="text-blue-900">{transcript}</span>
+          <div className="text-blue-500 mt-0.5">Review the transcription before sending. Pay attention to cities and numbers.</div>
+        </div>
+      )}
+    </div>
+  );
+}

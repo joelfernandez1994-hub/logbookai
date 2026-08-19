@@ -1,4 +1,5 @@
 import { useState, useMemo } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useDriverData } from '@/hooks/useDriverData';
 import { getDailyGrid, computeCycle, dateKeyInTz, fmtHours, startOfDayInTz } from '@/lib/hosEngine';
 import LogGraph from '@/components/LogGraph';
@@ -8,7 +9,7 @@ import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { ChevronLeft, ChevronRight, BadgeCheck, AlertTriangle, Pencil, Trash2, Plus } from 'lucide-react';
+import { ChevronLeft, ChevronRight, BadgeCheck, AlertTriangle, Pencil, Trash2, Plus, Bot } from 'lucide-react';
 import { useEffect } from 'react';
 
 const STATUS_LABELS = { OFF_DUTY: 'Off Duty', SLEEPER_BERTH: 'Sleeper', DRIVING: 'Driving', ON_DUTY: 'On Duty' };
@@ -16,6 +17,7 @@ const STATUSES = ['OFF_DUTY', 'SLEEPER_BERTH', 'DRIVING', 'ON_DUTY'];
 
 export default function Logs() {
   const { profile, carrier, equipment, events, loading, reload } = useDriverData(9);
+  const navigate = useNavigate();
   const [selectedDate, setSelectedDate] = useState(() => new Date());
   const [certifications, setCertifications] = useState([]);
   const [editing, setEditing] = useState(null);
@@ -136,7 +138,10 @@ export default function Logs() {
       <div className="rounded-xl border border-slate-200 bg-white p-3 mb-3">
         <div className="flex items-center justify-between mb-2">
           <div className="font-semibold text-sm">Events</div>
-          <Button size="sm" variant="outline" onClick={() => setAdding(true)}><Plus className="w-3.5 h-3.5 mr-1" /> Add Event</Button>
+          <div className="flex gap-1">
+            <Button size="sm" variant="outline" onClick={() => navigate('/log-assistant')}><Bot className="w-3.5 h-3.5 mr-1" /> Assistant</Button>
+            <Button size="sm" variant="outline" onClick={() => setAdding(true)}><Plus className="w-3.5 h-3.5 mr-1" /> Add Event</Button>
+          </div>
         </div>
         <div className="space-y-1">
           {grid.remarks.map((r, i) => (

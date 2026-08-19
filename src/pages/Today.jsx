@@ -9,7 +9,7 @@ import { changeStatus, createHistoricalEvent } from '@/lib/driverData';
 import { getDvirs } from '@/lib/dvirData';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
-import { Truck, Clock, Coffee, RotateCcw, AlertTriangle, MapPin, Bot, FileCheck, ClipboardList, ClipboardCheck, Gauge, Moon } from 'lucide-react';
+import { Truck, Clock, Coffee, RotateCcw, AlertTriangle, MapPin, Bot, FileCheck, ClipboardList, ClipboardCheck, Gauge, Moon, Gavel, HelpCircle } from 'lucide-react';
 
 const STATUS_LABELS = {
   OFF_DUTY: 'OFF DUTY',
@@ -216,6 +216,19 @@ export default function Today() {
         <div className="text-sm font-semibold mb-2">Today's 24-Hour Log</div>
         <LogGraph events={events} dateStr={todayKey} timezone={tz} />
       </div>
+
+      {/* Manual Log Assistant — prominent actions */}
+      <div className="grid grid-cols-2 gap-2 mb-3">
+        <Button className="h-14 text-base" onClick={() => navigate('/log-assistant')}>
+          <Bot className="w-5 h-5 mr-2" /> Add / Tell LogbookAI
+        </Button>
+        <Button variant="outline" className="h-14 text-base" onClick={() => navigate('/log-assistant?tab=makeLegal')}>
+          <Gavel className="w-5 h-5 mr-2" /> Make It Legal
+        </Button>
+      </div>
+      <Button variant="outline" className="w-full h-12 text-base mb-3" onClick={() => navigate('/log-assistant?tab=whatCanIDo')}>
+        <HelpCircle className="w-5 h-5 mr-2" /> What Can I Do?
+      </Button>
 
       {/* Main actions */}
       <div className="grid grid-cols-2 gap-2 mb-6">
