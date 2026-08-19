@@ -108,3 +108,10 @@ export async function getAIUsage() {
   const list = await base44.entities.AIUsageLog.filter({ month }, '-created_date', 1);
   return list && list[0] ? list[0].count : 0;
 }
+
+export async function getDocuments(daysBack = 30) {
+  const all = await base44.entities.Document.list('-created_date', 500);
+  if (!all) return [];
+  const since = new Date(Date.now() - (daysBack + 1) * 24 * 3600000);
+  return all.filter(d => !d.log_date || new Date(d.log_date + 'T12:00:00') >= since);
+}

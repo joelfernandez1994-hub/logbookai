@@ -2,11 +2,12 @@ import { useState, useMemo, useEffect } from 'react';
 import { useDriverData } from '@/hooks/useDriverData';
 import { getDailyGrid, computeCycle, computeHOS, fmtDur, dateKeyInTz } from '@/lib/hosEngine';
 import LogGraph from '@/components/LogGraph';
-import { getCertifications, getAllEvents } from '@/lib/driverData';
+import LogExportSheet from '@/components/LogExportSheet';
+import { getCertifications, getAllEvents, getDocuments } from '@/lib/driverData';
+import { getDvirs } from '@/lib/dvirData';
 import { generateLogsPdf } from '@/lib/pdfGenerator';
-import { base44 } from '@/api/base44Client';
 import { Button } from '@/components/ui/button';
-import { ChevronLeft, ChevronRight, FileDown, Share2, X, ShieldCheck } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Share2, X, ShieldCheck } from 'lucide-react';
 
 const STATUS_LABELS = { OFF_DUTY: 'Off Duty', SLEEPER_BERTH: 'Sleeper', DRIVING: 'Driving', ON_DUTY: 'On Duty' };
 
@@ -14,19 +15,21 @@ export default function Inspection() {
   const { profile, carrier } = useDriverData(9);
   const [events, setEvents] = useState([]);
   const [certifications, setCertifications] = useState([]);
+  const [dvirs, setDvirs] = useState([]);
+  const [documents, setDocuments] = useState([]);
   const [dayOffset, setDayOffset] = useState(0); // 0 = today, -7 = 7 days ago
-  const [shareEmail, setShareEmail] = useState('');
-  const [showShare, setShowShare] = useState(false);
-  const [sharing, setSharing] = useState(false);
+  const [showExport, setShowExport] = useState(false);
 
   const tz = carrier?.home_terminal_timezone || 'America/Chicago';
   const cycleType = carrier?.hos_cycle || '70_8';
 
   useEffect(() => {
     (async () => {
-      const [ev, certs] = await Promise.all([getAllEvents(), getCertifications(9)]);
+      const [ev, certs, dv, docs] = await Promise.all([getAllEvents(), getCertifications(9), getDvirs(30), getDocuments(30)]);
       setEvents(ev || []);
       setCertifications(certs || []);
+      setDvirs(dv || []);
+      setDocuments(docs || []);
     })();
   }, []);
 
@@ -45,32 +48,9 @@ export default function Inspection() {
   const hosForDay = useMemo(() => computeHOS(events, cycleType, tz, grid.dayEnd, { historyComplete: true }), [events, cycleType, tz, grid.dayEnd]);
   const cert = certifications.find(c => c.log_date === selectedKey && !c.is_superseded);
 
-  const generatePdf = (range = false) => {
-    const dates = range ? dayKeys : [selectedKey];
-    const doc = generateLogsPdf(profile, carrier, events, dates, tz, certifications, cycleType);
-    doc.save(`LogbookAI_${range ? 'inspection' : selectedKey}.pdf`);
-  };
+  const allDates = useMemo(() => Array.from(new Set((events || []).map(e => e.log_date).filter(Boolean))).sort(), [events]);
 
-  const sharePdf = async () => {
-    setSharing(true);
-    const doc = generateLogsPdf(profile, carrier, events, dayKeys, tz, certifications, cycleType);
-    const blob = doc.output('blob');
-    const fileName = `LogbookAI_inspection_${dayKeys[0]}_to_${dayKeys[dayKeys.length - 1]}.pdf`;
-    if (navigator.share && navigator.canShare && navigator.canShare({ files: [new File([blob], fileName, { type: 'application/pdf' })] })) {
-      try {
-        await navigator.share({ files: [new File([blob], fileName, { type: 'application/pdf' })], title: 'LogbookAI Inspection Records' });
-      } catch (e) {}
-    } else if (shareEmail) {
-      // Email a summary; attach requires backend
-      await base44.integrations.Core.SendEmail({
-        to: shareEmail,
-        subject: `LogbookAI Inspection Records ${dayKeys[0]} - ${dayKeys[dayKeys.length - 1]}`,
-        body: `Inspection records for ${profile?.legal_name} (${carrier?.carrier_name}, USDOT ${carrier?.usdot_number}) covering ${dayKeys.length} days (${dayKeys[0]} to ${dayKeys[dayKeys.length - 1]}).`,
-      });
-    }
-    setSharing(false);
-    setShowShare(false);
-  };
+  const buildDoc = (dates, options) => generateLogsPdf(profile, carrier, events, dates, tz, certifications, cycleType, { ...options, dvirs, documents });
 
   return (
     <div className="px-4 pt-6 min-h-screen bg-slate-900 text-white">
@@ -148,28 +128,21 @@ export default function Inspection() {
       </div>
 
       {/* Export actions */}
-      <div className="grid grid-cols-2 gap-2 mb-4">
-        <Button onClick={() => generatePdf(false)}><FileDown className="w-4 h-4 mr-1" /> PDF (this day)</Button>
-        <Button onClick={() => generatePdf(true)}><FileDown className="w-4 h-4 mr-1" /> PDF (8 days)</Button>
-      </div>
-      <Button variant="outline" className="w-full mb-6 border-slate-600 text-white" onClick={() => setShowShare(true)}>
-        <Share2 className="w-4 h-4 mr-2" /> Email / Share Inspection Records
+      <Button className="w-full mb-6" onClick={() => setShowExport(true)}>
+        <Share2 className="w-4 h-4 mr-2" /> Export / Share Logs
       </Button>
 
-      {showShare && (
-        <div className="fixed inset-0 bg-black/60 flex items-end justify-center z-50" onClick={() => setShowShare(false)}>
-          <div className="bg-white text-slate-900 rounded-t-2xl p-4 w-full max-w-md" onClick={(e) => e.stopPropagation()}>
-            <div className="font-bold mb-1">Share {dayKeys.length} days of log records</div>
-            <p className="text-xs text-slate-500 mb-3">You are about to share {dayKeys.length} days of log records ({dayKeys[0]} to {dayKeys[dayKeys.length - 1]}).</p>
-            <input placeholder="Officer / agency email (optional)" value={shareEmail} onChange={(e) => setShareEmail(e.target.value)}
-              className="w-full border rounded-lg p-2 mb-3" />
-            <div className="flex gap-2">
-              <Button variant="outline" className="flex-1" onClick={() => setShowShare(false)}>Cancel</Button>
-              <Button className="flex-1" disabled={sharing} onClick={sharePdf}>{sharing ? 'Sharing...' : 'Confirm Share'}</Button>
-            </div>
-          </div>
-        </div>
-      )}
+      <LogExportSheet
+        open={showExport}
+        onClose={() => setShowExport(false)}
+        tz={tz}
+        allDates={allDates}
+        buildDoc={buildDoc}
+        profile={profile}
+        carrier={carrier}
+        hasDvirs={dvirs.length > 0}
+        hasDocs={documents.length > 0}
+      />
     </div>
   );
 }

@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
-import { User, Building2, Truck, Bot, FileText, Settings, LogOut, Shield } from 'lucide-react';
+import { User, Building2, Truck, Bot, FileText, Settings, LogOut, Shield, ClipboardCheck } from 'lucide-react';
 
 export default function More() {
   const { profile, carrier, equipment, reload } = useDriverData(9);
@@ -62,8 +62,14 @@ export default function More() {
     { icon: User, label: 'Driver Profile', onClick: () => setShowProfile(true) },
     { icon: Building2, label: 'Carrier Profile', onClick: () => setShowCarrier(true) },
     { icon: Truck, label: 'Equipment', onClick: () => setShowEquipment(true) },
+    { icon: ClipboardCheck, label: 'Vehicle Inspection (DVIR)', onClick: () => navigate('/vehicle-inspection') },
     { icon: FileText, label: 'Documents', onClick: () => navigate('/documents') },
   ];
+
+  const toggleDvirReminder = async (val) => {
+    await saveDriverProfile({ ...profile, dvir_reminder_enabled: val }, profile);
+    reload();
+  };
 
   return (
     <div className="px-4 pt-6 pb-6">
@@ -83,6 +89,17 @@ export default function More() {
             <it.icon className="w-4 h-4 text-slate-500" /> {it.label}
           </button>
         ))}
+      </div>
+
+      {/* Optional daily vehicle inspection reminder */}
+      <div className="rounded-xl border border-slate-200 bg-white p-4 mb-4">
+        <div className="flex items-center justify-between">
+          <div>
+            <div className="font-semibold text-sm">Daily Vehicle Inspection Reminder</div>
+            <div className="text-xs text-slate-500 mt-0.5">Optional. Reminds you near the end of your work period to review vehicle condition. A no-defect written DVIR is not federally required every day for property-carrying CMVs.</div>
+          </div>
+          <input type="checkbox" checked={!!profile?.dvir_reminder_enabled} onChange={(e) => toggleDvirReminder(e.target.checked)} className="w-5 h-5 shrink-0" />
+        </div>
       </div>
 
       {/* Admin controls */}
@@ -179,7 +196,6 @@ function CarrierDialog({ open, onOpenChange, carrier, onSave }) {
 function EquipmentDialog({ open, onOpenChange, onSave }) {
   const [type, setType] = useState('tractor');
   const [unit, setUnit] = useState('');
-  const [plate, setPlate] = useState('');
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-md">
@@ -189,10 +205,9 @@ function EquipmentDialog({ open, onOpenChange, onSave }) {
             <option value="tractor">Tractor</option><option value="trailer">Trailer</option>
           </select>
           <div><Label>Unit #</Label><Input value={unit} onChange={(e) => setUnit(e.target.value)} /></div>
-          <div><Label>Plate #</Label><Input value={plate} onChange={(e) => setPlate(e.target.value)} /></div>
         </div>
         <DialogFooter><Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
-          <Button onClick={() => { onSave({ type, unit_number: unit, plate_number: plate, is_default: false }); onOpenChange(false); }}>Save</Button></DialogFooter>
+          <Button onClick={() => { onSave({ type, unit_number: unit, is_default: false }); onOpenChange(false); }}>Save</Button></DialogFooter>
       </DialogContent>
     </Dialog>
   );

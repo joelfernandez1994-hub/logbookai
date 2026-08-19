@@ -1,0 +1,89 @@
+{
+  "name": "DVIR",
+  "type": "object",
+  "properties": {
+    "log_date": {
+      "type": "string",
+      "format": "date"
+    },
+    "tractor_number": {
+      "type": "string"
+    },
+    "trailer_numbers": {
+      "type": "string"
+    },
+    "inspection_result": {
+      "type": "string",
+      "enum": [
+        "no_defects",
+        "defects"
+      ],
+      "default": "no_defects"
+    },
+    "defect_categories": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "defect_description": {
+      "type": "string"
+    },
+    "repair_status": {
+      "type": "string",
+      "enum": [
+        "none",
+        "corrected",
+        "not_required",
+        "pending"
+      ],
+      "default": "none"
+    },
+    "repair_notes": {
+      "type": "string"
+    },
+    "has_safety_defect": {
+      "type": "boolean",
+      "default": false
+    },
+    "driver_signature_data": {
+      "type": "string"
+    },
+    "driver_signature_name": {
+      "type": "string"
+    },
+    "driver_signed_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "mechanic_signature_data": {
+      "type": "string"
+    },
+    "mechanic_signature_name": {
+      "type": "string"
+    },
+    "mechanic_signed_at": {
+      "type": "string",
+      "format": "date-time"
+    }
+  },
+  "required": [
+    "log_date",
+    "tractor_number",
+    "inspection_result"
+  ],
+  "rls": {
+    "read": {
+      "created_by_id": "{{user.id}}"
+    },
+    "create": {
+      "created_by_id": "{{user.id}}"
+    },
+    "update": {
+      "created_by_id": "{{user.id}}"
+    },
+    "delete": {
+      "created_by_id": "{{user.id}}"
+    }
+  }
+}

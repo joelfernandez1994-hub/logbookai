@@ -1,14 +1,15 @@
 import { useState, useMemo, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useDriverData } from '@/hooks/useDriverData';
-import { computeHOS, fmtDur, fmtClock, dateKeyInTz } from '@/lib/hosEngine';
+import { computeHOS, fmtDur, fmtClock, dateKeyInTz, hasSufficientCycleHistory } from '@/lib/hosEngine';
 import LogGraph from '@/components/LogGraph';
 import ClockCard from '@/components/ClockCard';
 import StatusChangeSheet from '@/components/StatusChangeSheet';
 import { changeStatus, createHistoricalEvent } from '@/lib/driverData';
+import { getDvirs } from '@/lib/dvirData';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
-import { Truck, Clock, Coffee, RotateCcw, AlertTriangle, MapPin, Bot, FileCheck, ClipboardList, Gauge, Moon } from 'lucide-react';
+import { Truck, Clock, Coffee, RotateCcw, AlertTriangle, MapPin, Bot, FileCheck, ClipboardList, ClipboardCheck, Gauge, Moon } from 'lucide-react';
 
 const STATUS_LABELS = {
   OFF_DUTY: 'OFF DUTY',
@@ -31,15 +32,21 @@ export default function Today() {
   const [pretripOpen, setPretripOpen] = useState(false);
   const [pendingStatus, setPendingStatus] = useState(null);
   const [now, setNow] = useState(new Date());
+  const [dvirs, setDvirs] = useState([]);
 
   const tz = carrier?.home_terminal_timezone || profile?.home_terminal_timezone || 'America/Chicago';
   const cycleType = carrier?.hos_cycle || '70_8';
 
-  const hos = useMemo(() => computeHOS(events, cycleType, tz, now, { historyComplete: profile?.entered_prior_history }),
-    [events, cycleType, tz, now, profile]);
+  const historyComplete = useMemo(() => hasSufficientCycleHistory(events, cycleType, profile?.entered_prior_history, tz, now), [events, cycleType, profile, tz, now]);
+  const openSafetyDefects = useMemo(() => (dvirs || []).filter(d => d.has_safety_defect && d.repair_status === 'pending'), [dvirs]);
+
+  const hos = useMemo(() => computeHOS(events, cycleType, tz, now, { historyComplete }),
+    [events, cycleType, tz, now, historyComplete]);
 
   // live ticking
   useEffect(() => { const t = setTimeout(() => setNow(new Date()), 30000); return () => clearTimeout(t); }, [now]);
+
+  useEffect(() => { (async () => { try { setDvirs(await getDvirs(30) || []); } catch (e) {} })(); }, [reload]);
 
   if (loading) {
     return <div className="flex items-center justify-center h-screen"><div className="w-8 h-8 border-4 border-slate-200 border-t-slate-800 rounded-full animate-spin" /></div>;
@@ -176,11 +183,29 @@ export default function Today() {
           )}
         </div>
       )}
-      {!profile?.entered_prior_history && (
+      {openSafetyDefects.length > 0 && (
+        <div className="rounded-xl border border-red-300 bg-red-50 p-3 mb-3 flex items-start gap-2">
+          <AlertTriangle className="w-4 h-4 text-red-600 mt-0.5 shrink-0" />
+          <div className="text-xs text-red-900">
+            <span className="font-semibold">Safety-affecting defect with repair pending.</span> Vehicle should not be operated if unsafe.
+            <button className="underline ml-1 font-medium" onClick={() => navigate('/vehicle-inspection')}>Review DVIR →</button>
+          </div>
+        </div>
+      )}
+      {profile?.dvir_reminder_enabled && openSafetyDefects.length === 0 && (
+        <div className="rounded-xl border border-slate-200 bg-white p-3 mb-3 flex items-start gap-2">
+          <ClipboardCheck className="w-4 h-4 text-slate-500 mt-0.5 shrink-0" />
+          <div className="text-xs text-slate-700">
+            Reminder: review vehicle condition before finishing your work period and report any defects.
+            <button className="underline ml-1 font-medium" onClick={() => navigate('/vehicle-inspection')}>Open DVIR →</button>
+          </div>
+        </div>
+      )}
+      {!historyComplete && (
         <div className="rounded-xl border border-amber-300 bg-amber-50 p-3 mb-3 flex items-start gap-2">
           <AlertTriangle className="w-4 h-4 text-amber-600 mt-0.5 shrink-0" />
           <div className="text-xs text-amber-900">
-            Cycle calculation incomplete — previous duty history required. Available hours shown may be overstated. Enter prior history in More → Profile.
+            Cycle availability based only on records entered in LogbookAI. Prior duty history was not provided, so cycle balance is not verified until enough history exists to cover your {cycleType === '70_8' ? '8-day' : '7-day'} cycle.
           </div>
         </div>
       )}

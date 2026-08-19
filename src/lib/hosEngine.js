@@ -587,6 +587,24 @@ export function computeCycle(segments, cycleType, timezone, now = new Date()) {
 }
 
 // ---------------------------------------------------------------------------
+// SUFFICIENT CYCLE HISTORY — has the driver accumulated enough LogbookAI
+// records to cover the full 7/8-day cycle lookback window? When prior duty
+// history was NOT entered during onboarding, cycle availability is only
+// trustworthy once the in-app record spans the entire cycle window. Until
+// then the engine must NOT treat unknown prior days as verified zero — the UI
+// surfaces an "unverified" notice instead.
+// ---------------------------------------------------------------------------
+export function hasSufficientCycleHistory(rawEvents, cycleType, enteredPriorHistory, timezone, now = new Date()) {
+  if (enteredPriorHistory) return true;
+  const cycle = CYCLES[cycleType] || CYCLES['70_8'];
+  const segments = normalizeEvents(rawEvents, now);
+  if (!segments.length) return false;
+  const windowStart = startOfDayInTz(now, timezone).getTime() - (cycle.days - 1) * 24 * 3600000;
+  const earliest = segments.reduce((min, s) => (s.start.getTime() < min ? s.start.getTime() : min), segments[0].start.getTime());
+  return earliest <= windowStart;
+}
+
+// ---------------------------------------------------------------------------
 // 34-HOUR RESTART
 // ---------------------------------------------------------------------------
 export function compute34Restart(segments, now = new Date()) {

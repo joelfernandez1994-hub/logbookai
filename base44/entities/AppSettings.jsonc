@@ -17,6 +17,10 @@
     "settings_key": {
       "type": "string",
       "default": "global"
+    },
+    "dvir_reminder_enabled": {
+      "type": "boolean",
+      "default": false
     }
   },
   "required": [

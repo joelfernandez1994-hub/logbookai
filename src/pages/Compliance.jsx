@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useDriverData } from '@/hooks/useDriverData';
-import { computeHOS, runComplianceCheck, getDailyGrid, dateKeyInTz } from '@/lib/hosEngine';
+import { computeHOS, runComplianceCheck, getDailyGrid, dateKeyInTz, hasSufficientCycleHistory } from '@/lib/hosEngine';
 import { base44 } from '@/api/base44Client';
 import { Button } from '@/components/ui/button';
 import { AlertTriangle, CheckCircle2, Info, FileWarning, Lightbulb, RefreshCw } from 'lucide-react';
@@ -22,7 +22,7 @@ export default function Compliance() {
     const todayKey = dateKeyInTz(now, tz);
     const grid = getDailyGrid(events, todayKey, tz);
     const result = runComplianceCheck(events, cycleType, tz, now, {
-      historyComplete: profile?.entered_prior_history,
+      historyComplete: hasSufficientCycleHistory(events, cycleType, profile?.entered_prior_history, tz, now),
       dailyTotal: grid.totalHours,
       firstDrivingWithoutPretrip: false,
       equipmentMissing: false,

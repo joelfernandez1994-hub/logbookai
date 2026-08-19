@@ -16,13 +16,14 @@ export default function Onboarding() {
   const [step, setStep] = useState(0);
   const [acknowledged, setAcknowledged] = useState(false);
 
-  const [driver, setDriver] = useState({ legal_name: '', email: '', phone: '', license_number: '', license_state: '', home_terminal_timezone: 'America/Chicago' });
+  const [driver, setDriver] = useState({ legal_name: '', email: '', phone: '', home_terminal_timezone: 'America/Chicago' });
   const [carrierData, setCarrierData] = useState({ carrier_name: '', usdot_number: '', main_office_address: '', home_terminal_address: '', home_terminal_timezone: 'America/Chicago', hos_cycle: '70_8' });
-  const [tractor, setTractor] = useState({ unit_number: '', plate_number: '', plate_state: '' });
-  const [trailer, setTrailer] = useState({ unit_number: '', plate_number: '', plate_state: '' });
+  const [tractor, setTractor] = useState({ unit_number: '' });
+  const [trailer, setTrailer] = useState({ unit_number: '' });
   const [signature, setSignature] = useState('');
   const [typedName, setTypedName] = useState('');
   const [priorDays, setPriorDays] = useState(Array(8).fill(''));
+  const [enteredPrior, setEnteredPrior] = useState(null);
   const [saving, setSaving] = useState(false);
 
   const steps = ['Disclaimer', 'Driver', 'Carrier', 'Equipment', 'Signature', 'Prior History'];
@@ -35,29 +36,31 @@ export default function Onboarding() {
       signature_type: typedName && !signature ? 'typed' : 'drawn',
       has_acknowledged_non_eld: true,
       onboarded: true,
-      entered_prior_history: true,
+      entered_prior_history: enteredPrior === 'enter',
     }, profile);
     await saveCarrierProfile(carrierData, carrier);
-    await saveEquipment({ type: 'tractor', unit_number: tractor.unit_number, plate_number: tractor.plate_number, plate_state: tractor.plate_state, is_default: true });
-    if (trailer.unit_number) await saveEquipment({ type: 'trailer', unit_number: trailer.unit_number, plate_number: trailer.plate_number, plate_state: trailer.plate_state, is_default: true });
+    await saveEquipment({ type: 'tractor', unit_number: tractor.unit_number, is_default: true });
+    if (trailer.unit_number) await saveEquipment({ type: 'trailer', unit_number: trailer.unit_number, is_default: true });
 
-    // Seed prior history as ON_DUTY events for each entered day
-    const cycleDays = carrierData.hos_cycle === '70_8' ? 8 : 7;
-    for (let i = 1; i <= cycleDays; i++) {
-      const hours = parseFloat(priorDays[priorDays.length - i]) || 0;
-      if (hours > 0) {
-        const day = new Date(Date.now() - i * 24 * 3600000);
-        const start = new Date(day.getFullYear(), day.getMonth(), day.getDate(), 8, 0);
-        const end = new Date(start.getTime() + hours * 3600000);
-        const { createHistoricalEvent } = await import('@/lib/driverData');
-        await createHistoricalEvent({
-          log_date: day.toISOString().slice(0, 10),
-          start_timestamp: start.toISOString(),
-          end_timestamp: end.toISOString(),
-          duty_status: 'ON_DUTY',
-          remark: 'Prior history (entered during onboarding)',
-          method_of_creation: 'Manual',
-        });
+    // Seed prior history as ON_DUTY events for each entered day (only if chosen)
+    if (enteredPrior === 'enter') {
+      const cycleDays = carrierData.hos_cycle === '70_8' ? 8 : 7;
+      for (let i = 1; i <= cycleDays; i++) {
+        const hours = parseFloat(priorDays[priorDays.length - i]) || 0;
+        if (hours > 0) {
+          const day = new Date(Date.now() - i * 24 * 3600000);
+          const start = new Date(day.getFullYear(), day.getMonth(), day.getDate(), 8, 0);
+          const end = new Date(start.getTime() + hours * 3600000);
+          const { createHistoricalEvent } = await import('@/lib/driverData');
+          await createHistoricalEvent({
+            log_date: day.toISOString().slice(0, 10),
+            start_timestamp: start.toISOString(),
+            end_timestamp: end.toISOString(),
+            duty_status: 'ON_DUTY',
+            remark: 'Prior history (entered during onboarding)',
+            method_of_creation: 'Manual',
+          });
+        }
       }
     }
     setSaving(false);
@@ -98,10 +101,6 @@ export default function Onboarding() {
               <div><Label>Legal Name *</Label><Input value={driver.legal_name} onChange={(e) => setDriver({ ...driver, legal_name: e.target.value })} /></div>
               <div><Label>Email</Label><Input value={driver.email} onChange={(e) => setDriver({ ...driver, email: e.target.value })} /></div>
               <div><Label>Phone</Label><Input value={driver.phone} onChange={(e) => setDriver({ ...driver, phone: e.target.value })} /></div>
-              <div className="grid grid-cols-2 gap-2">
-                <div><Label>License #</Label><Input value={driver.license_number} onChange={(e) => setDriver({ ...driver, license_number: e.target.value })} /></div>
-                <div><Label>License State</Label><Input value={driver.license_state} onChange={(e) => setDriver({ ...driver, license_state: e.target.value.toUpperCase() })} maxLength={2} /></div>
-              </div>
             </div>
             <Button className="w-full mt-6" disabled={!driver.legal_name} onClick={() => setStep(2)}>Next</Button>
           </div>
@@ -140,15 +139,9 @@ export default function Onboarding() {
             <h2 className="text-lg font-bold mb-4">Equipment</h2>
             <div className="space-y-3">
               <div className="font-medium text-sm text-slate-500">Tractor</div>
-              <div className="grid grid-cols-2 gap-2">
-                <div><Label>Unit #</Label><Input value={tractor.unit_number} onChange={(e) => setTractor({ ...tractor, unit_number: e.target.value })} /></div>
-                <div><Label>Plate #</Label><Input value={tractor.plate_number} onChange={(e) => setTractor({ ...tractor, plate_number: e.target.value })} /></div>
-              </div>
-              <div className="font-medium text-sm text-slate-500 mt-3">Trailer</div>
-              <div className="grid grid-cols-2 gap-2">
-                <div><Label>Unit #</Label><Input value={trailer.unit_number} onChange={(e) => setTrailer({ ...trailer, unit_number: e.target.value })} /></div>
-                <div><Label>Plate #</Label><Input value={trailer.plate_number} onChange={(e) => setTrailer({ ...trailer, plate_number: e.target.value })} /></div>
-              </div>
+              <div><Label>Tractor / Unit #</Label><Input value={tractor.unit_number} onChange={(e) => setTractor({ ...tractor, unit_number: e.target.value })} /></div>
+              <div className="font-medium text-sm text-slate-500 mt-3">Trailer (optional)</div>
+              <div><Label>Trailer Number</Label><Input value={trailer.unit_number} onChange={(e) => setTrailer({ ...trailer, unit_number: e.target.value })} placeholder="Drop/hook/swappable" /></div>
             </div>
             <Button className="w-full mt-6" disabled={!tractor.unit_number} onClick={() => setStep(4)}>Next</Button>
           </div>
@@ -165,24 +158,49 @@ export default function Onboarding() {
 
         {step === 5 && (
           <div>
-            <h2 className="text-lg font-bold mb-1">Prior Duty History</h2>
+            <h2 className="text-lg font-bold mb-1">Prior Duty History — Optional</h2>
             <p className="text-sm text-slate-600 mb-3">
-              Enter on-duty hours for the previous {carrierData.hos_cycle === '70_8' ? 8 : 7} days so your cycle is accurate. Leave blank for days with no on-duty time. LogbookAI cannot assume prior days were zero.
+              If you enter your recent duty history, LogbookAI can calculate your 60/7 or 70/8 cycle availability more accurately from your first day.
             </p>
-            <div className="space-y-2">
-              {priorDays.map((h, i) => {
-                const d = new Date(Date.now() - (priorDays.length - i) * 24 * 3600000);
-                return (
-                  <div key={i} className="flex items-center justify-between rounded-lg border border-slate-200 p-2">
-                    <span className="text-sm">{d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}</span>
-                    <Input type="number" step="0.25" placeholder="0" value={h}
-                      onChange={(e) => { const next = [...priorDays]; next[i] = e.target.value; setPriorDays(next); }}
-                      className="w-24 text-right" />
-                  </div>
-                );
-              })}
-            </div>
-            <Button className="w-full mt-6" disabled={saving} onClick={finish}>{saving ? 'Saving...' : 'Complete Setup'}</Button>
+
+            {enteredPrior === null && (
+              <div className="space-y-2">
+                <Button className="w-full" onClick={() => setEnteredPrior('enter')}>Enter Prior History</Button>
+                <Button variant="outline" className="w-full" onClick={() => setEnteredPrior('skip')}>Skip / Start Fresh</Button>
+              </div>
+            )}
+
+            {enteredPrior === 'enter' && (
+              <>
+                <p className="text-sm text-slate-600 mb-3">Enter on-duty hours for the previous {carrierData.hos_cycle === '70_8' ? 8 : 7} days. Leave blank for days with no on-duty time. LogbookAI cannot assume prior days were zero.</p>
+                <div className="space-y-2">
+                  {priorDays.map((h, i) => {
+                    const d = new Date(Date.now() - (priorDays.length - i) * 24 * 3600000);
+                    return (
+                      <div key={i} className="flex items-center justify-between rounded-lg border border-slate-200 p-2">
+                        <span className="text-sm">{d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}</span>
+                        <Input type="number" step="0.25" placeholder="0" value={h}
+                          onChange={(e) => { const next = [...priorDays]; next[i] = e.target.value; setPriorDays(next); }}
+                          className="w-24 text-right" />
+                      </div>
+                    );
+                  })}
+                </div>
+              </>
+            )}
+
+            {enteredPrior === 'skip' && (
+              <div className="rounded-lg bg-amber-50 border border-amber-200 p-3 text-xs text-amber-900">
+                Cycle availability will be based only on records entered in LogbookAI. Prior duty history was not provided, so your cycle balance is not verified until enough history exists within LogbookAI to cover your {carrierData.hos_cycle === '70_8' ? '8-day' : '7-day'} cycle.
+              </div>
+            )}
+
+            {enteredPrior !== null && (
+              <>
+                <Button variant="ghost" size="sm" className="w-full mt-3" onClick={() => setEnteredPrior(null)}>Change choice</Button>
+                <Button className="w-full mt-3" disabled={saving} onClick={finish}>{saving ? 'Saving...' : 'Complete Setup'}</Button>
+              </>
+            )}
           </div>
         )}
       </div>

@@ -98,12 +98,99 @@ function drawDay(doc, driver, carrier, events, dateStr, timezone, certification,
   doc.text('I certify that these entries are true and correct.', margin, yy + 5);
 }
 
-export function generateLogsPdf(driver, carrier, events, dateStrs, timezone, certifications, cycleType) {
+export function generateLogsPdf(driver, carrier, events, dateStrs, timezone, certifications, cycleType, options = {}) {
   const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
   dateStrs.forEach((dateStr, i) => {
     const cert = certifications.find(c => c.log_date === dateStr && !c.is_superseded);
     const cycle = computeCycle(events, cycleType, timezone, new Date(dateStr + 'T12:00:00'));
     drawDay(doc, driver, carrier, events, dateStr, timezone, cert, cycle, i === 0, cycleType);
   });
+
+  if (options.includeDvir && options.dvirs && options.dvirs.length) {
+    const inRange = options.dvirs.filter(d => dateStrs.includes(d.log_date));
+    if (inRange.length) drawDvirSection(doc, driver, inRange);
+  }
+  if (options.includeDocs && options.documents && options.documents.length) {
+    const inRange = options.documents.filter(d => dateStrs.includes(d.log_date));
+    if (inRange.length) drawDocsAppendix(doc, inRange);
+  }
   return doc;
+}
+
+function drawDvirSection(doc, driver, dvirs) {
+  const W = doc.internal.pageSize.getWidth();
+  const H = doc.internal.pageSize.getHeight();
+  const margin = 8;
+  const CATS = ['Brakes', 'Steering', 'Tires', 'Wheels/Rims', 'Lights/Reflectors', 'Horn', 'Windshield/Wipers', 'Mirrors', 'Coupling Devices / Fifth Wheel', 'Suspension', 'Air System', 'Emergency Equipment', 'Trailer', 'Other'];
+  const REPAIR = { none: '', corrected: 'Corrected', not_required: 'Correction not required', pending: 'Repair pending' };
+  dvirs.forEach((d, idx) => {
+    doc.addPage();
+    let y = margin;
+    doc.setFontSize(13); doc.setFont(undefined, 'bold');
+    doc.text('Driver Vehicle Inspection Report (DVIR)', margin, y + 4);
+    doc.setFontSize(8); doc.setFont(undefined, 'normal');
+    doc.text('LogbookAI · NOT an ELD', W - margin, y + 4, { align: 'right' });
+    y += 9;
+    doc.setFontSize(9);
+    doc.rect(margin, y, W - 2 * margin, 16);
+    const info = [
+      `Driver: ${driver?.legal_name || ''}`, `Date: ${d.log_date}`,
+      `Tractor / Unit #: ${d.tractor_number || ''}`, `Trailer(s): ${d.trailer_numbers || ''}`,
+    ];
+    info.forEach((line, i) => { doc.text(line, margin + 3, y + 5 + (i % 2) * 6); });
+    y += 20;
+
+    doc.setFont(undefined, 'bold'); doc.text('Inspection Result', margin, y); doc.setFont(undefined, 'normal');
+    y += 4;
+    doc.text(d.inspection_result === 'no_defects' ? '[X] No defects or deficiencies discovered/reported' : '[X] Defects or deficiencies discovered/reported', margin, y);
+    y += 6;
+
+    if (d.inspection_result === 'defects') {
+      doc.setFont(undefined, 'bold'); doc.text('Affected Items', margin, y); doc.setFont(undefined, 'normal'); y += 5;
+      doc.setFontSize(8);
+      CATS.forEach((c) => { doc.text(`${(d.defect_categories || []).includes(c) ? '[X]' : '[ ]'} ${c}`, margin + 2 + (CATS.indexOf(c) % 2) * (W - 2 * margin) / 2, y + Math.floor(CATS.indexOf(c) / 2) * 4); });
+      y += Math.ceil(CATS.length / 2) * 4 + 2;
+      doc.setFontSize(9);
+      doc.setFont(undefined, 'bold'); doc.text('Describe Defect / Deficiency', margin, y); doc.setFont(undefined, 'normal'); y += 4;
+      doc.text(d.defect_description || '', margin, y, { maxWidth: W - 2 * margin }); y += 8;
+      doc.setFont(undefined, 'bold'); doc.text('Repair Status', margin, y); doc.setFont(undefined, 'normal'); y += 4;
+      doc.text(REPAIR[d.repair_status] || '', margin, y); y += 6;
+      if (d.repair_notes) { doc.setFont(undefined, 'bold'); doc.text('Repair / Correction Notes', margin, y); doc.setFont(undefined, 'normal'); y += 4; doc.text(d.repair_notes, margin, y, { maxWidth: W - 2 * margin }); y += 8; }
+    }
+
+    y = Math.min(y + 4, H - 22);
+    doc.setFontSize(8);
+    doc.setFont(undefined, 'bold'); doc.text('Driver Signature', margin, y); doc.setFont(undefined, 'normal');
+    doc.text(d.driver_signature_name || '', margin, y + 4);
+    doc.text(new Date(d.driver_signed_at || Date.now()).toLocaleString(), margin, y + 8);
+    if (d.driver_signature_data && String(d.driver_signature_data).startsWith('data:image')) {
+      try { doc.addImage(d.driver_signature_data, 'PNG', margin + 50, y - 2, 40, 12); } catch (e) {}
+    }
+    if (d.mechanic_signature_name) {
+      doc.setFont(undefined, 'bold'); doc.text('Mechanic / Carrier Certification', W / 2, y); doc.setFont(undefined, 'normal');
+      doc.text(d.mechanic_signature_name, W / 2, y + 4);
+      doc.text(new Date(d.mechanic_signed_at || Date.now()).toLocaleString(), W / 2, y + 8);
+    }
+  });
+}
+
+function drawDocsAppendix(doc, documents) {
+  const W = doc.internal.pageSize.getWidth();
+  const margin = 8;
+  doc.addPage();
+  let y = margin;
+  doc.setFontSize(13); doc.setFont(undefined, 'bold');
+  doc.text('Supporting Documents', margin, y + 4);
+  doc.setFontSize(9); doc.setFont(undefined, 'normal');
+  y += 10;
+  doc.text('Date', margin, y); doc.text('Category', margin + 30, y); doc.text('Description', margin + 80, y);
+  y += 4;
+  doc.setLineWidth(0.2); doc.line(margin, y, W - margin, y); y += 4;
+  doc.setFontSize(8);
+  documents.forEach((d) => {
+    doc.text(String(d.log_date || ''), margin, y, { maxWidth: 28 });
+    doc.text(String(d.category || ''), margin + 30, y, { maxWidth: 48 });
+    doc.text(String(d.description || ''), margin + 80, y, { maxWidth: W - margin - 80 });
+    y += 5;
+  });
 }
