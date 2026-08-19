@@ -53,7 +53,11 @@ describe('Manual Log Assistant — deterministic safety', () => {
 
   // 2. Proposed timeline triggers the HOS engine before confirmation.
   it('computeProposedHOS derives clocks from the merged timeline', () => {
-    const existing = [ev(3, 0, 'DRIVING', { is_ongoing: true, end_timestamp: null })];
+    // a valid 10h Off Duty reset anchors the clocks before the driving begins
+    const existing = [
+      ev(13, 3, 'OFF_DUTY'),
+      ev(3, 0, 'DRIVING', { is_ongoing: true, end_timestamp: null }),
+    ];
     const proposed = [{
       date: '2026-08-19', start_timestamp: new Date(NOW - 1 * H).toISOString(),
       end_timestamp: new Date(NOW).toISOString(), duty_status: 'DRIVING',
@@ -61,7 +65,7 @@ describe('Manual Log Assistant — deterministic safety', () => {
     }];
     const { hos, violations } = computeProposedHOS(existing, proposed, CYCLE, TZ, NOW);
     expect(hos.driving.applicable).toBe(true);
-    // 2h driving proposed + 3h existing (capped) → at least the proposed driving counts
+    // 2h existing driving (3h→1h ago) + 1h proposed driving → at least 3h counted
     expect(hos.driving.drivingUsedMs).toBeGreaterThan(0);
     expect(Array.isArray(violations)).toBe(true);
   });
@@ -140,7 +144,8 @@ describe('Manual Log Assistant — deterministic safety', () => {
     const r = distanceReasonableness('Miami', 'FL', 'Atlanta', 'GA', 2 * H);
     expect(r.known).toBe(true);
     expect(r.conflict).toBe(true);
-    const ok = distanceReasonableness('Miami', 'FL', 'Ocala', 'FL', 2 * H);
+    // Atlanta→Macon is ~85 mi, achievable in ~2h → no conflict
+    const ok = distanceReasonableness('Atlanta', 'GA', 'Macon', 'GA', 2 * H);
     expect(ok.known).toBe(true);
     expect(ok.conflict).toBe(false);
   });
