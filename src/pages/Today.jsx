@@ -48,12 +48,13 @@ export default function Today() {
 
   useEffect(() => { (async () => { try { setDvirs(await getDvirs(30) || []); } catch (e) {} })(); }, [reload]);
 
-  if (loading) {
+  const needsOnboarding = !profile || !profile.onboarded || !profile.has_acknowledged_non_eld;
+  useEffect(() => {
+    if (!loading && needsOnboarding) navigate('/onboarding', { replace: true });
+  }, [loading, needsOnboarding, navigate]);
+
+  if (loading || needsOnboarding) {
     return <div className="flex items-center justify-center h-screen"><div className="w-8 h-8 border-4 border-slate-200 border-t-slate-800 rounded-full animate-spin" /></div>;
-  }
-  if (!profile || !profile.onboarded || !profile.has_acknowledged_non_eld) {
-    navigate('/onboarding');
-    return null;
   }
 
   const todayKey = dateKeyInTz(now, tz);
