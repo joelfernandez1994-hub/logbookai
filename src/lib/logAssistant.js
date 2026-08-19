@@ -178,6 +178,8 @@ export const CITY_COORDS = {
   'memphis,tn': [35.1495, -90.049],
   'knoxville,tn': [35.9606, -83.9207],
   'albany,ny': [42.6526, -73.7562],
+  'chattanooga,tn': [35.0456, -85.3097],
+  'gainesville,fl': [29.6516, -82.3248],
 };
 
 function haversineMiles(a, b) {

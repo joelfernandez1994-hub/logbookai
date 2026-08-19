@@ -8,7 +8,7 @@ import StatusChangeSheet from '@/components/StatusChangeSheet';
 import { changeStatus, createHistoricalEvent } from '@/lib/driverData';
 import { getDvirs } from '@/lib/dvirData';
 import { Button } from '@/components/ui/button';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
+import PreTripDialog from '@/components/PreTripDialog';
 import { Truck, Clock, Coffee, RotateCcw, AlertTriangle, MapPin, Bot, FileCheck, ClipboardList, ClipboardCheck, Gauge, Moon, Gavel, HelpCircle } from 'lucide-react';
 
 const STATUS_LABELS = {
@@ -87,15 +87,21 @@ export default function Today() {
     reload();
   };
 
-  const logPretrip = async (minutes) => {
-    const start = new Date(Date.now() - minutes * 60000);
+  const handlePretripConfirm = async ({ start_timestamp, duration_min, city, state, alreadySatisfied }) => {
+    if (alreadySatisfied) {
+      setPretripOpen(false);
+      if (pendingStatus) await applyChange(pendingStatus);
+      setPendingStatus(null);
+      return;
+    }
+    const start = new Date(start_timestamp);
     await createHistoricalEvent({
       log_date: todayKey,
       start_timestamp: start.toISOString(),
-      end_timestamp: new Date().toISOString(),
+      end_timestamp: new Date(start.getTime() + duration_min * 60000).toISOString(),
       duty_status: 'ON_DUTY',
       remark: 'Pre-Trip Inspection',
-      city: pendingStatus?.city || '', state: pendingStatus?.state || '',
+      city: city || pendingStatus?.city || '', state: state || pendingStatus?.state || '',
       method_of_creation: 'Manual',
     });
     setPretripOpen(false);
@@ -247,32 +253,11 @@ export default function Today() {
       <StatusChangeSheet open={statusOpen} onOpenChange={setStatusOpen} onApply={handleChangeStatus}
         defaultEquipment={{ tractor: equipment?.[0]?.unit_number, trailer: equipment?.find(e => e.type === 'trailer')?.unit_number }} />
 
-      {/* Pre-trip prompt */}
-      <Dialog open={pretripOpen} onOpenChange={setPretripOpen}>
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle>Pre-Trip Vehicle Safety Check</DialogTitle>
-          </DialogHeader>
-          <p className="text-sm text-slate-600">
-            Have you completed or otherwise satisfied your required pre-trip vehicle safety check before operating the vehicle?
-          </p>
-          <p className="text-xs text-slate-400">These are entry shortcuts, not a universal FMCSA minimum duration.</p>
-          <DialogFooter className="flex-col gap-2">
-            <div className="flex gap-2 w-full">
-              <Button className="flex-1" onClick={() => logPretrip(15)}>Log Pre-Trip · 15 min</Button>
-              <Button className="flex-1" onClick={() => logPretrip(30)}>Log Pre-Trip · 30 min</Button>
-            </div>
-            <div className="flex gap-2 w-full">
-              <Button variant="outline" className="flex-1" onClick={() => { setPretripOpen(false); if (pendingStatus) applyChange(pendingStatus); setPendingStatus(null); }}>
-                Already Satisfied
-              </Button>
-              <Button variant="outline" className="flex-1" onClick={() => { setPretripOpen(false); setPendingStatus(null); }}>
-                Cancel
-              </Button>
-            </div>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      {/* Pre-trip prompt — confirms actual start time, duration and location */}
+      <PreTripDialog open={pretripOpen} onOpenChange={setPretripOpen}
+        drivingStart={pendingStatus ? new Date() : null}
+        defaultCity={pendingStatus?.city} defaultState={pendingStatus?.state}
+        onConfirm={handlePretripConfirm} />
     </div>
   );
 }

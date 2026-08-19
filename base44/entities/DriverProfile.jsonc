@@ -53,6 +53,17 @@
     "dvir_reminder_enabled": {
       "type": "boolean",
       "default": false
+    },
+    "trip_planning_speed_profile": {
+      "type": "string",
+      "enum": [
+        "conservative",
+        "55",
+        "60",
+        "65",
+        "provider"
+      ],
+      "default": "conservative"
     }
   },
   "required": [

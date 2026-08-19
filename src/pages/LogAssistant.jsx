@@ -4,6 +4,7 @@ import { base44 } from '@/api/base44Client';
 import { getAppSettings, getAIUsage, createHistoricalEvent, updateEvent } from '@/lib/driverData';
 import { computeHOS, fmtDur } from '@/lib/hosEngine';
 import { whatCanIDo, computeProposedHOS, buildCorrectionVersion } from '@/lib/logAssistant';
+import { addRouteWarning, fetchRoute, DEFAULT_SPEED_PROFILE } from '@/lib/proposalValidation';
 import AssistantInput from '@/components/logAssistant/AssistantInput';
 import ProposalReview from '@/components/logAssistant/ProposalReview';
 import WhatCanIDoPanel from '@/components/logAssistant/WhatCanIDoPanel';
@@ -30,6 +31,8 @@ export default function LogAssistant() {
   const [futureInput, setFutureInput] = useState('');
   const [usage, setUsage] = useState({ used: 0, allowance: 20 });
   const [now, setNow] = useState(new Date());
+  const [routeWarning, setRouteWarning] = useState(null);
+  const speedProfile = profile?.trip_planning_speed_profile || DEFAULT_SPEED_PROFILE;
 
   const tz = carrier?.home_terminal_timezone || profile?.home_terminal_timezone || 'America/Chicago';
   const cycleType = carrier?.hos_cycle || '70_8';
@@ -46,7 +49,19 @@ export default function LogAssistant() {
 
   const whatInfo = useMemo(() => whatCanIDo(events, cycleType, tz, now), [events, cycleType, tz, now]);
 
-  const resetResults = () => { setProposal(null); setPastResult(null); setFutureResult(null); setError(''); };
+  // Async route reasonableness for the proposed driving segments (real road route).
+  useEffect(() => {
+    if (!proposal?.proposed_events) { setRouteWarning(null); return; }
+    let cancelled = false;
+    const firstStart = proposal.proposed_events[0]?.start_timestamp;
+    const isFuture = firstStart ? new Date(firstStart) > new Date() : false;
+    addRouteWarning(proposal.proposed_events, { routingProvider: fetchRoute, speedProfile, now: new Date(), isFuture })
+      .then(w => { if (!cancelled) setRouteWarning(w); })
+      .catch(() => { if (!cancelled) setRouteWarning(null); });
+    return () => { cancelled = true; };
+  }, [proposal, speedProfile]);
+
+  const resetResults = () => { setProposal(null); setPastResult(null); setFutureResult(null); setError(''); setRouteWarning(null); };
 
   const callAssistant = async (mode, input, extra = {}) => {
     setBusy(true); setError('');
@@ -220,6 +235,7 @@ export default function LogAssistant() {
               onApply={applyProposal}
               onCancel={() => setProposal(null)}
               onResolveClarification={resolveClarification}
+              routeWarning={routeWarning}
             />
           )}
           {proposal?.refuses_fabrication && (

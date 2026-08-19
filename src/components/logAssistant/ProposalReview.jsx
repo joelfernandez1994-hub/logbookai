@@ -1,18 +1,20 @@
 import { useMemo, useState, useEffect } from 'react';
-import { computeProposedHOS, highestSeverity, fmtClockShort } from '@/lib/logAssistant';
-import { fmtDur } from '@/lib/hosEngine';
-import { dateKeyInTz } from '@/lib/hosEngine';
+import { validateProposal, hasBlocking, recommendBreakInsertion, buildPreTripEvent } from '@/lib/proposalValidation';
+import { highestSeverity, fmtClockShort } from '@/lib/logAssistant';
+import { fmtDur, dateKeyInTz } from '@/lib/hosEngine';
 import LogGraph from '@/components/LogGraph';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Check, X, Pencil, AlertTriangle, ShieldCheck, AlertCircle } from 'lucide-react';
+import { Check, X, Pencil, AlertTriangle, ShieldCheck, AlertCircle, Plus } from 'lucide-react';
+import PreTripDialog from '@/components/PreTripDialog';
 
 const STATUS_LABELS = { OFF_DUTY: 'Off Duty', SLEEPER_BERTH: 'Sleeper', DRIVING: 'Driving', ON_DUTY: 'On Duty' };
 const STATUSES = ['OFF_DUTY', 'SLEEPER_BERTH', 'DRIVING', 'ON_DUTY'];
 
-export default function ProposalReview({ existing, proposed, cycleType, tz, onApply, onCancel, interpretation, clarifications, onResolveClarification }) {
+export default function ProposalReview({ existing, proposed, cycleType, tz, onApply, onCancel, interpretation, clarifications, onResolveClarification, routeWarning }) {
   const [editable, setEditable] = useState(false);
   const [events, setEvents] = useState(proposed);
+  const [pretripOpen, setPretripOpen] = useState(false);
   useEffect(() => { setEvents(proposed); }, [proposed]);
 
   const evalNow = useMemo(() => {
@@ -21,12 +23,23 @@ export default function ProposalReview({ existing, proposed, cycleType, tz, onAp
     return t;
   }, [events]);
 
-  const { hos, violations } = useMemo(
-    () => computeProposedHOS(existing, events, cycleType, tz, evalNow),
+  // MANDATORY validation pipeline (deterministic). routeWarning supplied async by parent.
+  const validation = useMemo(
+    () => validateProposal(existing, events, { cycleType, tz, now: evalNow }),
     [existing, events, cycleType, tz, evalNow]
   );
+  const warnings = useMemo(() => {
+    const ws = [...validation.warnings];
+    if (routeWarning) ws.push(routeWarning);
+    return ws;
+  }, [validation.warnings, routeWarning]);
 
-  const severity = highestSeverity(violations);
+  const blocking = hasBlocking(warnings);
+  const violations = validation.violations;
+  const hos = validation.hos;
+  const isFuture = validation.isFuture;
+
+  const severity = blocking ? 'red' : (warnings.length > 0 ? 'amber' : (violations.length > 0 ? highestSeverity(violations) : 'green'));
   const sevStyle = severity === 'green' ? 'border-emerald-300 bg-emerald-50 text-emerald-800'
     : severity === 'amber' ? 'border-amber-300 bg-amber-50 text-amber-800'
       : 'border-red-300 bg-red-50 text-red-800';
@@ -34,13 +47,26 @@ export default function ProposalReview({ existing, proposed, cycleType, tz, onAp
 
   const proposedDate = events[0]?.start_timestamp ? dateKeyInTz(new Date(events[0].start_timestamp), tz) : dateKeyInTz(new Date(), tz);
 
-  const updateField = (i, field, val) => {
-    setEvents(prev => prev.map((e, idx) => idx === i ? { ...e, [field]: val } : e));
+  const updateField = (i, field, val) => setEvents(prev => prev.map((e, idx) => idx === i ? { ...e, [field]: val } : e));
+  const updateTs = (i, field, localVal) => updateField(i, field, localVal ? new Date(localVal).toISOString() : null);
+
+  const addPreTrip = ({ start_timestamp, duration_min, city, state, alreadySatisfied }) => {
+    if (alreadySatisfied) { setPretripOpen(false); return; }
+    const firstDriveIdx = events.findIndex(p => p.duty_status === 'DRIVING');
+    const driveStart = firstDriveIdx >= 0 ? new Date(events[firstDriveIdx].start_timestamp) : new Date();
+    const pre = buildPreTripEvent({ start_timestamp, duration_min, city, state, date: dateKeyInTz(driveStart, tz), source: 'manual' });
+    setEvents(prev => [pre, ...prev]);
+    setPretripOpen(false);
   };
-  const updateTs = (i, field, localVal) => {
-    const iso = localVal ? new Date(localVal).toISOString() : null;
-    updateField(i, field, iso);
+
+  const addRecommendedBreak = () => {
+    const br = recommendBreakInsertion(events, evalNow);
+    if (!br) return;
+    setEvents(prev => [...prev, br].sort((a, b) => new Date(a.start_timestamp) - new Date(b.start_timestamp)));
   };
+
+  const pretripWarning = warnings.find(w => w.type === 'pretrip');
+  const breakWarning = warnings.find(w => w.type === 'break30');
 
   return (
     <div className="rounded-xl border border-slate-200 bg-white p-3 mb-3">
@@ -63,6 +89,33 @@ export default function ProposalReview({ existing, proposed, cycleType, tz, onAp
                   ))}
                 </div>
               )}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Mandatory validation warnings */}
+      {warnings.length > 0 && (
+        <div className="space-y-2 mb-2">
+          {warnings.map((w, i) => (
+            <div key={i} className={`rounded-lg border p-2 flex items-start gap-2 ${w.severity === 'blocking' ? 'border-red-300 bg-red-50' : 'border-amber-300 bg-amber-50'}`}>
+              <AlertTriangle className={`w-4 h-4 mt-0.5 shrink-0 ${w.severity === 'blocking' ? 'text-red-600' : 'text-amber-600'}`} />
+              <div className="text-xs flex-1">
+                <div className={`font-semibold ${w.severity === 'blocking' ? 'text-red-900' : 'text-amber-900'}`}>{w.title}</div>
+                <div className={w.severity === 'blocking' ? 'text-red-800' : 'text-amber-800'}>{w.message}</div>
+                {w.type === 'pretrip' && (
+                  <div className="flex gap-2 mt-1">
+                    <Button size="sm" onClick={() => setPretripOpen(true)}><Plus className="w-3.5 h-3.5 mr-1" /> Add Pre-Trip</Button>
+                  </div>
+                )}
+                {w.type === 'break30' && isFuture && (
+                  <Button size="sm" className="mt-1" onClick={addRecommendedBreak}><Plus className="w-3.5 h-3.5 mr-1" /> Add 30-min break (planned)</Button>
+                )}
+                {w.type === 'break30' && !isFuture && (
+                  <div className="text-[11px] mt-0.5">If a real stop occurred, add the actual event via Edit Proposal. LogbookAI will not fabricate a break.</div>
+                )}
+                {w.hint && <div className="text-[11px] mt-0.5 opacity-80">{w.hint}</div>}
+              </div>
             </div>
           ))}
         </div>
@@ -115,9 +168,9 @@ export default function ProposalReview({ existing, proposed, cycleType, tz, onAp
         <SevIcon className="w-4 h-4 mt-0.5 shrink-0" />
         <div className="text-xs">
           <div className="font-semibold">
-            {severity === 'green' ? 'No HOS violation detected' : severity === 'amber' ? 'Review needed' : 'HOS violation detected'}
+            {blocking ? 'Resolve the issue(s) above before confirming' : severity === 'green' ? 'No HOS violation detected' : severity === 'amber' ? 'Review needed' : 'HOS violation detected'}
           </div>
-          {violations.length > 0 && (
+          {!blocking && violations.length > 0 && (
             <ul className="list-disc ml-4 mt-0.5">
               {violations.map((v, i) => <li key={i}>{v.rule}: {v.message}</li>)}
             </ul>
@@ -128,16 +181,22 @@ export default function ProposalReview({ existing, proposed, cycleType, tz, onAp
       <div className="grid grid-cols-2 gap-2 mb-3 text-xs">
         <div className="rounded border border-slate-100 p-2"><div className="text-slate-500">Driving Remaining</div><div className="font-semibold">{fmtDur(hos.driving.drivingRemainingMs)}</div></div>
         <div className="rounded border border-slate-100 p-2"><div className="text-slate-500">14-Hour Window</div><div className="font-semibold">{fmtDur(hos.window14.remainingMs)}</div></div>
-        <div className="rounded border border-slate-100 p-2"><div className="text-slate-500">30-Min Break</div><div className="font-semibold">{hos.break30.satisfied ? 'Satisfied' : 'Required'}</div></div>
+        <div className="rounded border border-slate-100 p-2"><div className="text-slate-500">30-Min Break</div><div className="font-semibold">{validation.break.satisfied ? 'Satisfied' : (validation.break.required ? 'Required' : 'Not yet')}</div></div>
         <div className="rounded border border-slate-100 p-2"><div className="text-slate-500">Cycle {hos.cycle.cycleLimit}/{hos.cycle.cycleDays}</div><div className="font-semibold">{hos.cycle.cycleRemainingHours.toFixed(1)} hr</div></div>
       </div>
 
       <div className="flex gap-2">
-        <Button className="flex-1" onClick={() => onApply(events)}><Check className="w-4 h-4 mr-1" /> Confirm & Apply</Button>
+        <Button className="flex-1" disabled={blocking} onClick={() => onApply(events)}><Check className="w-4 h-4 mr-1" /> Confirm & Apply</Button>
         <Button variant="outline" onClick={() => setEditable(v => !v)}><Pencil className="w-4 h-4 mr-1" /> Edit Proposal</Button>
         <Button variant="ghost" onClick={onCancel}><X className="w-4 h-4" /></Button>
       </div>
-      <div className="text-[11px] text-slate-400 mt-2">HOS values are computed by LogbookAI's deterministic engine from the proposed events. Nothing is written to your log until you confirm.</div>
+      {blocking && <div className="text-[11px] text-red-600 mt-2">Confirm & Apply is locked until the blocking issue is resolved or the proposal is edited.</div>}
+      <div className="text-[11px] text-slate-400 mt-1">Validation + HOS values are computed by LogbookAI's deterministic engine. Nothing is written to your log until you confirm.</div>
+
+      <PreTripDialog open={pretripOpen} onOpenChange={setPretripOpen}
+        drivingStart={pretripWarning?.drivingStart}
+        defaultCity={events[0]?.city} defaultState={events[0]?.state}
+        onConfirm={addPreTrip} />
     </div>
   );
 }
