@@ -60,7 +60,7 @@ export function validateInterpretResult(data) {
     if (!start) errors.push(`Event ${i + 1} is missing a start time.`);
     if (!DUTY_STATUSES.includes(status)) errors.push(`Event ${i + 1} has an invalid duty status "${status}".`);
     return {
-      date: start ? start.slice(0, 10) : '',
+      date: p.date || data.target_date || (start ? start.slice(0, 10) : ''),
       start_timestamp: start,
       end_timestamp: end || null,
       duty_status: status,

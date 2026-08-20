@@ -3,6 +3,7 @@ import { planReplaceRange, planInsert } from './timelineEngine';
 import {
   validateInterpretResult, isQuestionIntent, shouldOfferApply, replaceDayRange, normalizeStatus,
 } from './aiLayer';
+import { parseVoiceCommand } from './voiceParser';
 
 const tz = 'America/Chicago';
 
@@ -45,6 +46,13 @@ describe('aiLayer.validateInterpretResult', () => {
     });
     expect(normalized.requires_clarification).toBe(true);
     expect(normalized.clarification_question).toBe('Did you mean 11:00 AM?');
+  });
+});
+
+describe('voice parser routing', () => {
+  it('sends a complex multi-step timeline to OpenAI instead of collapsing segments', () => {
+    const text = 'Yesterday I was off duty until 6:00 AM, on duty at 6:00 AM, driving at 6:15 AM, fuel at 9:30 AM, driving at 9:50 AM, unloading at 12:30 PM, then off duty at 1:15 PM.';
+    expect(parseVoiceCommand(text, { now: new Date('2026-08-20T12:00:00Z'), timezone: 'America/Chicago' })).toMatchObject({ handled: false, reason: 'complex_timeline', fallback: 'ai' });
   });
 });
 

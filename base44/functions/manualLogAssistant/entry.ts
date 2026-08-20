@@ -120,13 +120,19 @@ NO INVENTED EXACT TIMES:
 - For an approximate time ("around 3", "about 11"), if an exact timestamp is required to alter the legal record, set requires_clarification=true and ask the driver to confirm the exact time in clarification_question. You may ALSO propose a best-guess event with "start_timestamp" listed in ambiguous_fields, but never present a guessed time as certain.
 
 MULTI-STEP:
-- Order proposed_events chronologically. Events must NOT overlap — the end_time of one event equals the start_time of the next when they are sequential. end_time is null only for an event still ongoing.
+- Preserve every explicit state transition in chronological order. "started driving" and "continued driving" MUST each produce a DRIVING segment; never collapse or omit Driving between On Duty activities.
+- Events must NOT overlap and must form one continuous state machine: each event's end_time equals the next event's start_time.
+- Fuel occurs after the Driving segment that reached the fuel stop; unloading occurs after the Driving segment that reached the destination.
+- A complete reconstruction of an entire day (from midnight or "off duty until" through "rest of the day") uses intent="replace_day", starts at local 00:00, and ends at local 00:00 the following day. Do not leave the final event ongoing for a completed past day.
+- Infer an omitted state from an unambiguous route context (Houston, TX → San Antonio → Laredo means San Antonio, TX and Laredo, TX). Ask only when genuinely ambiguous.
 - If fuel/arrival/stop time is unknown and required, set requires_clarification=true and ask.
 
-OUTPUT:
-- start_time and end_time are ISO 8601 strings in UTC (e.g. "2026-08-20T11:30:00Z"). Convert the driver's local clock times using the home terminal timezone provided.
+OUTPUT TIME CONTRACT:
+- start_time and end_time are LOCAL WALL-CLOCK ISO strings in the provided home terminal timezone, with NO Z and NO UTC offset (example: "2026-08-20T06:15:00").
+- Do not convert local times to UTC. The server performs exactly one timezone conversion after your response.
+- target_date is the local calendar date in that same timezone. Resolve "yesterday" from TODAY (local), not from UTC.
 - status is one of OFF_DUTY, SLEEPER (or SLEEPER_BERTH), DRIVING, ON_DUTY.
-- activity is a short label (Pre-Trip, Fuel, Loading, Unloading, Drop/Hook, Break, Sleeper, Driving, Equipment Change). remark is free text (e.g. "Dropped 123, hooked 456").
+- activity is a short label (Pre-Trip, Fuel, Loading, Unloading, Drop/Hook, Break, Sleeper, Driving, Equipment Change). remark is free text.
 - ambiguous_fields lists field names you guessed (e.g. ["start_timestamp","state"]).
 - If a request would hide a violation by falsifying records, set refuses_fabrication=true with proposed_events=[] and explain in summary.`;
 }
@@ -218,19 +224,41 @@ function normalizeStatus(s) {
   return s === 'SLEEPER' ? 'SLEEPER_BERTH' : s;
 }
 
-function mapInterpret(parsed, source) {
+function timezoneOffsetMs(date, timezone) {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: timezone, hour12: false,
+    year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', second: '2-digit',
+  }).formatToParts(date);
+  const values = {};
+  for (const part of parts) if (part.type !== 'literal') values[part.type] = part.value;
+  const hour = values.hour === '24' ? 0 : Number(values.hour);
+  return Date.UTC(Number(values.year), Number(values.month) - 1, Number(values.day), hour, Number(values.minute), Number(values.second)) - date.getTime();
+}
+
+function localWallTimeToIso(value, timezone) {
+  if (!value) return null;
+  const match = String(value).match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2}))?/);
+  if (!match) return null;
+  const wallUtc = Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3]), Number(match[4]), Number(match[5]), Number(match[6] || 0));
+  let instant = wallUtc;
+  for (let i = 0; i < 2; i++) instant = wallUtc - timezoneOffsetMs(new Date(instant), timezone);
+  return new Date(instant).toISOString();
+}
+
+function mapInterpret(parsed, source, timezone) {
   const proposed_events = (parsed.proposed_events || []).map((p) => {
-    const start = p.start_time || '';
-    const end = p.end_time || null;
+    const start = localWallTimeToIso(p.start_time, timezone);
+    const end = localWallTimeToIso(p.end_time, timezone);
     return {
-      date: start ? start.slice(0, 10) : '',
-      start_timestamp: start,
+      date: parsed.target_date || (p.start_time ? p.start_time.slice(0, 10) : ''),
+      start_timestamp: start || '',
       end_timestamp: end,
       duty_status: normalizeStatus(p.status),
       city: p.city || '',
       state: p.state || '',
-      activity_type: p.activity || '',
-      remark: p.remark || p.activity || '',
+      activity_type: normalizeStatus(p.status) === 'OFF_DUTY' && /sleeper/i.test(p.activity || '') ? 'Off Duty' : (p.activity || ''),
+      remark: normalizeStatus(p.status) === 'OFF_DUTY' && /sleeper/i.test(p.remark || '') ? 'Off Duty' : (p.remark || p.activity || ''),
       ambiguous_fields: p.ambiguous_fields || [],
       source,
     };
@@ -368,7 +396,7 @@ export default async function(req) {
       await base44.entities.AIUsageLog.create({ month, count: 1, last_used_at: new Date().toISOString() });
     }
 
-    const result = mode === 'interpret' ? mapInterpret(parsed, source) : parsed;
+    const result = mode === 'interpret' ? mapInterpret(parsed, source, ctx.timezone) : parsed;
     return Response.json({ ...result, mode, used: newCount, allowance });
   } catch (error) {
     return Response.json({ error: error.message || UNAVAILABLE_MSG, unavailable: true }, { status: 500 });

@@ -46,27 +46,45 @@ export function normalizeState(value) {
 // On any failure returns { error } so the caller can show a manual-entry hint.
 export async function resolveCurrentLocation({ timeout = 10000 } = {}) {
   if (typeof navigator === 'undefined' || !navigator?.geolocation) {
-    return { error: 'Location is not available on this device.' };
+    return { error: 'Coordinates unavailable: location services are not available on this device.' };
   }
   return new Promise((resolve) => {
     navigator.geolocation.getCurrentPosition(async (pos) => {
+      const latitude = pos?.coords?.latitude;
+      const longitude = pos?.coords?.longitude;
+      if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) {
+        resolve({ city: '', state: '', error: 'Coordinates unavailable: the device did not return a valid position.' });
+        return;
+      }
       try {
-        const res = await base44.functions.invoke('reverseGeocode', {
-          latitude: pos.coords.latitude,
-          longitude: pos.coords.longitude,
-        });
+        const res = await base44.functions.invoke('reverseGeocode', { latitude, longitude });
         const data = res?.data || res || {};
-        const city = (data.city || data.town || data.village || '').trim();
-        const state = normalizeState(data.state || data.region || '');
-        if (!city && !state) {
-          resolve({ city: '', state: '', error: 'Could not determine your location. Enter city and state manually.' });
+        if (data.error) {
+          resolve({ city: '', state: '', error: `Reverse-geocoding failure: ${data.error}` });
           return;
         }
-        resolve({ city, state, error: null });
+        const city = (data.city || data.town || data.village || '').trim();
+        const state = normalizeState(data.state || data.region || '');
+        if (!city || !state) {
+          resolve({ city: '', state: '', error: 'Reverse-geocoding failure: city and state were not found for these coordinates.' });
+          return;
+        }
+        resolve({ city, state, latitude, longitude, error: null });
       } catch (e) {
-        resolve({ city: '', state: '', error: 'Could not determine your location. Enter city and state manually.' });
+        const detail = e?.response?.data?.error || e?.message || '';
+        const isReverseFailure = !!e?.response;
+        resolve({
+          city: '', state: '',
+          error: isReverseFailure
+            ? `Reverse-geocoding failure: ${detail || 'the location service rejected the request.'}`
+            : `Network error while resolving location${detail ? `: ${detail}` : '.'}`,
+        });
       }
-    }, () => resolve({ city: '', state: '', error: 'Location permission denied. Enter city and state manually.' }),
-      { enableHighAccuracy: true, timeout });
+    }, (error) => {
+      if (error?.code === 1) resolve({ city: '', state: '', error: 'Location permission denied. Enable location access and try again.' });
+      else if (error?.code === 2) resolve({ city: '', state: '', error: 'Coordinates unavailable: the device could not determine its position.' });
+      else if (error?.code === 3) resolve({ city: '', state: '', error: 'Coordinates unavailable: location lookup timed out.' });
+      else resolve({ city: '', state: '', error: `Coordinates unavailable${error?.message ? `: ${error.message}` : '.'}` });
+    }, { enableHighAccuracy: true, timeout, maximumAge: 30000 });
   });
 }

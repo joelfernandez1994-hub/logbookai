@@ -291,7 +291,7 @@ function EventEditor({ open, event, prefill, onClose, onSave, tz, carrier, equip
   };
 
   return (
-    <Dialog open={open} onOpenChange={(o) => { if (!saving) onClose(); }}>
+    <Dialog open={open} onOpenChange={(o) => { if (!o && !saving) onClose(); }}>
       <DialogContent className="max-w-md">
         <DialogHeader><DialogTitle>{event ? 'Edit Event' : 'Add Event'}</DialogTitle></DialogHeader>
         {isCertified && event && (

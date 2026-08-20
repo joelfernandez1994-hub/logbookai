@@ -161,6 +161,10 @@ export function parseVoiceCommand(text, ctx = {}) {
   if (!raw) return { handled: false, reason: 'empty' };
 
   const lower = raw.toLowerCase();
+  const explicitTimes = raw.match(/\b\d{1,2}:\d{2}\s*(?:a\.?m\.?|p\.?m\.?)\b/gi) || [];
+  if (explicitTimes.length > 2) {
+    return { handled: false, reason: 'complex_timeline', fallback: 'ai' };
+  }
 
   // Question detection → not a voice-log command; route to Ask LogbookAI.
   if (/\b(how many|do i have|why|does my|will i|can i|review my|check my|what does|what can|is it|are there|any issues|compliant)\b/i.test(lower)) {

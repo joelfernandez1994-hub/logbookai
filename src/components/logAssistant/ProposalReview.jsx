@@ -1,5 +1,6 @@
 import { useMemo, useState, useEffect } from 'react';
 import { validateProposal, hasBlocking, recommendBreakInsertion, buildPreTripEvent } from '@/lib/proposalValidation';
+import { replaceDayRange } from '@/lib/aiLayer';
 import { highestSeverity, fmtClockShort } from '@/lib/logAssistant';
 import { fmtDur, dateKeyInTz } from '@/lib/hosEngine';
 import LogGraph from '@/components/LogGraph';
@@ -13,6 +14,15 @@ const STATUSES = ['OFF_DUTY', 'SLEEPER_BERTH', 'DRIVING', 'ON_DUTY'];
 
 export default function ProposalReview({ existing, proposed, cycleType, tz, onApply, onApplyReplace, onCancel, interpretation, clarifications, onResolveClarification, routeWarning, intent, targetDate }) {
   const isReplaceDay = intent === 'replace_day';
+  const validationExisting = useMemo(() => {
+    if (!isReplaceDay || !targetDate) return existing;
+    const { dayStart, dayEnd } = replaceDayRange(targetDate, tz);
+    return existing.filter((e) => {
+      const start = new Date(e.start_timestamp);
+      const end = e.end_timestamp ? new Date(e.end_timestamp) : new Date();
+      return end <= dayStart || start >= dayEnd;
+    });
+  }, [existing, isReplaceDay, targetDate, tz]);
   const [editable, setEditable] = useState(false);
   const [events, setEvents] = useState(proposed);
   const [pretripOpen, setPretripOpen] = useState(false);
@@ -26,8 +36,8 @@ export default function ProposalReview({ existing, proposed, cycleType, tz, onAp
 
   // MANDATORY validation pipeline (deterministic). routeWarning supplied async by parent.
   const validation = useMemo(
-    () => validateProposal(existing, events, { cycleType, tz, now: evalNow }),
-    [existing, events, cycleType, tz, evalNow]
+    () => validateProposal(validationExisting, events, { cycleType, tz, now: evalNow }),
+    [validationExisting, events, cycleType, tz, evalNow]
   );
   const warnings = useMemo(() => {
     const ws = [...validation.warnings];
@@ -130,7 +140,7 @@ export default function ProposalReview({ existing, proposed, cycleType, tz, onAp
 
       <div className="rounded-lg border border-border p-2 mb-2">
         <div className="text-xs text-muted-foreground mb-1">24-hour RODS graph (proposed)</div>
-        <LogGraph events={[...existing, ...events.map(e => ({ ...e, start_timestamp: e.start_timestamp, end_timestamp: e.end_timestamp }))]} dateStr={proposedDate} timezone={tz} />
+        <LogGraph events={[...validationExisting, ...events.map(e => ({ ...e, start_timestamp: e.start_timestamp, end_timestamp: e.end_timestamp }))]} dateStr={proposedDate} timezone={tz} />
       </div>
 
       <div className="space-y-1 mb-2">

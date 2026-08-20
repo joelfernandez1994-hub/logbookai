@@ -76,6 +76,11 @@ export default function LogAssistant() {
   // ---------------------------------------------------------------------------
   const handleTell = async (text, type) => {
     setError('');
+    const explicitTimes = text.match(/\b\d{1,2}:\d{2}\s*(?:a\.?m\.?|p\.?m\.?)\b/gi) || [];
+    const complexNarrative = /\bstarted driving\b/i.test(text) && /\bcontinued driving\b/i.test(text);
+    if (complexNarrative || explicitTimes.length > 2) {
+      return callAssistant('interpret', text, { source: type });
+    }
     const det = parseVoiceCommand(text, { now: new Date(), timezone: tz });
     if (det.handled) {
       const detEvents = (det.events || []).map((e) => ({

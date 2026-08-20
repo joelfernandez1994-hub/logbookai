@@ -8,6 +8,7 @@ import {
   dailyTotals, validateTimeline, canComputeHOS,
   planInsert, planReplaceRange, repairTimeline,
 } from './timelineEngine';
+import { findTimelineGaps } from './tripSync';
 
 const TZ = 'America/New_York';
 // 2026-08-20 is a Thursday; we anchor times to this date in ET.
@@ -45,6 +46,20 @@ describe('Timeline normalization', () => {
     const segs = normalizedSegments(events, NOW);
     expect(segs).toHaveLength(2);
     expect(segs[0].end.getTime()).toBe(segs[1].start.getTime());
+  });
+
+  it('carries a bounded status forward to the next change without false filler gaps', () => {
+    const events = [
+      ev('OFF_DUTY', 0, 3.85),
+      ev('ON_DUTY', 3.92, 4.27),
+      ev('DRIVING', 7.85, 7.92),
+      ev('OFF_DUTY', 15.48, null),
+    ];
+    const normalized = normalizedSegments(events, NOW);
+    expect(findTimelineGaps(events, DAY, TZ, NOW)).toEqual([]);
+    expect(normalized.every((s, i) => i === 0 || normalized[i - 1].end.getTime() === s.start.getTime())).toBe(true);
+    expect(normalized.at(-1).duty_status).toBe('OFF_DUTY');
+    expect(normalized.at(-1).end.getTime()).toBe(NOW.getTime());
   });
 
   it('cannot keep exact duplicate same-time events', () => {

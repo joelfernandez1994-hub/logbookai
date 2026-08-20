@@ -6,6 +6,7 @@
 
 import { planningMph } from './complianceStop';
 import { dateKeyInTz } from './hosEngine';
+import { normalizedSegments, startOfDayInTz } from './timelineEngine';
 import { base44 } from '@/api/base44Client';
 
 const H = 3600000;
@@ -62,28 +63,26 @@ export function loggedFuelStops(events, fuelReceipts, dateStr, tz) {
   return stops;
 }
 
-// Unaccounted time between consecutive duty records of the day. A RODS day must
-// be continuous; any gap > 1 minute means a duty record is missing.
+// Validate elapsed coverage only after canonical state-change normalization.
+// A known status carries forward until the next status change; bounded source
+// records therefore do not create filler-record gaps. A gap remains only when
+// no status can be determined at the start of the requested elapsed period.
 export function findTimelineGaps(events, dateStr, tz, now = new Date()) {
-  const evs = dayEvents(events, dateStr, tz);
-  const gaps = [];
-  const evEnd = (e) => e.end_timestamp ? new Date(e.end_timestamp) : (e.is_ongoing ? now : e._start);
-  for (let i = 1; i < evs.length; i++) {
-    const prev = evs[i - 1], next = evs[i];
-    const prevEnd = evEnd(prev);
-    const nextStart = next._start;
-    const gap = nextStart - prevEnd;
-    if (gap > 60000) gaps.push({ start: prevEnd, end: nextStart, ms: gap });
-  }
-  // open gap from the last closed event to now
-  if (evs.length) {
-    const last = evs[evs.length - 1];
-    if (last.end_timestamp && !last.is_ongoing) {
-      const lastEnd = new Date(last.end_timestamp);
-      if (now - lastEnd > 60000) gaps.push({ start: lastEnd, end: now, ms: now - lastEnd, open: true });
-    }
-  }
-  return gaps;
+  const dayAnchor = new Date(`${dateStr}T12:00:00Z`);
+  const dayStart = startOfDayInTz(dayAnchor, tz);
+  const dayEnd = new Date(dayStart.getTime() + 24 * H);
+  const targetEnd = now < dayEnd ? now : dayEnd;
+  if (targetEnd <= dayStart) return [];
+
+  const segments = normalizedSegments(events, now)
+    .filter(s => s.end > dayStart && s.start < targetEnd)
+    .sort((a, b) => a.start - b.start);
+  if (!segments.length) return [{ start: dayStart, end: targetEnd, ms: targetEnd - dayStart, open: true }];
+
+  const firstStart = segments[0].start > dayStart ? segments[0].start : dayStart;
+  return firstStart - dayStart > 60000
+    ? [{ start: dayStart, end: firstStart, ms: firstStart - dayStart }]
+    : [];
 }
 
 // Persisted daily miles (manual override or last auto value).
