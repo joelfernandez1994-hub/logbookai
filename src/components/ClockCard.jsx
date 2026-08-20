@@ -1,9 +1,9 @@
 export default function ClockCard({ label, value, sublabel, status = 'normal', icon: Icon }) {
   const tone = {
-    normal: 'border-slate-200 bg-white text-slate-900',
-    warning: 'border-amber-300 bg-amber-50 text-amber-900',
-    critical: 'border-red-400 bg-red-50 text-red-900',
-    good: 'border-emerald-200 bg-emerald-50 text-emerald-900',
+    normal: 'border-border bg-card text-card-foreground',
+    warning: 'border-warning/50 bg-warning-surface text-warning-surface-foreground',
+    critical: 'border-error/50 bg-error-surface text-error-surface-foreground',
+    good: 'border-success/40 bg-success-surface text-success-surface-foreground',
   }[status];
   return (
     <div className={`rounded-xl border p-3 ${tone}`}>

@@ -1,7 +1,7 @@
 import { useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useDriverData } from '@/hooks/useDriverData';
-import { getDailyGrid, computeCycle, dateKeyInTz, fmtHours, startOfDayInTz } from '@/lib/hosEngine';
+import { getDailyGrid, computeCycle, dateKeyInTz, fmtHours } from '@/lib/hosEngine';
 import RodsGraphEditor from '@/components/rodsEditor/RodsGraphEditor';
 import { getCertifications, updateEvent, deleteEvent, createHistoricalEvent } from '@/lib/driverData';
 import { base44 } from '@/api/base44Client';
@@ -79,7 +79,6 @@ export default function Logs() {
 
   const saveEdit = async (data) => {
     if (isCertified && editing) {
-      // preserve previous version
       await base44.entities.EventVersion.create({
         original_event_id: editing.id,
         version_number: 1,
@@ -87,7 +86,6 @@ export default function Logs() {
         edited_by: profile?.legal_name,
         action: 'edited',
       });
-      // supersede existing certification
       if (cert) await base44.entities.Certification.update(cert.id, { is_superseded: true });
     }
     await updateEvent(editing.id, data);
@@ -103,33 +101,31 @@ export default function Logs() {
 
   return (
     <PullToRefresh onRefresh={reload} className="px-4 pt-6">
-      <h1 className="text-xl font-bold mb-3">Daily Logs</h1>
+      <h1 className="text-xl font-bold mb-3 text-foreground">Daily Logs</h1>
 
-      {/* Last 8 days */}
       <div className="flex gap-2 overflow-x-auto no-scrollbar pb-2 mb-3">
         {dayKeys.map((dk) => {
           const d = new Date(dk + 'T12:00:00');
           const dc = certifications.find(c => c.log_date === dk && !c.is_superseded);
           return (
             <button key={dk} onClick={() => setSelectedDate(new Date(dk + 'T12:00:00'))}
-              className={`shrink-0 rounded-lg border px-3 py-2 text-xs ${dk === dateStr ? 'border-slate-900 bg-slate-50' : 'border-slate-200'}`}>
+              className={`shrink-0 rounded-lg border px-3 py-2 text-xs text-card-foreground ${dk === dateStr ? 'border-primary bg-accent text-accent-foreground' : 'border-border'}`}>
               <div className="font-medium">{d.toLocaleDateString('en-US', { weekday: 'short', day: 'numeric' })}</div>
               <div className="flex items-center gap-1 mt-0.5">
-                {dc ? <BadgeCheck className="w-3 h-3 text-emerald-600" /> : <AlertTriangle className="w-3 h-3 text-amber-500" />}
+                {dc ? <BadgeCheck className="w-3 h-3 text-success" /> : <AlertTriangle className="w-3 h-3 text-warning" />}
               </div>
             </button>
           );
         })}
       </div>
 
-      {/* Day navigation */}
       <div className="flex items-center justify-between mb-3">
         <Button variant="ghost" size="sm" onClick={() => shiftDay(-1)}><ChevronLeft className="w-4 h-4" /></Button>
         <div className="text-center">
-          <div className="font-semibold">{selectedDate.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric', timeZone: tz })}</div>
+          <div className="font-semibold text-foreground">{selectedDate.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric', timeZone: tz })}</div>
           {isCertified
-            ? <span className="text-xs text-emerald-600 font-medium">✓ Certified</span>
-            : <span className="text-xs text-amber-600 font-medium">Needs Certification</span>}
+            ? <span className="text-xs text-success font-medium">✓ Certified</span>
+            : <span className="text-xs text-warning font-medium">Needs Certification</span>}
         </div>
         <Button variant="ghost" size="sm" onClick={() => shiftDay(1)}><ChevronRight className="w-4 h-4" /></Button>
       </div>
@@ -137,15 +133,13 @@ export default function Logs() {
       <TimelineGapNotice events={events} dateStr={dateStr} tz={tz} now={new Date()} />
       <DailyMilesCard events={events} dateStr={dateStr} tz={tz} speedProfile={speedProfile} />
 
-      {/* Graph */}
-      <div className="rounded-xl border border-slate-200 bg-white p-3 mb-3">
+      <div className="rounded-xl border border-border bg-card p-3 mb-3">
         <RodsGraphEditor events={events} dateStr={dateStr} timezone={tz} carrier={carrier} equipment={equipment} profile={profile} certifications={certifications} reload={reload} />
       </div>
 
-      {/* Recap */}
-      <div className="rounded-xl border border-slate-200 bg-white p-3 mb-3 text-sm">
-        <div className="font-semibold mb-1">{cycle.cycleLimit}-Hour / {cycle.cycleDays}-Day Recap</div>
-        <div className="grid grid-cols-2 gap-1 text-xs text-slate-600">
+      <div className="rounded-xl border border-border bg-card p-3 mb-3 text-sm">
+        <div className="font-semibold mb-1 text-card-foreground">{cycle.cycleLimit}-Hour / {cycle.cycleDays}-Day Recap</div>
+        <div className="grid grid-cols-2 gap-1 text-xs text-muted-foreground">
           <div>Today: {fmtHours(cycle.dailyTotals[cycle.dailyTotals.length - 1]?.onDutyHours || 0)}</div>
           <div>Last {cycle.cycleDays} days: {fmtHours(cycle.cycleUsedHours)}</div>
           <div>Available: {fmtHours(cycle.cycleRemainingHours)}</div>
@@ -153,10 +147,9 @@ export default function Logs() {
         </div>
       </div>
 
-      {/* Events list */}
-      <div className="rounded-xl border border-slate-200 bg-white p-3 mb-3">
+      <div className="rounded-xl border border-border bg-card p-3 mb-3">
         <div className="flex items-center justify-between mb-2">
-          <div className="font-semibold text-sm">Events</div>
+          <div className="font-semibold text-sm text-card-foreground">Events</div>
           <div className="flex gap-1">
             <Button size="sm" variant="outline" onClick={() => navigate('/log-assistant', { state: { returnTo: '/logs' } })}><Bot className="w-3.5 h-3.5 mr-1" /> Assistant</Button>
             <Button size="sm" variant="outline" onClick={() => { setPrefill(null); setAdding(true); }}><Plus className="w-3.5 h-3.5 mr-1" /> Add Event</Button>
@@ -164,23 +157,22 @@ export default function Logs() {
         </div>
         <div className="space-y-1">
           {grid.remarks.map((r, i) => (
-            <div key={i} className="flex items-center gap-2 rounded-lg border border-slate-100 p-2">
-              <span className="font-mono text-xs text-slate-400 w-14 shrink-0">
+            <div key={i} className="flex items-center gap-2 rounded-lg border border-border p-2">
+              <span className="font-mono text-xs text-muted-foreground w-14 shrink-0">
                 {r.time.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', timeZone: tz })}
               </span>
-              <span className="font-semibold text-xs">{STATUS_LABELS[r.status]}</span>
-              <span className="text-xs text-slate-600 flex-1 truncate">
+              <span className="font-semibold text-xs text-card-foreground">{STATUS_LABELS[r.status]}</span>
+              <span className="text-xs text-muted-foreground flex-1 truncate">
                 {[r.city, r.state].filter(Boolean).join(', ')}{r.remark ? ` — ${r.remark}` : ''}
               </span>
-              <button onClick={() => setEditing(events.find(e => e.id === r.id))} className="inline-flex items-center justify-center min-h-[44px] min-w-[44px] text-slate-400 hover:text-slate-700"><Pencil className="w-3.5 h-3.5" /></button>
-              <button onClick={() => removeEvent(r.id)} className="inline-flex items-center justify-center min-h-[44px] min-w-[44px] text-red-400 hover:text-red-600"><Trash2 className="w-3.5 h-3.5" /></button>
+              <button onClick={() => setEditing(events.find(e => e.id === r.id))} className="inline-flex items-center justify-center min-h-[44px] min-w-[44px] text-muted-foreground hover:text-foreground"><Pencil className="w-3.5 h-3.5" /></button>
+              <button onClick={() => removeEvent(r.id)} className="inline-flex items-center justify-center min-h-[44px] min-w-[44px] text-error hover:opacity-80"><Trash2 className="w-3.5 h-3.5" /></button>
             </div>
           ))}
-          {grid.remarks.length === 0 && <div className="text-xs text-slate-400 text-center py-4">No events recorded.</div>}
+          {grid.remarks.length === 0 && <div className="text-xs text-muted-foreground text-center py-4">No events recorded.</div>}
         </div>
       </div>
 
-      {/* Certify */}
       <Button className="w-full mb-6" onClick={certify} disabled={isCertified}>
         {isCertified ? 'Certified ✓' : 'Certify Log'}
       </Button>
@@ -224,7 +216,7 @@ function EventEditor({ open, event, prefill, onClose, onSave, tz, carrier, equip
       <DialogContent className="max-w-md">
         <DialogHeader><DialogTitle>{event ? 'Edit Event' : 'Add Event'}</DialogTitle></DialogHeader>
         {isCertified && event && (
-          <div className="rounded-md bg-amber-50 border border-amber-300 p-2 text-xs text-amber-900">
+          <div className="rounded-md bg-warning-surface border border-warning/50 p-2 text-xs text-warning-surface-foreground">
             This log is certified. Editing will preserve the previous version and require re-certification.
           </div>
         )}
@@ -232,12 +224,12 @@ function EventEditor({ open, event, prefill, onClose, onSave, tz, carrier, equip
           <div className="grid grid-cols-2 gap-2">
             {STATUSES.map((s) => (
               <button key={s} onClick={() => setStatus(s)}
-                className={`rounded-lg border p-2 text-xs font-medium ${status === s ? 'border-slate-900 bg-slate-50' : 'border-slate-200'}`}>
+                className={`rounded-lg border p-2 text-xs font-medium text-card-foreground ${status === s ? 'border-primary bg-accent text-accent-foreground' : 'border-border'}`}>
                 {STATUS_LABELS[s]}
               </button>
             ))}
           </div>
-          <div className="grid grid-cols-2 gap-2">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
             <div><Label className="text-xs">Start</Label><Input type="datetime-local" value={start} onChange={(e) => setStart(e.target.value)} /></div>
             <div><Label className="text-xs">End</Label><Input type="datetime-local" value={end} onChange={(e) => setEnd(e.target.value)} /></div>
           </div>

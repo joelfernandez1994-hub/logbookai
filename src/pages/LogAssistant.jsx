@@ -15,7 +15,7 @@ import { Bot, Gavel, HelpCircle, AlertTriangle, Mic } from 'lucide-react';
 
 const TABS = [
   { id: 'tell', label: 'Tell LogbookAI', icon: Bot },
-  { id: 'makeLegal', label: 'Make It Legal', icon: Gavel },
+  { id: 'makeLegal', label: 'HOS Check', icon: Gavel },
   { id: 'whatCanIDo', label: 'What Can I Do?', icon: HelpCircle },
 ];
 

@@ -15,6 +15,22 @@ import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Map, Clock, Check, X, Plus, MapPin, AlertTriangle, Sparkles, Moon, RefreshCw } from 'lucide-react';
 
+// Always render durations as X hr YY min — never raw floating point.
+const fmtHM = (h) => {
+  if (h == null || isNaN(h)) return '—';
+  const totalMin = Math.round(h * 60);
+  const hh = Math.floor(totalMin / 60);
+  const mm = totalMin % 60;
+  return `${hh} hr ${String(mm).padStart(2, '0')} min`;
+};
+// Strip AI/web citation markup, URLs and search brackets from provider notes.
+const cleanNotes = (s) => (s || '')
+  .replace(/\[+https?:[^\]]*\]+/g, '')
+  .replace(/https?:\/\/\S+/g, '')
+  .replace(/\[\d+\]/g, '')
+  .replace(/\s+/g, ' ')
+  .trim();
+
 export default function Trip() {
   const { profile, carrier, events, loading, reload } = useDriverData(9);
   const [pickup, setPickup] = useState({ city: '', state: '' });
@@ -36,9 +52,6 @@ export default function Trip() {
   const todayKey = dateKeyInTz(now, tz);
   const hos = computeHOS(events, cycleType, tz, now, { historyComplete: profile?.entered_prior_history });
 
-  // Auto-sync from logs: pickup starts where the day started; fuel stops the
-  // driver already logged are pre-filled. Both are skipped once the driver
-  // edits those fields manually.
   useEffect(() => { getFuelReceipts(30).then(setFuelReceipts); }, []);
   useEffect(() => {
     if (pickupTouched) return;
@@ -55,8 +68,6 @@ export default function Trip() {
     })));
   }, [events, fuelReceipts, todayKey, tz, stopsTouched]);
 
-  // Auto compliance assist — on by default; suggestions are generated
-  // automatically but never applied without the driver's approval.
   const [autoAssist, setAutoAssist] = useState(() => localStorage.getItem('logbook_auto_compliance') !== 'false');
   useEffect(() => { localStorage.setItem('logbook_auto_compliance', autoAssist ? 'true' : 'false'); }, [autoAssist]);
 
@@ -89,8 +100,6 @@ export default function Trip() {
 
   const checkFeasibility = () => {
     if (!estimate) return null;
-    // Driving hours must match the distance of miles — use the realistic truck
-    // ETA for the driver's planning speed profile, not the base routing ETA.
     const neededHours = truckEtaHours(estimate, speedProfile) ?? estimate.hours;
     const drivingRemaining = hos.driving.drivingRemainingMs / 3600000;
     const windowRemaining = hos.window14.remainingMs / 3600000;
@@ -124,7 +133,6 @@ export default function Trip() {
     setStopLoading(false);
   };
 
-  // Auto-run when the trip is not achievable and auto-assist is on.
   useEffect(() => {
     if (autoAssist && estimate && feasibility && !feasibility.achievable && !stopSugg && !stopLoading && !stopError) {
       fetchComplianceStop();
@@ -154,41 +162,39 @@ export default function Trip() {
     loadTrips();
   };
 
-  if (loading) return <div className="flex justify-center h-screen items-center"><div className="w-8 h-8 border-4 border-slate-200 border-t-slate-800 rounded-full animate-spin" /></div>;
+  if (loading) return <div className="flex justify-center h-screen items-center"><div className="w-8 h-8 border-4 border-muted border-t-foreground rounded-full animate-spin" /></div>;
 
   return (
     <div className="px-4 pt-6">
-      <h1 className="text-xl font-bold mb-3">Trip Planner</h1>
-      <p className="text-xs text-slate-500 mb-4">Planned activity. Stops here are NOT official RODS until you confirm them when they occur. Pickup and fuel stops auto-fill from your log; edit them to override.</p>
+      <h1 className="text-xl font-bold mb-3 text-foreground">Trip Planner</h1>
+      <p className="text-xs text-muted-foreground mb-4">Planned activity. Stops here are NOT official RODS until you confirm them when they occur. Pickup and fuel stops auto-fill from your log; edit them to override.</p>
 
       <TimelineGapNotice events={events} dateStr={todayKey} tz={tz} now={now} />
       <DailyMilesCard events={events} dateStr={todayKey} tz={tz} speedProfile={speedProfile} />
 
-      {/* Auto compliance assist setting */}
-      <div className="rounded-xl border border-slate-200 bg-white p-3 mb-4 flex items-center justify-between">
+      <div className="rounded-xl border border-border bg-card p-3 mb-4 flex items-center justify-between">
         <div className="flex items-start gap-2">
-          <Sparkles className="w-4 h-4 text-emerald-600 mt-0.5" />
+          <Sparkles className="w-4 h-4 text-success mt-0.5" />
           <div>
-            <div className="text-sm font-medium">Auto Compliance Assist</div>
-            <div className="text-[11px] text-slate-500">When a trip isn't achievable, automatically suggest a compliant stop & trip edits. Nothing is applied without your approval.</div>
+            <div className="text-sm font-medium text-card-foreground">Auto HOS Assist</div>
+            <div className="text-[11px] text-muted-foreground">When a trip isn't achievable under current HOS, automatically suggest a rest stop and trip edits. Nothing is applied without your approval.</div>
           </div>
         </div>
         <Switch checked={autoAssist} onCheckedChange={setAutoAssist} />
       </div>
 
-      {/* Current HOS snapshot */}
       <div className="grid grid-cols-2 gap-2 mb-4">
-        <div className="rounded-xl border border-slate-200 bg-white p-3 text-sm">
-          <div className="text-xs text-slate-500">Driving available</div>
-          <div className="font-bold">{fmtDur(hos.driving.drivingRemainingMs)}</div>
+        <div className="rounded-xl border border-border bg-card p-3 text-sm">
+          <div className="text-xs text-muted-foreground">Driving available</div>
+          <div className="font-bold text-card-foreground">{fmtDur(hos.driving.drivingRemainingMs)}</div>
         </div>
-        <div className="rounded-xl border border-slate-200 bg-white p-3 text-sm">
-          <div className="text-xs text-slate-500">14-hr window available</div>
-          <div className="font-bold">{fmtDur(hos.window14.remainingMs)}</div>
+        <div className="rounded-xl border border-border bg-card p-3 text-sm">
+          <div className="text-xs text-muted-foreground">14-hr window available</div>
+          <div className="font-bold text-card-foreground">{fmtDur(hos.window14.remainingMs)}</div>
         </div>
-        <div className="rounded-xl border border-slate-200 bg-white p-3 text-sm">
-          <div className="text-xs text-slate-500">Cycle available</div>
-          <div className="font-bold">{hos.cycle.cycleRemainingHours.toFixed(1)} hr</div>
+        <div className="rounded-xl border border-border bg-card p-3 text-sm">
+          <div className="text-xs text-muted-foreground">Cycle available</div>
+          <div className="font-bold text-card-foreground">{fmtHM(hos.cycle.cycleRemainingHours)}</div>
         </div>
       </div>
       {hos.split.status === 'active' && (
@@ -197,15 +203,14 @@ export default function Trip() {
         </div>
       )}
 
-      {/* Trip form */}
-      <div className="rounded-xl border border-slate-200 bg-white p-4 mb-4 space-y-3">
-        <div className="font-medium text-sm">Pickup</div>
+      <div className="rounded-xl border border-border bg-card p-4 mb-4 space-y-3">
+        <div className="font-medium text-sm text-card-foreground">Pickup</div>
         <div className="grid grid-cols-2 gap-2">
           <Input placeholder="City" value={pickup.city} onChange={(e) => { setPickupTouched(true); setPickup({ ...pickup, city: e.target.value }); }} />
           <Input placeholder="ST" maxLength={2} value={pickup.state} onChange={(e) => { setPickupTouched(true); setPickup({ ...pickup, state: e.target.value.toUpperCase() }); }} />
         </div>
         <Input type="datetime-local" value={pickupTime} onChange={(e) => setPickupTime(e.target.value)} />
-        <div className="font-medium text-sm pt-2">Delivery</div>
+        <div className="font-medium text-sm pt-2 text-card-foreground">Delivery</div>
         <div className="grid grid-cols-2 gap-2">
           <Input placeholder="City" value={delivery.city} onChange={(e) => setDelivery({ ...delivery, city: e.target.value })} />
           <Input placeholder="ST" maxLength={2} value={delivery.state} onChange={(e) => setDelivery({ ...delivery, state: e.target.value.toUpperCase() })} />
@@ -216,90 +221,90 @@ export default function Trip() {
         </Button>
       </div>
 
-      {/* Estimate / feasibility result */}
       {estimate && !estimate.error && (
-        <div className="rounded-xl border border-slate-200 bg-white p-4 mb-4">
-          <div className="grid grid-cols-2 gap-2 text-sm mb-2">
-            <div><Map className="w-4 h-4 inline mr-1" /> {estimate.miles} mi</div>
-            <div><Clock className="w-4 h-4 inline mr-1" /> {estimate.hours} hr</div>
+        <div className="rounded-xl border border-border bg-card p-4 mb-4">
+          <div className="font-medium text-sm text-card-foreground mb-1">{pickup.city}, {pickup.state} → {delivery.city}, {delivery.state}</div>
+          <div className="grid grid-cols-2 gap-2 text-sm mb-2 text-card-foreground">
+            <div><Map className="w-4 h-4 inline mr-1" /> {Math.round(estimate.miles)} mi</div>
+            <div><Clock className="w-4 h-4 inline mr-1" /> {fmtHM(estimate.hours)}</div>
           </div>
-          <p className="text-xs text-slate-500 mb-3">{estimate.notes}</p>
+          <p className="text-xs text-muted-foreground mb-1">Planning profile: {speedProfileLabel(speedProfile)}</p>
+          {estimate.notes && <p className="text-xs text-muted-foreground mb-3">{cleanNotes(estimate.notes)}</p>}
           {feasibility && (
-            <div className={`rounded-lg p-3 ${feasibility.achievable ? 'bg-emerald-50 border border-emerald-200' : 'bg-red-50 border border-red-300'}`}>
-              <div className={`font-bold flex items-center gap-1 ${feasibility.achievable ? 'text-emerald-700' : 'text-red-700'}`}>
+            <div className={`rounded-lg p-3 ${feasibility.achievable ? 'bg-success-surface border border-success/40' : 'bg-error-surface border border-error/40'}`}>
+              <div className={`font-bold flex items-center gap-1 ${feasibility.achievable ? 'text-success-surface-foreground' : 'text-error-surface-foreground'}`}>
                 {feasibility.achievable ? <><Check className="w-4 h-4" /> Likely achievable</> : <><X className="w-4 h-4" /> Not achievable under current hours</>}
               </div>
-              <div className="text-xs text-slate-600 mt-1">
-                Need {feasibility.neededHours} hr · Have {feasibility.drivingRemaining.toFixed(1)} driving / {feasibility.windowRemaining.toFixed(1)} 14-hr window / {feasibility.cycleRemaining.toFixed(1)} cycle.
-                {!feasibility.achievable && ` Stop and rest before resuming. Do not exceed limits or speed.`}
+              <div className="text-xs text-muted-foreground mt-1">
+                Need {fmtHM(feasibility.neededHours)} · Have {fmtHM(feasibility.drivingRemaining)} driving / {fmtHM(feasibility.windowRemaining)} 14-hr window / {fmtHM(feasibility.cycleRemaining)} cycle.
               </div>
+              {!feasibility.achievable && (
+                <div className="text-xs text-error-surface-foreground mt-1">Additional qualifying rest will be required before arrival. Do not exceed limits or speed.</div>
+              )}
             </div>
           )}
           <Button variant="outline" className="w-full mt-3" onClick={saveTrip}>Save Planned Trip</Button>
         </div>
       )}
-      {estimate?.error && <div className="text-xs text-red-600 mb-3">Route estimate unavailable: {estimate.error}</div>}
+      {estimate?.error && <div className="text-xs text-error mb-3">Route estimate could not be retrieved. Please try again.</div>}
 
-      {/* Compliance stop suggestion + proposed edits (auto when assist is on) */}
       {estimate && !estimate.error && feasibility && !feasibility.achievable && autoAssist && (
-        <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 mb-4">
-          <div className="flex items-center gap-2 font-semibold text-sm text-amber-800 mb-2">
-            <MapPin className="w-4 h-4" /> Compliance Stop Suggestion
+        <div className="rounded-xl border border-warning/50 bg-warning-surface p-4 mb-4">
+          <div className="flex items-center gap-2 font-semibold text-sm text-warning-surface-foreground mb-2">
+            <MapPin className="w-4 h-4" /> HOS Rest Stop Suggestion
           </div>
-          <div className="text-xs text-amber-800 mb-2">
+          <div className="text-xs text-warning-surface-foreground mb-2">
             Limiting clock: <span className="font-medium">{limitingClock(hos).limiter.label}</span> · planning profile {speedProfileLabel(speedProfile)} · max drivable ~{Math.round(maxDriveMiles(hos, speedProfile))} mi.
           </div>
 
-          {stopLoading && <div className="text-xs text-slate-600 flex items-center gap-2"><RefreshCw className="w-3.5 h-3.5 animate-spin" /> Finding a compliant stop along your route...</div>}
-          {stopError && <div className="text-xs text-red-600 mb-1">Couldn't resolve a stop: {stopError}. <button className="underline" onClick={fetchComplianceStop}>Retry</button></div>}
+          {stopLoading && <div className="text-xs text-muted-foreground flex items-center gap-2"><RefreshCw className="w-3.5 h-3.5 animate-spin" /> Finding a rest stop along your route...</div>}
+          {stopError && <div className="text-xs text-error mb-1">Couldn't resolve a stop: {stopError}. <button className="underline" onClick={fetchComplianceStop}>Retry</button></div>}
 
           {stopSugg && edits && (
             <div className="mt-2 space-y-2">
-              <div className="rounded-lg border border-amber-200 bg-white p-3">
-                <div className="text-sm font-medium">{stopSugg.stop_city}, {stopSugg.stop_state}</div>
-                <div className="text-xs text-slate-600">~{Math.round(stopSugg.miles_from_origin)} mi from origin · ~{Math.round(stopSugg.miles_remaining)} mi to destination · {edits.restHours}h rest</div>
-                {stopSugg.note && <div className="text-[11px] text-slate-500 mt-1">{stopSugg.note}</div>}
+              <div className="rounded-lg border border-warning/40 bg-card p-3">
+                <div className="text-sm font-medium text-card-foreground">{stopSugg.stop_city}, {stopSugg.stop_state}</div>
+                <div className="text-xs text-muted-foreground">~{Math.round(stopSugg.miles_from_origin)} mi from origin · ~{Math.round(stopSugg.miles_remaining)} mi to destination · {fmtHM(edits.restHours)} rest</div>
+                {stopSugg.note && <div className="text-[11px] text-muted-foreground mt-1">{cleanNotes(stopSugg.note)}</div>}
               </div>
 
-              <div className="text-xs text-slate-700 space-y-1">
-                {edits.notes.map((n, i) => <div key={i} className="border-l-2 border-amber-300 pl-2">{n}</div>)}
+              <div className="text-xs text-muted-foreground space-y-1">
+                {edits.notes.map((n, i) => <div key={i} className="border-l-2 border-warning/60 pl-2">{n}</div>)}
               </div>
 
-              <div className={`rounded-lg p-2 text-xs ${edits.overallOk ? 'bg-emerald-50 border border-emerald-200 text-emerald-800' : 'bg-red-50 border border-red-200 text-red-800'}`}>
+              <div className={`rounded-lg p-2 text-xs ${edits.overallOk ? 'bg-success-surface border border-success/40 text-success-surface-foreground' : 'bg-error-surface border border-error/40 text-error-surface-foreground'}`}>
                 {edits.overallOk
-                  ? <><Check className="w-3.5 h-3.5 inline mr-1" />With this stop the trip becomes compliant.</>
-                  : <><AlertTriangle className="w-3.5 h-3.5 inline mr-1" />Hours still won't cover the full route after this stop.</>}
+                  ? <><Check className="w-3.5 h-3.5 inline mr-1" />This rest plan fits within your currently calculated HOS availability based on the information presently recorded.</>
+                  : <><AlertTriangle className="w-3.5 h-3.5 inline mr-1" />Additional rest will still be needed after this stop to complete the route.</>}
               </div>
 
               {edits.needsCycleFix && (
-                <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-xs text-red-800">
-                  <div className="font-medium flex items-center gap-1"><AlertTriangle className="w-3.5 h-3.5" /> Request: review previous trips</div>
-                  <div className="mt-1">Your cycle is the bottleneck and a {edits.restHours}h rest won't recover it. Check that prior days' driving entries are accurate; if a previous driving entry was over-stated, correct it to recover cycle hours. Corrections require your approval before they're applied.</div>
+                <div className="rounded-lg border border-error/40 bg-error-surface p-3 text-xs text-error-surface-foreground">
+                  <div className="font-medium flex items-center gap-1"><AlertTriangle className="w-3.5 h-3.5" /> Review previous trips</div>
+                  <div className="mt-1">Your cycle is the bottleneck and a {fmtHM(edits.restHours)} rest won't recover it. Check that prior days' driving entries are accurate; if a previous driving entry was over-stated, correct it to recover cycle hours. Corrections require your approval before they're applied.</div>
                   <Link to="/log-assistant" className="inline-block mt-2 underline font-medium">Go to Manual Log Assistant →</Link>
                 </div>
               )}
 
               {applied
-                ? <div className="text-xs text-emerald-700 font-medium flex items-center gap-1"><Check className="w-3.5 h-3.5" /> Rest stop added to your plan below.</div>
+                ? <div className="text-xs text-success font-medium flex items-center gap-1"><Check className="w-3.5 h-3.5" /> Rest stop added to your plan below.</div>
                 : <Button size="sm" className="w-full" onClick={applyEdits}><Moon className="w-3.5 h-3.5 mr-1" />Approve & Add Stop to Plan</Button>}
             </div>
           )}
         </div>
       )}
 
-      {/* Manual trigger when assist is off */}
       {estimate && !estimate.error && feasibility && !feasibility.achievable && !autoAssist && !stopSugg && (
-        <div className="rounded-xl border border-slate-200 bg-white p-3 mb-4">
+        <div className="rounded-xl border border-border bg-card p-3 mb-4">
           <Button size="sm" variant="outline" className="w-full" onClick={fetchComplianceStop} disabled={stopLoading}>
-            <MapPin className="w-3.5 h-3.5 mr-1" /> {stopLoading ? 'Finding a compliant stop...' : 'Suggest a Compliance Stop'}
+            <MapPin className="w-3.5 h-3.5 mr-1" /> {stopLoading ? 'Finding a rest stop...' : 'Suggest a Rest Stop'}
           </Button>
         </div>
       )}
 
-      {/* Planned stops */}
-      <div className="rounded-xl border border-slate-200 bg-white p-3 mb-4">
+      <div className="rounded-xl border border-border bg-card p-3 mb-4">
         <div className="flex items-center justify-between mb-2">
-          <div className="font-medium text-sm">Planned Stops</div>
+          <div className="font-medium text-sm text-card-foreground">Planned Stops</div>
           <Button size="sm" variant="outline" onClick={() => { setStopsTouched(true); setStops([...stops, { type: 'fuel', city: '', note: '' }]); }}>
             <Plus className="w-3.5 h-3.5 mr-1" /> Add
           </Button>
@@ -310,18 +315,17 @@ export default function Trip() {
               onChange={(v) => { setStopsTouched(true); const n = [...stops]; n[i].type = v; setStops(n); }}
               options={[{ value: 'fuel', label: 'Fuel' }, { value: 'rest', label: 'Rest' }, { value: 'break', label: 'Break' }]} />
             <Input placeholder="City, ST" value={s.city} onChange={(e) => { setStopsTouched(true); const n = [...stops]; n[i].city = e.target.value; setStops(n); }} className="text-xs" />
-            {s.note && <span className="text-[10px] text-slate-400 self-center">{s.note}</span>}
+            {s.note && <span className="text-[10px] text-muted-foreground self-center">{s.note}</span>}
           </div>
         ))}
-        <p className="text-[11px] text-slate-400 mt-1">Planned stops are not official RODS. Confirm with "Log This Event" when they happen.</p>
+        <p className="text-[11px] text-muted-foreground mt-1">Planned stops are not official RODS. Confirm with "Log This Event" when they happen.</p>
       </div>
 
-      {/* Saved trips */}
       <div className="space-y-2 mb-6">
         {trips.map((t) => (
-          <div key={t.id} className="rounded-xl border border-slate-200 bg-white p-3 text-sm">
-            <div className="font-medium">{t.pickup_city}, {t.pickup_state} → {t.delivery_city}, {t.delivery_state}</div>
-            <div className="text-xs text-slate-500">{t.mileage ? `${t.mileage} mi · ${t.estimated_travel_hours} hr · ` : ''}{t.is_achievable ? 'Achievable' : 'Not achievable'}</div>
+          <div key={t.id} className="rounded-xl border border-border bg-card p-3 text-sm">
+            <div className="font-medium text-card-foreground">{t.pickup_city}, {t.pickup_state} → {t.delivery_city}, {t.delivery_state}</div>
+            <div className="text-xs text-muted-foreground">{t.mileage ? `${Math.round(t.mileage)} mi · ${fmtHM(t.estimated_travel_hours)} · ` : ''}{t.is_achievable ? 'Likely achievable' : 'Not achievable under current hours'}</div>
           </div>
         ))}
       </div>

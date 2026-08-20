@@ -1,4 +1,4 @@
-import { computeHOS, getDailyGrid, fmtHours, fmtClock } from '@/lib/hosEngine';
+import { computeHOS, getDailyGrid, fmtHours } from '@/lib/hosEngine';
 
 const STATUS_LABELS = {
   OFF_DUTY: 'OFF DUTY',
@@ -7,6 +7,7 @@ const STATUS_LABELS = {
   ON_DUTY: 'ON DUTY',
 };
 
+// Duty-status accent colors are mid-tone and readable on both light and dark.
 const STATUS_COLORS = {
   OFF_DUTY: '#64748b',
   SLEEPER_BERTH: '#7c3aed',
@@ -29,7 +30,6 @@ export default function LogGraph({ events, dateStr, timezone, interactive = true
 
   const xForHour = (h) => leftPad + (h / 24) * graphW;
 
-  // Build stepped path across all segments chronologically
   const allSegs = [];
   ROW_ORDER.forEach((status, rowIdx) => {
     grid.rows[status].forEach((s) => allSegs.push({ ...s, status, rowIdx }));
@@ -50,66 +50,60 @@ export default function LogGraph({ events, dateStr, timezone, interactive = true
   });
 
   const hourMarks = [];
-  for (let h = 0; h <= 24; h += 2) {
-    hourMarks.push(h);
-  }
+  for (let h = 0; h <= 24; h += 2) hourMarks.push(h);
+
+  const gridStroke = 'hsl(var(--graph-grid))';
+  const labelFill = 'hsl(var(--graph-labels))';
+  const lineStroke = 'hsl(var(--graph-line))';
 
   return (
     <div className="w-full overflow-x-auto">
-      <svg viewBox={`0 0 ${W} ${H}`} className="w-full min-w-[640px] h-auto bg-white rounded-lg border border-slate-200">
-        {/* Hour grid lines */}
+      <svg viewBox={`0 0 ${W} ${H}`} className="w-full min-w-[640px] h-auto bg-graph rounded-lg border border-border">
         {hourMarks.map((h) => (
           <line key={h} x1={xForHour(h)} y1={topPad} x2={xForHour(h)} y2={topPad + rowH * 4}
-            stroke={h % 6 === 0 ? '#cbd5e1' : '#e2e8f0'} strokeWidth={h % 6 === 0 ? 1.2 : 0.8} />
+            stroke={gridStroke} strokeWidth={h % 6 === 0 ? 1.2 : 0.8} strokeOpacity={h % 6 === 0 ? 0.9 : 0.5} />
         ))}
-        {/* Hour labels */}
         {hourMarks.map((h) => (
-          <text key={`t${h}`} x={xForHour(h)} y={16} fontSize="12" fill="#64748b" textAnchor="middle">
+          <text key={`t${h}`} x={xForHour(h)} y={16} fontSize="12" fill={labelFill} textAnchor="middle">
             {h === 0 ? '12A' : h === 12 ? 'Noon' : h < 12 ? `${h}A` : `${h - 12}P`}
           </text>
         ))}
-        {/* Rows */}
         {ROW_ORDER.map((status, i) => (
           <g key={status}>
             <rect x={leftPad} y={topPad + i * rowH} width={graphW} height={rowH}
-              fill={i % 2 === 0 ? '#f8fafc' : '#ffffff'} stroke="#e2e8f0" />
-            <text x={leftPad - 8} y={rowCenter(i) + 4} fontSize="11" fontWeight="600" fill="#334155" textAnchor="end">
+              fill={i % 2 === 0 ? 'hsl(var(--graph-background))' : 'hsl(var(--muted))'} stroke={gridStroke} strokeOpacity={0.5} />
+            <text x={leftPad - 8} y={rowCenter(i) + 4} fontSize="11" fontWeight="600" fill={labelFill} textAnchor="end">
               {STATUS_LABELS[status]}
             </text>
           </g>
         ))}
-        {/* Status segments fill */}
         {allSegs.map((s, i) => (
           <rect key={`s${i}`} x={xForHour(s.startHour)} y={topPad + s.rowIdx * rowH + 4}
             width={Math.max(2, (s.endHour - s.startHour) * graphW / 24)} height={rowH - 8}
             fill={STATUS_COLORS[s.status]} opacity={0.18} rx={2} />
         ))}
-        {/* Stepped line */}
         {pathD && (
-          <path d={pathD} fill="none" stroke="#0f172a" strokeWidth={2.5} strokeLinejoin="round" strokeLinecap="round" />
+          <path d={pathD} fill="none" stroke={lineStroke} strokeWidth={2.5} strokeLinejoin="round" strokeLinecap="round" />
         )}
-        {/* Segment dots */}
         {allSegs.map((s, i) => (
           <circle key={`d${i}`} cx={xForHour(s.startHour)} cy={rowCenter(s.rowIdx)} r={3} fill={STATUS_COLORS[s.status]} />
         ))}
       </svg>
-      {/* Totals */}
       <div className="grid grid-cols-4 gap-2 mt-3 text-center text-xs">
         {ROW_ORDER.map((s) => (
-          <div key={s} className="rounded-md border border-slate-200 py-1.5">
-            <div className="font-semibold text-slate-700">{STATUS_LABELS[s]}</div>
-            <div className="text-slate-500">{fmtHours(grid.totals[s])}</div>
+          <div key={s} className="rounded-md border border-border py-1.5">
+            <div className="font-semibold text-card-foreground">{STATUS_LABELS[s]}</div>
+            <div className="text-muted-foreground">{fmtHours(grid.totals[s])}</div>
           </div>
         ))}
       </div>
-      <div className="text-center text-xs text-slate-400 mt-1">
+      <div className="text-center text-xs text-muted-foreground mt-1">
         Total: {grid.totalHours.toFixed(2)} hr {Math.abs(grid.totalHours - 24) < 0.01 ? '(complete)' : '(incomplete)'}
       </div>
-      {/* Remarks timeline */}
       <div className="mt-3 space-y-1">
         {grid.remarks.map((r, i) => (
-          <div key={i} className="flex gap-2 text-xs text-slate-600">
-            <span className="font-mono text-slate-400 w-16 shrink-0">
+          <div key={i} className="flex gap-2 text-xs text-muted-foreground">
+            <span className="font-mono w-16 shrink-0">
               {r.time.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', timeZone: timezone })}
             </span>
             <span className="font-semibold" style={{ color: STATUS_COLORS[r.status] }}>{STATUS_LABELS[r.status]}</span>

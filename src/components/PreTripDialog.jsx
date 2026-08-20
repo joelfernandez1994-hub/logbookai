@@ -39,10 +39,10 @@ export default function PreTripDialog({ open, onOpenChange, drivingStart, onConf
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2"><Truck className="w-4 h-4" /> Pre-Trip Check</DialogTitle>
         </DialogHeader>
-        <p className="text-sm text-slate-600">
+        <p className="text-sm text-muted-foreground">
           You are starting a Driving period. Did you perform your pre-trip vehicle inspection before driving?
         </p>
-        <p className="text-[11px] text-slate-400">These are entry shortcuts — no fixed duration is federally required. Enter the actual time and location.</p>
+        <p className="text-[11px] text-muted-foreground">These are entry shortcuts — no fixed duration is federally required. Enter the actual time and location.</p>
 
         <div className="space-y-3 mt-1">
           <div>
@@ -50,15 +50,15 @@ export default function PreTripDialog({ open, onOpenChange, drivingStart, onConf
             <div className="flex gap-2 mt-1">
               {[15, 30].map((m) => (
                 <button key={m} onClick={() => setDuration(m)}
-                  className={`flex-1 rounded-lg border px-3 py-2 text-sm ${duration === m ? 'border-slate-900 bg-slate-50 font-medium' : 'border-slate-200'}`}>{m} min</button>
+                  className={`flex-1 rounded-lg border px-3 py-2 text-sm text-card-foreground ${duration === m ? 'border-primary bg-accent text-accent-foreground font-medium' : 'border-border'}`}>{m} min</button>
               ))}
               <button onClick={() => setDuration(0)}
-                className={`flex-1 rounded-lg border px-3 py-2 text-sm ${duration === 0 ? 'border-slate-900 bg-slate-50 font-medium' : 'border-slate-200'}`}>Custom</button>
+                className={`flex-1 rounded-lg border px-3 py-2 text-sm text-card-foreground ${duration === 0 ? 'border-primary bg-accent text-accent-foreground font-medium' : 'border-border'}`}>Custom</button>
             </div>
             {duration === 0 && (
               <div className="flex items-center gap-2 mt-2">
                 <Input type="number" min={1} value={customDur} onChange={(e) => setCustomDur(e.target.value)} placeholder="Minutes" />
-                <span className="text-xs text-slate-500">min</span>
+                <span className="text-xs text-muted-foreground">min</span>
               </div>
             )}
           </div>
@@ -71,7 +71,7 @@ export default function PreTripDialog({ open, onOpenChange, drivingStart, onConf
             <div><Label className="text-xs">State</Label><Input value={state} onChange={(e) => setState(e.target.value.toUpperCase())} placeholder="ST" maxLength={2} /></div>
           </div>
           {mins > 0 && (
-            <p className="text-[11px] text-slate-500">Will log ON DUTY — Pre-Trip Inspection from {preStart.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })} for {mins} min.</p>
+            <p className="text-[11px] text-muted-foreground">Will log ON DUTY — Pre-Trip Inspection from {preStart.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })} for {mins} min.</p>
           )}
         </div>
 

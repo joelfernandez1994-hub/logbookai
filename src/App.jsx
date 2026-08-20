@@ -7,7 +7,7 @@ import { AuthProvider, useAuth } from '@/lib/AuthContext';
 import UserNotRegisteredError from '@/components/UserNotRegisteredError';
 import ScrollToTop from './components/ScrollToTop';
 import { TabStackProvider } from '@/components/TabStackContext';
-import useSystemThemeSync from '@/hooks/useSystemThemeSync';
+import { ThemeProvider } from '@/hooks/useTheme';
 import { AnimatePresence, motion } from 'framer-motion';
 // Add page imports here
 import ProtectedRoute from '@/components/ProtectedRoute';
@@ -95,10 +95,9 @@ const AuthenticatedApp = () => {
 
 
 function App() {
-  useSystemThemeSync();
-
   return (
     <AuthProvider>
+      <ThemeProvider>
       <QueryClientProvider client={queryClientInstance}>
         <Router>
           <ScrollToTop />
@@ -108,6 +107,7 @@ function App() {
         </Router>
         <Toaster />
       </QueryClientProvider>
+      </ThemeProvider>
     </AuthProvider>
   )
 }

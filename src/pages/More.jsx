@@ -4,15 +4,23 @@ import { useDriverData } from '@/hooks/useDriverData';
 import { base44 } from '@/api/base44Client';
 import { getAppSettings, getAIUsage, saveDriverProfile, saveCarrierProfile, saveEquipment } from '@/lib/driverData';
 import { purgeMyData } from '@/lib/accountDeletion';
+import { useTheme } from '@/hooks/useTheme';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
-import { User, Building2, Truck, Bot, FileText, Settings, LogOut, Shield, ClipboardCheck, Trash2 } from 'lucide-react';
+import { User, Building2, Truck, Bot, FileText, Settings, LogOut, Shield, ClipboardCheck, Trash2, Sun, Moon, Monitor } from 'lucide-react';
+
+const APPEARANCE_OPTIONS = [
+  { v: 'system', l: 'System', icon: Monitor },
+  { v: 'light', l: 'Light', icon: Sun },
+  { v: 'dark', l: 'Dark', icon: Moon },
+];
 
 export default function More() {
   const { profile, carrier, equipment, reload } = useDriverData(9);
   const navigate = useNavigate();
+  const { mode, setTheme } = useTheme();
   const [usage, setUsage] = useState({ used: 0, allowance: 20 });
   const [settings, setSettings] = useState(null);
   const [adminMode, setAdminMode] = useState(false);
@@ -47,22 +55,12 @@ export default function More() {
   const handleDelete = async () => {
     setDeleting(true); setDeleteErr('');
     try {
-      // 1. Read the current authenticated user first.
       const me = await base44.auth.me();
-
-      // 2. If the SDK exposes a native self-service account-deletion method, use it.
       if (typeof base44.auth.deleteAccount === 'function') {
         await base44.auth.deleteAccount();
       } else {
-        // 3. Fallback: the Base44 SDK has no end-user auth-account deletion API
-        //    (end-user removal is a builder-dashboard-only action). As the
-        //    supported in-app fallback, purge all of the user's owned app data,
-        //    then revoke the session below so the deleted user is not left
-        //    authenticated.
         await purgeMyData(me.id);
       }
-
-      // 4. Clear auth state and send the user to the login/welcome screen.
       try { await base44.auth.logout(); } catch (e) {}
       window.location.href = '/login';
     } catch (e) {
@@ -104,30 +102,47 @@ export default function More() {
 
   return (
     <div className="px-4 pt-6 pb-6">
-      <h1 className="text-xl font-bold mb-4">More</h1>
+      <h1 className="text-xl font-bold mb-4 text-foreground">More</h1>
 
       {/* AI usage */}
-      <div className="rounded-xl border border-slate-200 bg-white p-4 mb-4">
-        <div className="flex items-center gap-2 font-semibold text-sm mb-2"><Bot className="w-4 h-4" /> AI Assistant</div>
-        <div className="text-2xl font-bold">{usage.allowance - usage.used} <span className="text-sm font-normal text-slate-500">of {usage.allowance} free requests remaining</span></div>
-        <div className="text-xs text-slate-400 mt-1">This month · {usage.used} used</div>
+      <div className="rounded-xl border border-border bg-card p-4 mb-4">
+        <div className="flex items-center gap-2 font-semibold text-sm mb-2 text-card-foreground"><Bot className="w-4 h-4" /> LogbookAI AI</div>
+        <div className="text-2xl font-bold text-card-foreground">{usage.allowance - usage.used} <span className="text-sm font-normal text-muted-foreground">AI requests remaining this month</span></div>
+        <div className="text-xs text-muted-foreground mt-1">{usage.used} used this month · Voice Log does not count against this</div>
+      </div>
+
+      {/* Appearance */}
+      <div className="rounded-xl border border-border bg-card p-4 mb-4">
+        <div className="font-semibold text-sm mb-2 text-card-foreground">Appearance</div>
+        <div className="grid grid-cols-3 gap-2">
+          {APPEARANCE_OPTIONS.map((o) => {
+            const Icon = o.icon;
+            return (
+              <button key={o.v} onClick={() => setTheme(o.v)}
+                className={`flex flex-col items-center gap-1 rounded-lg border p-3 text-xs font-medium text-card-foreground ${mode === o.v ? 'border-primary bg-accent text-accent-foreground' : 'border-border'}`}>
+                <Icon className="w-4 h-4" /> {o.l}
+              </button>
+            );
+          })}
+        </div>
+        <div className="text-[11px] text-muted-foreground mt-2">System follows your device setting. Voice Log and basic logging work in any appearance.</div>
       </div>
 
       {/* Settings list */}
-      <div className="rounded-xl border border-slate-200 bg-white divide-y divide-slate-100 mb-4">
+      <div className="rounded-xl border border-border bg-card divide-y divide-border mb-4">
         {items.map((it) => (
-          <button key={it.label} onClick={it.onClick} className="flex items-center gap-3 w-full p-3 text-left text-sm hover:bg-slate-50">
-            <it.icon className="w-4 h-4 text-slate-500" /> {it.label}
+          <button key={it.label} onClick={it.onClick} className="flex items-center gap-3 w-full p-3 text-left text-sm text-card-foreground hover:bg-accent">
+            <it.icon className="w-4 h-4 text-muted-foreground" /> {it.label}
           </button>
         ))}
       </div>
 
       {/* Optional daily vehicle inspection reminder */}
-      <div className="rounded-xl border border-slate-200 bg-white p-4 mb-4">
+      <div className="rounded-xl border border-border bg-card p-4 mb-4">
         <div className="flex items-center justify-between">
           <div>
-            <div className="font-semibold text-sm">Daily Vehicle Inspection Reminder</div>
-            <div className="text-xs text-slate-500 mt-0.5">Optional. Reminds you near the end of your work period to review vehicle condition. A no-defect written DVIR is not federally required every day for property-carrying CMVs.</div>
+            <div className="font-semibold text-sm text-card-foreground">Daily Vehicle Inspection Reminder</div>
+            <div className="text-xs text-muted-foreground mt-0.5">Optional. Reminds you near the end of your work period to review vehicle condition. A no-defect written DVIR is not federally required every day for property-carrying CMVs.</div>
           </div>
           <input type="checkbox" checked={!!profile?.dvir_reminder_enabled} onChange={(e) => toggleDvirReminder(e.target.checked)} className="w-5 h-5 shrink-0" />
         </div>
@@ -135,12 +150,12 @@ export default function More() {
 
       {/* Admin controls */}
       {adminMode && (
-        <div className="rounded-xl border border-slate-300 bg-slate-50 p-4 mb-4">
-          <div className="flex items-center gap-2 font-semibold text-sm mb-3"><Shield className="w-4 h-4" /> Administrator Controls</div>
+        <div className="rounded-xl border border-border bg-accent p-4 mb-4">
+          <div className="flex items-center gap-2 font-semibold text-sm mb-3 text-card-foreground"><Shield className="w-4 h-4" /> Administrator Controls</div>
           <div className="space-y-3">
             <Button size="sm" variant="outline" className="w-full" onClick={() => navigate('/engine-tests')}>HOS Engine Tests</Button>
             <div className="flex items-center justify-between">
-              <span className="text-sm">AI enabled globally</span>
+              <span className="text-sm text-card-foreground">AI enabled globally</span>
               <input type="checkbox" checked={settings?.ai_enabled_global ?? true}
                 onChange={(e) => updateSetting('ai_enabled_global', e.target.checked)} className="w-5 h-5" />
             </div>
@@ -150,15 +165,15 @@ export default function More() {
                 onBlur={(e) => updateSetting('default_ai_allowance', parseInt(e.target.value) || 20)} className="w-32" />
             </div>
             <Button size="sm" variant="outline" onClick={resetUsage}><LogOut className="w-3.5 h-3.5 mr-1" /> Reset all AI usage this month</Button>
-            <div className="text-xs font-medium pt-2">AI Usage by User</div>
+            <div className="text-xs font-medium pt-2 text-card-foreground">AI Usage by User</div>
             <div className="space-y-1 max-h-40 overflow-y-auto">
               {allUsers.map((u) => (
-                <div key={u.id} className="flex items-center justify-between text-xs bg-white rounded p-2 border">
-                  <span>{u.full_name || u.email}</span>
+                <div key={u.id} className="flex items-center justify-between text-xs bg-card rounded p-2 border border-border">
+                  <span className="text-card-foreground">{u.full_name || u.email}</span>
                   <div className="flex items-center gap-2">
                     <input type="number" placeholder="allowance" defaultValue={u.ai_allowance_override ?? ''}
                       onBlur={(e) => updateUser(u.id, { ai_allowance_override: e.target.value ? parseInt(e.target.value) : null })}
-                      className="w-20 border rounded p-1" />
+                      className="w-20 border border-border rounded p-1 bg-card text-card-foreground" />
                     <input type="checkbox" checked={!!u.ai_disabled} onChange={(e) => updateUser(u.id, { ai_disabled: e.target.checked })} title="Disable AI" />
                   </div>
                 </div>
@@ -169,11 +184,10 @@ export default function More() {
       )}
 
       <Button variant="outline" className="w-full" onClick={logout}><LogOut className="w-4 h-4 mr-2" /> Log Out</Button>
-      <Button variant="ghost" className="w-full text-red-600 mt-2" onClick={() => setShowDelete(true)}><Trash2 className="w-4 h-4 mr-2" /> Delete Account</Button>
+      <Button variant="ghost" className="w-full text-error mt-2" onClick={() => setShowDelete(true)}><Trash2 className="w-4 h-4 mr-2" /> Delete Account</Button>
 
-      <p className="text-[11px] text-slate-400 text-center mt-4">LogbookAI v1 · Not an ELD · {settings?.ruleset_version || 'US Interstate Property - Standard Federal Rules'}</p>
+      <p className="text-[11px] text-muted-foreground text-center mt-4">LogbookAI v2 · Not an ELD · {settings?.ruleset_version || 'US Interstate Property - Standard Federal Rules'}</p>
 
-      {/* Profile edit dialog */}
       <ProfileDialog open={showProfile} onOpenChange={setShowProfile} profile={profile} onSave={(d) => saveDriverProfile(d, profile).then(reload)} />
       <CarrierDialog open={showCarrier} onOpenChange={setShowCarrier} carrier={carrier} onSave={(d) => saveCarrierProfile(d, carrier).then(reload)} />
       <EquipmentDialog open={showEquipment} onOpenChange={setShowEquipment} onSave={(d) => saveEquipment(d).then(reload)} />
@@ -181,8 +195,8 @@ export default function More() {
       <Dialog open={showDelete} onOpenChange={setShowDelete}>
         <DialogContent className="max-w-md">
           <DialogHeader><DialogTitle>Delete Account</DialogTitle></DialogHeader>
-          <p className="text-sm text-slate-600">This permanently deletes your account and all of your LogbookAI data. This action cannot be undone.</p>
-          {deleteErr && <p className="text-xs text-red-600">{deleteErr}</p>}
+          <p className="text-sm text-muted-foreground">This permanently deletes your LogbookAI data and signs you out. This action cannot be undone.</p>
+          {deleteErr && <p className="text-xs text-error">{deleteErr}</p>}
           <DialogFooter>
             <Button variant="outline" onClick={() => setShowDelete(false)}>Cancel</Button>
             <Button variant="destructive" disabled={deleting} onClick={handleDelete}>{deleting ? 'Deleting…' : 'Delete Permanently'}</Button>
@@ -227,13 +241,13 @@ function CarrierDialog({ open, onOpenChange, carrier, onSave }) {
             <div className="grid grid-cols-2 gap-2">
               {[{ v: '60_7', l: '60 hr / 7 day' }, { v: '70_8', l: '70 hr / 8 day' }].map((c) => (
                 <button key={c.v} type="button" onClick={() => setD({ ...d, hos_cycle: c.v })}
-                  className={`p-3 rounded-lg border text-sm font-medium ${(d.hos_cycle || '70_8') === c.v ? 'border-slate-900 bg-slate-50' : 'border-slate-200'}`}>
+                  className={`p-3 rounded-lg border text-sm font-medium text-card-foreground ${(d.hos_cycle || '70_8') === c.v ? 'border-primary bg-accent text-accent-foreground' : 'border-border'}`}>
                   {c.l}
                 </button>
               ))}
             </div>
           </div>
-          <p className="text-xs text-amber-600">Changing the cycle will not rewrite prior certified calculations.</p>
+          <p className="text-xs text-warning">Changing the cycle will not rewrite prior certified calculations.</p>
         </div>
         <DialogFooter><Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
           <Button onClick={() => { onSave(d); onOpenChange(false); }}>Save</Button></DialogFooter>
@@ -253,7 +267,7 @@ function EquipmentDialog({ open, onOpenChange, onSave }) {
           <div className="grid grid-cols-2 gap-2">
             {[{ v: 'tractor', l: 'Tractor' }, { v: 'trailer', l: 'Trailer' }].map((t) => (
               <button key={t.v} type="button" onClick={() => setType(t.v)}
-                className={`p-3 rounded-lg border text-sm font-medium ${type === t.v ? 'border-slate-900 bg-slate-50' : 'border-slate-200'}`}>
+                className={`p-3 rounded-lg border text-sm font-medium text-card-foreground ${type === t.v ? 'border-primary bg-accent text-accent-foreground' : 'border-border'}`}>
                 {t.l}
               </button>
             ))}

@@ -56,7 +56,7 @@ export default function StatusChangeSheet({ open, onOpenChange, onApply, default
         <div className="grid grid-cols-2 gap-2">
           {STATUSES.map((s) => (
             <button key={s.key} onClick={() => setStatus(s.key)}
-              className={`flex items-center gap-2 rounded-lg border p-3 text-sm font-medium transition ${status === s.key ? 'border-slate-900 bg-slate-50' : 'border-slate-200'}`}>
+              className={`flex items-center gap-2 rounded-lg border p-3 text-sm font-medium transition text-card-foreground ${status === s.key ? 'border-primary bg-accent text-accent-foreground' : 'border-border'}`}>
               <span className={`w-3 h-3 rounded-full ${s.color}`} />{s.label}
             </button>
           ))}
@@ -75,14 +75,14 @@ export default function StatusChangeSheet({ open, onOpenChange, onApply, default
           {locating ? <><Loader2 className="w-4 h-4 mr-1 animate-spin" /> Locating...</> : <><MapPin className="w-4 h-4 mr-1" /> Use My Current Location</>}
         </Button>
         {city && !locationConfirmed && (
-          <p className="text-xs text-amber-600">Location interpreted as {city}, {stateVal}. Please confirm or edit before applying.</p>
+          <p className="text-xs text-warning">Location interpreted as {city}, {stateVal}. Please confirm or edit before applying.</p>
         )}
         <div className="mt-3">
           <Label className="text-xs">Remark (optional)</Label>
           <Input value={remark} onChange={(e) => setRemark(e.target.value)} placeholder="Remark" />
           <div className="flex flex-wrap gap-1.5 mt-2">
             {COMMON_REMARKS.map((r) => (
-              <button key={r} onClick={() => setRemark(r)} className="text-[11px] px-2 py-1 rounded-full border border-slate-200 text-slate-600 hover:bg-slate-100">{r}</button>
+              <button key={r} onClick={() => setRemark(r)} className="text-[11px] px-2 py-1 rounded-full border border-border text-muted-foreground hover:bg-accent">{r}</button>
             ))}
           </div>
         </div>

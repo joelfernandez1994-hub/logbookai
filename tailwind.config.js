@@ -20,6 +20,10 @@ module.exports = {
   				DEFAULT: 'hsl(var(--popover))',
   				foreground: 'hsl(var(--popover-foreground))'
   			},
+  			elevated: {
+  				DEFAULT: 'hsl(var(--elevated))',
+  				foreground: 'hsl(var(--elevated-foreground))'
+  			},
   			primary: {
   				DEFAULT: 'hsl(var(--primary))',
   				foreground: 'hsl(var(--primary-foreground))'
@@ -40,8 +44,47 @@ module.exports = {
   				DEFAULT: 'hsl(var(--destructive))',
   				foreground: 'hsl(var(--destructive-foreground))'
   			},
+  			disabled: {
+  				DEFAULT: 'hsl(var(--disabled))',
+  				foreground: 'hsl(var(--disabled-foreground))'
+  			},
+  			selected: {
+  				DEFAULT: 'hsl(var(--selected))',
+  				foreground: 'hsl(var(--selected-foreground))'
+  			},
+  			warning: {
+  				DEFAULT: 'hsl(var(--warning))',
+  				foreground: 'hsl(var(--warning-foreground))',
+  				surface: 'hsl(var(--warning-surface))',
+  				'surface-foreground': 'hsl(var(--warning-surface-foreground))'
+  			},
+  			error: {
+  				DEFAULT: 'hsl(var(--error))',
+  				foreground: 'hsl(var(--error-foreground))',
+  				surface: 'hsl(var(--error-surface))',
+  				'surface-foreground': 'hsl(var(--error-surface-foreground))'
+  			},
+  			success: {
+  				DEFAULT: 'hsl(var(--success))',
+  				foreground: 'hsl(var(--success-foreground))',
+  				surface: 'hsl(var(--success-surface))',
+  				'surface-foreground': 'hsl(var(--success-surface-foreground))'
+  			},
+  			navigation: {
+  				DEFAULT: 'hsl(var(--navigation))',
+  				foreground: 'hsl(var(--navigation-foreground))',
+  				border: 'hsl(var(--navigation-border))'
+  			},
+  			graph: {
+  				DEFAULT: 'hsl(var(--graph-background))',
+  				grid: 'hsl(var(--graph-grid))',
+  				labels: 'hsl(var(--graph-labels))',
+  				line: 'hsl(var(--graph-line))'
+  			},
   			border: 'hsl(var(--border))',
   			input: 'hsl(var(--input))',
+  			'input-bg': 'hsl(var(--input-background))',
+			'input-fg': 'hsl(var(--input-foreground))',
   			ring: 'hsl(var(--ring))',
   			chart: {
   				'1': 'hsl(var(--chart-1))',
@@ -68,22 +111,8 @@ module.exports = {
   			mono: ['var(--font-mono)']
   		},
   		keyframes: {
-  			'accordion-down': {
-  				from: {
-  					height: '0'
-  				},
-  				to: {
-  					height: 'var(--radix-accordion-content-height)'
-  				}
-  			},
-  			'accordion-up': {
-  				from: {
-  					height: 'var(--radix-accordion-content-height)'
-  				},
-  				to: {
-  					height: '0'
-  				}
-  			}
+  			'accordion-down': { from: { height: '0' }, to: { height: 'var(--radix-accordion-content-height)' } },
+  			'accordion-up': { from: { height: 'var(--radix-accordion-content-height)' }, to: { height: '0' } }
   		},
   		animation: {
   			'accordion-down': 'accordion-down 0.2s ease-out',

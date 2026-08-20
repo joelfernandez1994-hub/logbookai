@@ -22,7 +22,7 @@ export default function Header({ title, className = '' }) {
         type="button"
         onClick={goBack}
         aria-label="Go back"
-        className="inline-flex items-center justify-center min-h-[44px] min-w-[44px] -ml-2 rounded-lg text-slate-600 hover:text-slate-900"
+        className="inline-flex items-center justify-center min-h-[44px] min-w-[44px] -ml-2 rounded-lg text-muted-foreground hover:text-foreground"
       >
         <ChevronLeft className="w-6 h-6" />
       </button>

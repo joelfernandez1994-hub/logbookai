@@ -12,7 +12,7 @@ const tabs = [
 export default function BottomNav() {
   const { activeTab, navigateTab } = useTabStack();
   return (
-    <nav className="fixed bottom-0 inset-x-0 z-40 bg-white border-t border-slate-200 pb-[env(safe-area-inset-bottom)]">
+    <nav className="fixed bottom-0 inset-x-0 z-40 bg-card border-t border-border pb-[env(safe-area-inset-bottom)]">
       <div className="max-w-3xl mx-auto grid grid-cols-5">
         {tabs.map(({ to, label, icon: Icon }) => {
           const isActive = activeTab === to;
@@ -22,7 +22,7 @@ export default function BottomNav() {
               type="button"
               onClick={() => navigateTab(to)}
               className={`flex flex-col items-center justify-center gap-1 py-2 text-xs font-medium transition-colors ${
-                isActive ? 'text-blue-700' : 'text-slate-500'
+                isActive ? 'text-foreground' : 'text-muted-foreground'
               }`}
             >
               <Icon className="w-5 h-5" />

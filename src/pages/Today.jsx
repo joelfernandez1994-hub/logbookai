@@ -9,7 +9,7 @@ import { changeStatus, createHistoricalEvent } from '@/lib/driverData';
 import { getDvirs } from '@/lib/dvirData';
 import { Button } from '@/components/ui/button';
 import PreTripDialog from '@/components/PreTripDialog';
-import { Truck, Clock, Coffee, RotateCcw, AlertTriangle, MapPin, Bot, FileCheck, ClipboardList, ClipboardCheck, Gauge, Moon, Gavel, HelpCircle } from 'lucide-react';
+import { Truck, Clock, Coffee, RotateCcw, AlertTriangle, MapPin, Bot, FileCheck, ClipboardList, ClipboardCheck, Gauge, Moon, HelpCircle } from 'lucide-react';
 import DailyMilesCard from '@/components/DailyMilesCard';
 import TimelineGapNotice from '@/components/TimelineGapNotice';
 import PullToRefresh from '@/components/PullToRefresh';
@@ -49,7 +49,6 @@ export default function Today() {
   const hos = useMemo(() => computeHOS(events, cycleType, tz, now, { historyComplete }),
     [events, cycleType, tz, now, historyComplete]);
 
-  // live ticking
   useEffect(() => { const t = setTimeout(() => setNow(new Date()), 30000); return () => clearTimeout(t); }, [now]);
 
   useEffect(() => { (async () => { try { setDvirs(await getDvirs(30) || []); } catch (e) {} })(); }, [reload]);
@@ -60,7 +59,7 @@ export default function Today() {
   }, [loading, needsOnboarding, navigate]);
 
   if (loading || needsOnboarding) {
-    return <div className="flex items-center justify-center h-screen"><div className="w-8 h-8 border-4 border-slate-200 border-t-slate-800 rounded-full animate-spin" /></div>;
+    return <div className="flex items-center justify-center h-screen"><div className="w-8 h-8 border-4 border-muted border-t-foreground rounded-full animate-spin" /></div>;
   }
 
   const todayKey = dateKeyInTz(now, tz);
@@ -68,7 +67,6 @@ export default function Today() {
   const displayStatus = optimisticStatus || current?.duty_status;
   const displaySince = optimisticStatus ? optimisticSince : current?.start;
 
-  // Pre-trip check: before allowing DRIVING, ensure a pre-trip on-duty event exists in current tour
   const tourStart = hos.driving.tourStart;
   const hasPretripInTour = tourStart ? events.some(e =>
     e.duty_status === 'ON_DUTY' && e.remark === 'Pre-Trip Inspection' && new Date(e.start_timestamp) >= tourStart
@@ -126,41 +124,38 @@ export default function Today() {
 
   return (
     <PullToRefresh onRefresh={reload} className="px-4 pt-6">
-      {/* Header */}
       <div className="flex items-center justify-between mb-4">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">LogbookAI</h1>
-          <p className="text-xs text-slate-500">HOS Compliance Assistant · {carrier?.ruleset_version?.split(' — ')[0]}</p>
+          <h1 className="text-2xl font-bold tracking-tight text-foreground">LogbookAI</h1>
+          <p className="text-xs text-muted-foreground">HOS Compliance Assistant · {carrier?.ruleset_version?.split(' — ')[0]}</p>
         </div>
         <div className="text-right">
-          <p className="text-sm font-medium">{now.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', timeZone: tz })}</p>
-          <p className="text-xs text-slate-500">Logbook: {fmtClock(now, tz)}</p>
+          <p className="text-sm font-medium text-foreground">{now.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', timeZone: tz })}</p>
+          <p className="text-xs text-muted-foreground">Logbook: {fmtClock(now, tz)}</p>
         </div>
       </div>
 
-      {/* Current status */}
-      <div className="rounded-xl border border-slate-200 bg-white p-4 mb-3">
-        <div className="text-xs text-slate-500 font-medium">CURRENT DUTY STATUS</div>
+      <div className="rounded-xl border border-border bg-card p-4 mb-3">
+        <div className="text-xs text-muted-foreground font-medium">CURRENT DUTY STATUS</div>
         {(displayStatus || current) ? (
           <div className="flex items-baseline gap-2 mt-1">
-            <span className="text-2xl font-bold">{STATUS_LABELS[displayStatus || current.duty_status]}</span>
-            <span className="text-sm text-slate-500">Since {fmtClock(displaySince || current.start, tz)}</span>
+            <span className="text-2xl font-bold text-card-foreground">{STATUS_LABELS[displayStatus || current.duty_status]}</span>
+            <span className="text-sm text-muted-foreground">Since {fmtClock(displaySince || current.start, tz)}</span>
           </div>
         ) : (
-          <div className="text-2xl font-bold mt-1 text-slate-400">No active status</div>
+          <div className="text-2xl font-bold mt-1 text-muted-foreground">No active status</div>
         )}
         {current?.city && (
-          <div className="flex items-center gap-1 text-sm text-slate-600 mt-1">
+          <div className="flex items-center gap-1 text-sm text-muted-foreground mt-1">
             <MapPin className="w-3.5 h-3.5" /> {current.city}{current.state ? `, ${current.state}` : ''}
           </div>
         )}
-        <div className="text-[11px] text-slate-400 mt-1">Home terminal: {carrier?.home_terminal_timezone}</div>
+        <div className="text-[11px] text-muted-foreground mt-1">Home terminal: {carrier?.home_terminal_timezone}</div>
       </div>
 
       <TimelineGapNotice events={events} dateStr={todayKey} tz={tz} now={now} />
       <DailyMilesCard events={events} dateStr={todayKey} tz={tz} speedProfile={speedProfile} />
 
-      {/* HOS Clocks */}
       <div className="grid grid-cols-2 gap-2 mb-3">
         <ClockCard label="Driving Remaining" value={fmtDur(hos.driving.drivingRemainingMs)}
           sublabel={hos.driving.expiresAt ? `expires ${fmtClock(hos.driving.expiresAt, tz)}` : '11-hr limit'}
@@ -176,7 +171,6 @@ export default function Today() {
           status={clockStatus(hos.cycle.cycleRemainingHours * 3600000)} icon={Gauge} />
       </div>
 
-      {/* 34-hour restart / split sleeper */}
       {restartProgress && (
         <div className="rounded-xl border border-violet-200 bg-violet-50 p-3 mb-3">
           <div className="flex items-center gap-2 text-sm font-medium text-violet-900">
@@ -215,11 +209,11 @@ export default function Today() {
         </div>
       )}
       {profile?.dvir_reminder_enabled && openSafetyDefects.length === 0 && (
-        <div className="rounded-xl border border-slate-200 bg-white p-3 mb-3 flex items-start gap-2">
-          <ClipboardCheck className="w-4 h-4 text-slate-500 mt-0.5 shrink-0" />
-          <div className="text-xs text-slate-700">
+        <div className="rounded-xl border border-border bg-card p-3 mb-3 flex items-start gap-2">
+          <ClipboardCheck className="w-4 h-4 text-muted-foreground mt-0.5 shrink-0" />
+          <div className="text-xs text-muted-foreground">
             Reminder: review vehicle condition before finishing your work period and report any defects.
-            <button className="underline ml-1 font-medium" onClick={() => navigate('/vehicle-inspection')}>Open DVIR →</button>
+            <button className="underline ml-1 font-medium text-foreground" onClick={() => navigate('/vehicle-inspection')}>Open DVIR →</button>
           </div>
         </div>
       )}
@@ -232,26 +226,23 @@ export default function Today() {
         </div>
       )}
 
-      {/* 24-hour graph */}
-      <div className="rounded-xl border border-slate-200 bg-white p-3 mb-3">
-        <div className="text-sm font-semibold mb-2">Today's 24-Hour Log</div>
+      <div className="rounded-xl border border-border bg-card p-3 mb-3">
+        <div className="text-sm font-semibold mb-2 text-card-foreground">Today's 24-Hour Log</div>
         <LogGraph events={events} dateStr={todayKey} timezone={tz} />
       </div>
 
-      {/* Manual Log Assistant — prominent actions */}
       <div className="grid grid-cols-2 gap-2 mb-3">
         <Button className="h-14 text-base" onClick={() => navigate('/log-assistant')}>
           <Bot className="w-5 h-5 mr-2" /> Add / Tell LogbookAI
         </Button>
         <Button variant="outline" className="h-14 text-base" onClick={() => navigate('/log-assistant?tab=makeLegal')}>
-          <Gavel className="w-5 h-5 mr-2" /> Make It Legal
+          <FileCheck className="w-5 h-5 mr-2" /> HOS Check
         </Button>
       </div>
       <Button variant="outline" className="w-full h-12 text-base mb-3" onClick={() => navigate('/log-assistant?tab=whatCanIDo')}>
         <HelpCircle className="w-5 h-5 mr-2" /> What Can I Do?
       </Button>
 
-      {/* Main actions */}
       <div className="grid grid-cols-2 gap-2 mb-6">
         <Button className="h-14 text-base" onClick={() => setStatusOpen(true)}>Change Status</Button>
         <Button variant="outline" className="h-14 text-base" onClick={() => navigate('/assistant')}>
@@ -268,7 +259,6 @@ export default function Today() {
       <StatusChangeSheet open={statusOpen} onOpenChange={setStatusOpen} onApply={handleChangeStatus}
         defaultEquipment={{ tractor: equipment?.[0]?.unit_number, trailer: equipment?.find(e => e.type === 'trailer')?.unit_number }} />
 
-      {/* Pre-trip prompt — confirms actual start time, duration and location */}
       <PreTripDialog open={pretripOpen} onOpenChange={setPretripOpen}
         drivingStart={pendingStatus ? new Date() : null}
         defaultCity={pendingStatus?.city} defaultState={pendingStatus?.state}

@@ -11,7 +11,7 @@ export default function Layout() {
   const location = useLocation();
   const isDark = DARK_ROUTES.includes(location.pathname);
   return (
-    <div className={`min-h-screen pb-16 ${isDark ? 'bg-slate-900' : 'bg-slate-50'}`}>
+    <div className={`min-h-screen pb-16 ${isDark ? 'bg-slate-900' : 'bg-background'}`}>
       <main className={`max-w-3xl mx-auto safe-top ${isDark ? 'text-white' : ''}`}>
         <AnimatePresence mode="wait">
           <motion.div
