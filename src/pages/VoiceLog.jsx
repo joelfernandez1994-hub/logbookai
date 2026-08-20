@@ -1,8 +1,7 @@
 import { useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useDriverData } from '@/hooks/useDriverData';
-import { base44 } from '@/api/base44Client';
-import { createHistoricalEvent } from '@/lib/driverData';
+import { insertEventsBatch } from '@/lib/timelineWriter';
 import { parseVoiceCommand, labelStatus, formatTime } from '@/lib/voiceParser';
 import { validateProposal, hasBlocking } from '@/lib/proposalValidation';
 import { fmtDur } from '@/lib/hosEngine';
@@ -74,27 +73,22 @@ export default function VoiceLog() {
     if (!parsed?.events?.length) return;
     setApplying(true); setError('');
     try {
-      // End current ongoing event at the first proposed start
-      const ongoing = events.find(e => e.is_ongoing);
-      const firstStart = parsed.events[0].start_timestamp;
-      if (ongoing && new Date(ongoing.start_timestamp) < new Date(firstStart)) {
-        await base44.entities.DutyStatusEvent.update(ongoing.id, { end_timestamp: firstStart, is_ongoing: false });
-      }
-      for (let i = 0; i < parsed.events.length; i++) {
-        const c = parsed.events[i];
-        const isLast = i === parsed.events.length - 1;
-        await createHistoricalEvent({
-          log_date: new Date(c.start_timestamp).toISOString().slice(0, 10),
-          start_timestamp: c.start_timestamp,
-          end_timestamp: c.end_timestamp || (isLast ? null : c.end_timestamp),
-          duty_status: c.duty_status,
-          city: c.city || '', state: c.state || '',
-          remark: c.remark || c.activity_type || '',
-          method_of_creation: transcript ? 'Voice AI' : 'Manual',
-          is_ongoing: isLast && !c.end_timestamp,
-          carrier_name: carrier?.carrier_name,
-        });
-      }
+      const method = transcript ? 'Voice AI' : 'Manual';
+      const lastIdx = parsed.events.length - 1;
+      // Canonical writer ends any ongoing event at the first proposed start
+      // and splits neighbors so no overlap/duplicate can be introduced.
+      const proposed = parsed.events.map((c, i) => ({
+        log_date: c.log_date || new Date(c.start_timestamp).toISOString().slice(0, 10),
+        start_timestamp: c.start_timestamp,
+        end_timestamp: c.end_timestamp || (i === lastIdx ? null : c.end_timestamp),
+        duty_status: c.duty_status,
+        city: c.city || '', state: c.state || '',
+        remark: c.remark || c.activity_type || '',
+        is_ongoing: i === lastIdx && !c.end_timestamp,
+        method_of_creation: method,
+        carrier_name: carrier?.carrier_name,
+      }));
+      await insertEventsBatch(events, proposed, { carrierName: carrier?.carrier_name, methodOfCreation: method, reason: 'Voice Log' });
       setApplied(true); setParsed(null); setInput(''); setTranscript('');
       reload();
     } catch (e) {
