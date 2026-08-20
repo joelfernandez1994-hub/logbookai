@@ -6,6 +6,7 @@ import PageNotFound from './lib/PageNotFound';
 import { AuthProvider, useAuth } from '@/lib/AuthContext';
 import UserNotRegisteredError from '@/components/UserNotRegisteredError';
 import ScrollToTop from './components/ScrollToTop';
+import { TabStackProvider } from '@/components/TabStackContext';
 import useSystemThemeSync from '@/hooks/useSystemThemeSync';
 import { AnimatePresence, motion } from 'framer-motion';
 // Add page imports here
@@ -101,7 +102,9 @@ function App() {
       <QueryClientProvider client={queryClientInstance}>
         <Router>
           <ScrollToTop />
-          <AuthenticatedApp />
+          <TabStackProvider>
+            <AuthenticatedApp />
+          </TabStackProvider>
         </Router>
         <Toaster />
       </QueryClientProvider>
