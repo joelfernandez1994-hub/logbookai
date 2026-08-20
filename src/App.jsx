@@ -6,6 +6,7 @@ import PageNotFound from './lib/PageNotFound';
 import { AuthProvider, useAuth } from '@/lib/AuthContext';
 import UserNotRegisteredError from '@/components/UserNotRegisteredError';
 import ScrollToTop from './components/ScrollToTop';
+import useSystemThemeSync from '@/hooks/useSystemThemeSync';
 // Add page imports here
 import ProtectedRoute from '@/components/ProtectedRoute';
 import Layout from '@/components/Layout';
@@ -79,6 +80,7 @@ const AuthenticatedApp = () => {
 
 
 function App() {
+  useSystemThemeSync();
 
   return (
     <AuthProvider>

@@ -7,6 +7,7 @@ import { limitingClock, maxDriveMiles, buildComplianceEdits } from '@/lib/compli
 import { firstEventOfDay, loggedFuelStops, getFuelReceipts } from '@/lib/tripSync';
 import DailyMilesCard from '@/components/DailyMilesCard';
 import TimelineGapNotice from '@/components/TimelineGapNotice';
+import BottomSelect from '@/components/BottomSelect';
 import { base44 } from '@/api/base44Client';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -305,9 +306,9 @@ export default function Trip() {
         </div>
         {stops.map((s, i) => (
           <div key={i} className="flex gap-2 mb-2">
-            <select value={s.type} onChange={(e) => { setStopsTouched(true); const n = [...stops]; n[i].type = e.target.value; setStops(n); }} className="border rounded p-1 text-xs">
-              <option value="fuel">Fuel</option><option value="rest">Rest</option><option value="break">Break</option>
-            </select>
+            <BottomSelect className="w-24 p-1 text-xs" value={s.type}
+              onChange={(v) => { setStopsTouched(true); const n = [...stops]; n[i].type = v; setStops(n); }}
+              options={[{ value: 'fuel', label: 'Fuel' }, { value: 'rest', label: 'Rest' }, { value: 'break', label: 'Break' }]} />
             <Input placeholder="City, ST" value={s.city} onChange={(e) => { setStopsTouched(true); const n = [...stops]; n[i].city = e.target.value; setStops(n); }} className="text-xs" />
             {s.note && <span className="text-[10px] text-slate-400 self-center">{s.note}</span>}
           </div>

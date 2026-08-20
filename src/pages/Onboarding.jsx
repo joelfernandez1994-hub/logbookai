@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import SignaturePad from '@/components/SignaturePad';
+import BottomSelect from '@/components/BottomSelect';
 import { AlertTriangle, Check } from 'lucide-react';
 
 const TIMEZONES = ['America/New_York', 'America/Chicago', 'America/Denver', 'America/Los_Angeles', 'America/Phoenix', 'America/Anchorage', 'Pacific/Honolulu'];
@@ -69,7 +70,7 @@ export default function Onboarding() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 px-4 py-6 pb-20">
+    <div className="min-h-screen bg-slate-50 px-4 pt-[calc(env(safe-area-inset-top)+1.5rem)] pb-20">
       <div className="max-w-md mx-auto">
         <div className="flex gap-1 mb-6">
           {steps.map((s, i) => (
@@ -115,9 +116,9 @@ export default function Onboarding() {
               <div><Label>Main Office Address</Label><Input value={carrierData.main_office_address} onChange={(e) => setCarrierData({ ...carrierData, main_office_address: e.target.value })} /></div>
               <div><Label>Home Terminal Address</Label><Input value={carrierData.home_terminal_address} onChange={(e) => setCarrierData({ ...carrierData, home_terminal_address: e.target.value })} /></div>
               <div><Label>Home Terminal Timezone</Label>
-                <select className="w-full border rounded p-2" value={carrierData.home_terminal_timezone} onChange={(e) => setCarrierData({ ...carrierData, home_terminal_timezone: e.target.value })}>
-                  {TIMEZONES.map((tz) => <option key={tz} value={tz}>{tz.replace('America/', '').replace('_', ' ')}</option>)}
-                </select>
+                <BottomSelect className="w-full" value={carrierData.home_terminal_timezone}
+                  onChange={(v) => setCarrierData({ ...carrierData, home_terminal_timezone: v })}
+                  options={TIMEZONES.map((tz) => ({ value: tz, label: tz.replace('America/', '').replace('_', ' ') }))} />
               </div>
               <div><Label>HOS Cycle</Label>
                 <div className="grid grid-cols-2 gap-2">

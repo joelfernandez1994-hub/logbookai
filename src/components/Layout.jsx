@@ -4,7 +4,7 @@ import BottomNav from '@/components/BottomNav';
 export default function Layout() {
   return (
     <div className="min-h-screen bg-slate-50 pb-16">
-      <main className="max-w-3xl mx-auto">
+      <main className="max-w-3xl mx-auto safe-top">
         <Outlet />
       </main>
       <BottomNav />

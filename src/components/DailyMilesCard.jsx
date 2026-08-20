@@ -51,7 +51,7 @@ export default function DailyMilesCard({ events, dateStr, tz, speedProfile }) {
             <div className="font-bold text-sm flex items-center gap-2 mt-0.5">
               {miles} mi
               {isManual && <span className="text-[10px] text-slate-400 font-normal">(manual)</span>}
-              <button onClick={() => { setVal(String(miles)); setEditing(true); }} className="text-slate-400 hover:text-slate-700"><Pencil className="w-3 h-3" /></button>
+              <button onClick={() => { setVal(String(miles)); setEditing(true); }} className="inline-flex items-center justify-center min-h-[44px] min-w-[44px] text-slate-400 hover:text-slate-700"><Pencil className="w-3 h-3" /></button>
               {isManual && <button onClick={resetAuto} disabled={saving} className="text-[10px] text-blue-500 underline inline-flex items-center"><RotateCcw className="w-2.5 h-2.5 mr-0.5" />use auto</button>}
             </div>
           )}

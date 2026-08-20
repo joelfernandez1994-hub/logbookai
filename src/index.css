@@ -90,3 +90,31 @@
     @apply bg-background text-foreground font-body;
   }
 }
+
+@layer base {
+  /* iOS: no text selection / tap flash on controls and icons */
+  button, a, nav, svg, [role="button"] {
+    -webkit-user-select: none;
+    user-select: none;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  /* Respect the notch / status bar on mobile */
+  .safe-top { padding-top: env(safe-area-inset-top); }
+  .safe-bottom { padding-bottom: env(safe-area-inset-bottom); }
+
+  /* Hide browser scrollbars on the page itself */
+  html, body {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+  html::-webkit-scrollbar, body::-webkit-scrollbar {
+    display: none;
+  }
+}
+
+@layer utilities {
+  /* Hide scrollbars on scroll containers while keeping scroll behavior */
+  .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+  .no-scrollbar::-webkit-scrollbar { display: none; }
+}

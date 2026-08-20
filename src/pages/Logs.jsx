@@ -105,7 +105,7 @@ export default function Logs() {
       <h1 className="text-xl font-bold mb-3">Daily Logs</h1>
 
       {/* Last 8 days */}
-      <div className="flex gap-2 overflow-x-auto pb-2 mb-3">
+      <div className="flex gap-2 overflow-x-auto no-scrollbar pb-2 mb-3">
         {dayKeys.map((dk) => {
           const d = new Date(dk + 'T12:00:00');
           const dc = certifications.find(c => c.log_date === dk && !c.is_superseded);
@@ -171,8 +171,8 @@ export default function Logs() {
               <span className="text-xs text-slate-600 flex-1 truncate">
                 {[r.city, r.state].filter(Boolean).join(', ')}{r.remark ? ` — ${r.remark}` : ''}
               </span>
-              <button onClick={() => setEditing(events.find(e => e.id === r.id))}><Pencil className="w-3.5 h-3.5 text-slate-400" /></button>
-              <button onClick={() => removeEvent(r.id)}><Trash2 className="w-3.5 h-3.5 text-red-400" /></button>
+              <button onClick={() => setEditing(events.find(e => e.id === r.id))} className="inline-flex items-center justify-center min-h-[44px] min-w-[44px] text-slate-400 hover:text-slate-700"><Pencil className="w-3.5 h-3.5" /></button>
+              <button onClick={() => removeEvent(r.id)} className="inline-flex items-center justify-center min-h-[44px] min-w-[44px] text-red-400 hover:text-red-600"><Trash2 className="w-3.5 h-3.5" /></button>
             </div>
           ))}
           {grid.remarks.length === 0 && <div className="text-xs text-slate-400 text-center py-4">No events recorded.</div>}

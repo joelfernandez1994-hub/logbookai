@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
-import { User, Building2, Truck, Bot, FileText, Settings, LogOut, Shield, ClipboardCheck } from 'lucide-react';
+import { User, Building2, Truck, Bot, FileText, Settings, LogOut, Shield, ClipboardCheck, Trash2 } from 'lucide-react';
 
 export default function More() {
   const { profile, carrier, equipment, reload } = useDriverData(9);
@@ -20,6 +20,9 @@ export default function More() {
   const [showProfile, setShowProfile] = useState(false);
   const [showCarrier, setShowCarrier] = useState(false);
   const [showEquipment, setShowEquipment] = useState(false);
+  const [showDelete, setShowDelete] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteErr, setDeleteErr] = useState('');
 
   const loadAll = async () => {
     const used = await getAIUsage();
@@ -39,6 +42,22 @@ export default function More() {
   useEffect(() => { loadAll(); }, [profile]);
 
   const logout = async () => { await base44.auth.logout(); window.location.href = '/login'; };
+
+  const handleDelete = async () => {
+    setDeleting(true); setDeleteErr('');
+    try {
+      if (typeof base44.auth.deleteAccount === 'function') {
+        await base44.auth.deleteAccount();
+        window.location.href = '/login';
+      } else {
+        setDeleteErr('Account deletion is not available in this build. Contact support to delete your account.');
+      }
+    } catch (e) {
+      setDeleteErr(e.message || 'Could not delete account.');
+    } finally {
+      setDeleting(false);
+    }
+  };
 
   const updateSetting = async (key, value) => {
     if (settings?.id) await base44.entities.AppSettings.update(settings.id, { [key]: value });
@@ -138,6 +157,7 @@ export default function More() {
       )}
 
       <Button variant="outline" className="w-full" onClick={logout}><LogOut className="w-4 h-4 mr-2" /> Log Out</Button>
+      <Button variant="ghost" className="w-full text-red-600 mt-2" onClick={() => setShowDelete(true)}><Trash2 className="w-4 h-4 mr-2" /> Delete Account</Button>
 
       <p className="text-[11px] text-slate-400 text-center mt-4">LogbookAI v1 · Not an ELD · {settings?.ruleset_version || 'US Interstate Property - Standard Federal Rules'}</p>
 
@@ -145,6 +165,18 @@ export default function More() {
       <ProfileDialog open={showProfile} onOpenChange={setShowProfile} profile={profile} onSave={(d) => saveDriverProfile(d, profile).then(reload)} />
       <CarrierDialog open={showCarrier} onOpenChange={setShowCarrier} carrier={carrier} onSave={(d) => saveCarrierProfile(d, carrier).then(reload)} />
       <EquipmentDialog open={showEquipment} onOpenChange={setShowEquipment} onSave={(d) => saveEquipment(d).then(reload)} />
+
+      <Dialog open={showDelete} onOpenChange={setShowDelete}>
+        <DialogContent className="max-w-md">
+          <DialogHeader><DialogTitle>Delete Account</DialogTitle></DialogHeader>
+          <p className="text-sm text-slate-600">This permanently deletes your account and all of your LogbookAI data. This action cannot be undone.</p>
+          {deleteErr && <p className="text-xs text-red-600">{deleteErr}</p>}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowDelete(false)}>Cancel</Button>
+            <Button variant="destructive" disabled={deleting} onClick={handleDelete}>{deleting ? 'Deleting…' : 'Delete Permanently'}</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
@@ -180,9 +212,14 @@ function CarrierDialog({ open, onOpenChange, carrier, onSave }) {
           <div><Label>USDOT</Label><Input value={d.usdot_number || ''} onChange={(e) => setD({ ...d, usdot_number: e.target.value })} /></div>
           <div><Label>Home Terminal Timezone</Label><Input value={d.home_terminal_timezone || ''} onChange={(e) => setD({ ...d, home_terminal_timezone: e.target.value })} /></div>
           <div><Label>HOS Cycle</Label>
-            <select className="w-full border rounded p-2" value={d.hos_cycle || '70_8'} onChange={(e) => setD({ ...d, hos_cycle: e.target.value })}>
-              <option value="60_7">60 hr / 7 day</option><option value="70_8">70 hr / 8 day</option>
-            </select>
+            <div className="grid grid-cols-2 gap-2">
+              {[{ v: '60_7', l: '60 hr / 7 day' }, { v: '70_8', l: '70 hr / 8 day' }].map((c) => (
+                <button key={c.v} type="button" onClick={() => setD({ ...d, hos_cycle: c.v })}
+                  className={`p-3 rounded-lg border text-sm font-medium ${(d.hos_cycle || '70_8') === c.v ? 'border-slate-900 bg-slate-50' : 'border-slate-200'}`}>
+                  {c.l}
+                </button>
+              ))}
+            </div>
           </div>
           <p className="text-xs text-amber-600">Changing the cycle will not rewrite prior certified calculations.</p>
         </div>
@@ -201,9 +238,14 @@ function EquipmentDialog({ open, onOpenChange, onSave }) {
       <DialogContent className="max-w-md">
         <DialogHeader><DialogTitle>Add Equipment</DialogTitle></DialogHeader>
         <div className="space-y-3">
-          <select className="w-full border rounded p-2" value={type} onChange={(e) => setType(e.target.value)}>
-            <option value="tractor">Tractor</option><option value="trailer">Trailer</option>
-          </select>
+          <div className="grid grid-cols-2 gap-2">
+            {[{ v: 'tractor', l: 'Tractor' }, { v: 'trailer', l: 'Trailer' }].map((t) => (
+              <button key={t.v} type="button" onClick={() => setType(t.v)}
+                className={`p-3 rounded-lg border text-sm font-medium ${type === t.v ? 'border-slate-900 bg-slate-50' : 'border-slate-200'}`}>
+                {t.l}
+              </button>
+            ))}
+          </div>
           <div><Label>Unit #</Label><Input value={unit} onChange={(e) => setUnit(e.target.value)} /></div>
         </div>
         <DialogFooter><Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
