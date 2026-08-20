@@ -2,7 +2,6 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useDriverData } from '@/hooks/useDriverData';
 import { saveDriverProfile, saveCarrierProfile, saveEquipment } from '@/lib/driverData';
-import { insertEventsBatch } from '@/lib/timelineWriter';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -44,18 +43,17 @@ export default function Onboarding() {
     await saveEquipment({ type: 'tractor', unit_number: tractor.unit_number, is_default: true });
     if (trailer.unit_number) await saveEquipment({ type: 'trailer', unit_number: trailer.unit_number, is_default: true });
 
-    // Seed prior history as ON_DUTY events for each entered day (only if chosen).
-    // Routed through the canonical writer so overlaps/duplicates cannot arise.
+    // Seed prior history as ON_DUTY events for each entered day (only if chosen)
     if (enteredPrior === 'enter') {
       const cycleDays = carrierData.hos_cycle === '70_8' ? 8 : 7;
-      const priorEvents = [];
       for (let i = 1; i <= cycleDays; i++) {
         const hours = parseFloat(priorDays[priorDays.length - i]) || 0;
         if (hours > 0) {
           const day = new Date(Date.now() - i * 24 * 3600000);
           const start = new Date(day.getFullYear(), day.getMonth(), day.getDate(), 8, 0);
           const end = new Date(start.getTime() + hours * 3600000);
-          priorEvents.push({
+          const { createHistoricalEvent } = await import('@/lib/driverData');
+          await createHistoricalEvent({
             log_date: day.toISOString().slice(0, 10),
             start_timestamp: start.toISOString(),
             end_timestamp: end.toISOString(),
@@ -64,9 +62,6 @@ export default function Onboarding() {
             method_of_creation: 'Manual',
           });
         }
-      }
-      if (priorEvents.length) {
-        await insertEventsBatch([], priorEvents, { methodOfCreation: 'Manual', reason: 'Prior history (onboarding)' });
       }
     }
     setSaving(false);

@@ -123,18 +123,7 @@ export async function insertEventsBatch(allEvents, newEvents, opts = {}) {
   const t = new Date();
   const working = [...(allEvents || [])];
   const merged = { creates: [], updates: [], deletes: [] };
-  // Map a pending create's synthetic id -> its index in merged.creates. A later
-  // proposed event that truncates/deletes an EARLIER proposed event must fold
-  // onto the pending create directly; otherwise the op is emitted as a DB
-  // update/delete against an id that does not exist yet (no-op), leaving an
-  // overlapping/duplicate record behind.
-  const pendingIdx = new Map();
   let dupHit = false, invalidHit = false;
-  const newId = () => `__new_${pendingIdx.size}_${Math.random().toString(36).slice(2, 8)}`;
-  const rebuildIndex = () => {
-    pendingIdx.clear();
-    merged.creates.forEach((c, i) => { if (c.id) pendingIdx.set(c.id, i); });
-  };
   for (const ne of (newEvents || [])) {
     if (!ne || !ne.start_timestamp || !ne.duty_status) continue;
     const ev = {
@@ -146,34 +135,16 @@ export async function insertEventsBatch(allEvents, newEvents, opts = {}) {
     const ops = planInsert(working, ev, t);
     if (ops.invalid) { invalidHit = true; continue; }
     if (ops.duplicate) { dupHit = true; continue; }
-
-    // Fold updates onto pending creates; emit DB updates only for real records.
-    for (const u of ops.updates) {
-      if (pendingIdx.has(u.id)) Object.assign(merged.creates[pendingIdx.get(u.id)], u.data);
-      else merged.updates.push(u);
-    }
-    // Fold deletes onto pending creates; emit DB deletes only for real records.
-    let foldedDelete = false;
-    for (const id of ops.deletes) {
-      if (pendingIdx.has(id)) { merged.creates.splice(pendingIdx.get(id), 1); foldedDelete = true; }
-      else merged.deletes.push(id);
-    }
-    if (foldedDelete) rebuildIndex();
-
-    // Mirror the post-op state into the working copy so the next proposed event
-    // sees earlier proposed events as if already persisted.
     const delSet = new Set(ops.deletes);
     for (const u of ops.updates) {
       const idx = working.findIndex(e => e && e.id === u.id);
       if (idx >= 0) working[idx] = { ...working[idx], ...u.data };
     }
     for (let i = working.length - 1; i >= 0; i--) if (delSet.has(working[i]?.id)) working.splice(i, 1);
-    for (const c of ops.creates) {
-      const withId = { ...c, id: c.id || newId() };
-      working.push(withId);
-      pendingIdx.set(withId.id, merged.creates.length);
-      merged.creates.push(withId);
-    }
+    for (const c of ops.creates) working.push({ ...c, id: c.id || `__new_${merged.creates.length}` });
+    merged.creates.push(...ops.creates);
+    merged.updates.push(...ops.updates);
+    merged.deletes.push(...ops.deletes);
   }
   const res = await applyTimelineOps(merged, allEvents, opts);
   return { ...res, ops: merged, duplicate: dupHit, invalid: invalidHit };

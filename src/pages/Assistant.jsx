@@ -2,8 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useDriverData } from '@/hooks/useDriverData';
 import { base44 } from '@/api/base44Client';
-import { getAppSettings, getAIUsage } from '@/lib/driverData';
-import { insertEventsBatch } from '@/lib/timelineWriter';
+import { getAppSettings, getAIUsage, changeStatus, createHistoricalEvent } from '@/lib/driverData';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Mic, Send, Check, X, Bot, AlertTriangle, RotateCcw } from 'lucide-react';
@@ -73,27 +72,31 @@ export default function Assistant() {
 
   const applyChanges = async () => {
     if (!result?.proposed_changes?.length) { reload(); return; }
-    try {
-      const method = transcript ? 'Voice AI' : 'Typed AI';
-      const lastIdx = result.proposed_changes.length - 1;
-      // Canonical writer ends any ongoing event at the first proposed start and
-      // splits neighbors so no overlap/duplicate can be introduced.
-      const proposed = result.proposed_changes.map((c, i) => ({
-        log_date: c.log_date || new Date(c.start_timestamp).toISOString().slice(0, 10),
+    // End current ongoing event first
+    const ongoing = events.find(e => e.is_ongoing);
+    if (ongoing) {
+      const firstStart = result.proposed_changes[0].start_timestamp;
+      await base44.entities.DutyStatusEvent.update(ongoing.id, { end_timestamp: firstStart, is_ongoing: false });
+    }
+    for (let i = 0; i < result.proposed_changes.length; i++) {
+      const c = result.proposed_changes[i];
+      const isLast = i === result.proposed_changes.length - 1;
+      await createHistoricalEvent({
+        log_date: new Date(c.start_timestamp).toISOString().slice(0, 10),
         start_timestamp: c.start_timestamp,
-        end_timestamp: c.end_timestamp || (i === lastIdx ? null : c.end_timestamp),
+        end_timestamp: c.end_timestamp || (isLast ? null : c.end_timestamp),
         duty_status: c.duty_status,
         city: c.city || '', state: c.state || '', remark: c.remark || '',
-        is_ongoing: i === lastIdx && !c.end_timestamp,
-        method_of_creation: method,
+        method_of_creation: transcript ? 'Voice AI' : 'Typed AI',
+        is_ongoing: isLast && !c.end_timestamp,
         carrier_name: carrier?.carrier_name,
-      }));
-      await insertEventsBatch(events, proposed, { carrierName: carrier?.carrier_name, methodOfCreation: method, reason: 'AI Apply' });
-      setResult({ ...result, applied: true });
-      reload();
-    } catch (e) {
-      setError(e.message || 'Failed to apply changes.');
+      });
+      if (isLast && !c.end_timestamp) {
+        await base44.entities.DutyStatusEvent.update((await base44.entities.DutyStatusEvent.filter({ method_of_creation: transcript ? 'Voice AI' : 'Typed AI' }, '-start_timestamp', 1))[0]?.id, { is_ongoing: true });
+      }
     }
+    setResult({ ...result, applied: true });
+    reload();
   };
 
   return (
