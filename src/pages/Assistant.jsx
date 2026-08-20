@@ -5,6 +5,7 @@ import { getAppSettings, getAIUsage, changeStatus, createHistoricalEvent } from 
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Mic, Send, Check, X, Bot, AlertTriangle, RotateCcw } from 'lucide-react';
+import Header from '@/components/Header';
 
 const STATUS_LABELS = { OFF_DUTY: 'Off DUTY', SLEEPER_BERTH: 'Sleeper', DRIVING: 'Driving', ON_DUTY: 'On Duty' };
 
@@ -91,7 +92,7 @@ export default function Assistant() {
 
   return (
     <div className="px-4 pt-6 pb-6">
-      <h1 className="text-xl font-bold mb-1">LogbookAI Assistant</h1>
+      <Header title="LogbookAI Assistant" />
       <div className="text-xs text-slate-500 mb-3">
         AI Assistant — {usage.allowance - usage.used} of {usage.allowance} free requests remaining this month
       </div>

@@ -14,6 +14,7 @@ import { validateProposal, hasBlocking } from '@/lib/proposalValidation';
 import { useEffect } from 'react';
 import DailyMilesCard from '@/components/DailyMilesCard';
 import TimelineGapNotice from '@/components/TimelineGapNotice';
+import PullToRefresh from '@/components/PullToRefresh';
 
 const STATUS_LABELS = { OFF_DUTY: 'Off Duty', SLEEPER_BERTH: 'Sleeper', DRIVING: 'Driving', ON_DUTY: 'On Duty' };
 const STATUSES = ['OFF_DUTY', 'SLEEPER_BERTH', 'DRIVING', 'ON_DUTY'];
@@ -101,7 +102,7 @@ export default function Logs() {
   };
 
   return (
-    <div className="px-4 pt-6">
+    <PullToRefresh onRefresh={reload} className="px-4 pt-6">
       <h1 className="text-xl font-bold mb-3">Daily Logs</h1>
 
       {/* Last 8 days */}
@@ -186,7 +187,7 @@ export default function Logs() {
 
       <EventEditor open={!!editing || adding} event={editing} prefill={prefill} onClose={() => { setEditing(null); setAdding(false); setPrefill(null); }}
         onSave={saveEdit} tz={tz} carrier={carrier} equipment={equipment} isCertified={isCertified} />
-    </div>
+    </PullToRefresh>
   );
 }
 

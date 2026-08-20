@@ -12,6 +12,7 @@ import PreTripDialog from '@/components/PreTripDialog';
 import { Truck, Clock, Coffee, RotateCcw, AlertTriangle, MapPin, Bot, FileCheck, ClipboardList, ClipboardCheck, Gauge, Moon, Gavel, HelpCircle } from 'lucide-react';
 import DailyMilesCard from '@/components/DailyMilesCard';
 import TimelineGapNotice from '@/components/TimelineGapNotice';
+import PullToRefresh from '@/components/PullToRefresh';
 
 const STATUS_LABELS = {
   OFF_DUTY: 'OFF DUTY',
@@ -35,6 +36,8 @@ export default function Today() {
   const [pendingStatus, setPendingStatus] = useState(null);
   const [now, setNow] = useState(new Date());
   const [dvirs, setDvirs] = useState([]);
+  const [optimisticStatus, setOptimisticStatus] = useState(null);
+  const [optimisticSince, setOptimisticSince] = useState(null);
 
   const tz = carrier?.home_terminal_timezone || profile?.home_terminal_timezone || 'America/Chicago';
   const cycleType = carrier?.hos_cycle || '70_8';
@@ -62,6 +65,8 @@ export default function Today() {
 
   const todayKey = dateKeyInTz(now, tz);
   const current = hos.currentStatus;
+  const displayStatus = optimisticStatus || current?.duty_status;
+  const displaySince = optimisticStatus ? optimisticSince : current?.start;
 
   // Pre-trip check: before allowing DRIVING, ensure a pre-trip on-duty event exists in current tour
   const tourStart = hos.driving.tourStart;
@@ -80,6 +85,8 @@ export default function Today() {
   };
 
   const applyChange = async (details) => {
+    setOptimisticStatus(details.duty_status);
+    setOptimisticSince(new Date());
     await changeStatus(details.duty_status, {
       city: details.city, state: details.state, remark: details.remark,
       tractor_number: details.tractor_number, trailer_numbers: details.trailer_numbers,
@@ -87,7 +94,9 @@ export default function Today() {
     });
     setStatusOpen(false);
     setPretripOpen(false);
-    reload();
+    await reload();
+    setOptimisticStatus(null);
+    setOptimisticSince(null);
   };
 
   const handlePretripConfirm = async ({ start_timestamp, duration_min, city, state, alreadySatisfied }) => {
@@ -116,7 +125,7 @@ export default function Today() {
   const restartProgress = hos.restart.inProgress;
 
   return (
-    <div className="px-4 pt-6">
+    <PullToRefresh onRefresh={reload} className="px-4 pt-6">
       {/* Header */}
       <div className="flex items-center justify-between mb-4">
         <div>
@@ -132,10 +141,10 @@ export default function Today() {
       {/* Current status */}
       <div className="rounded-xl border border-slate-200 bg-white p-4 mb-3">
         <div className="text-xs text-slate-500 font-medium">CURRENT DUTY STATUS</div>
-        {current ? (
+        {(displayStatus || current) ? (
           <div className="flex items-baseline gap-2 mt-1">
-            <span className="text-2xl font-bold">{STATUS_LABELS[current.duty_status]}</span>
-            <span className="text-sm text-slate-500">Since {fmtClock(current.start, tz)}</span>
+            <span className="text-2xl font-bold">{STATUS_LABELS[displayStatus || current.duty_status]}</span>
+            <span className="text-sm text-slate-500">Since {fmtClock(displaySince || current.start, tz)}</span>
           </div>
         ) : (
           <div className="text-2xl font-bold mt-1 text-slate-400">No active status</div>
@@ -264,6 +273,6 @@ export default function Today() {
         drivingStart={pendingStatus ? new Date() : null}
         defaultCity={pendingStatus?.city} defaultState={pendingStatus?.state}
         onConfirm={handlePretripConfirm} />
-    </div>
+    </PullToRefresh>
   );
 }

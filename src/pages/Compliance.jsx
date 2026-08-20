@@ -5,6 +5,7 @@ import { computeHOS, runComplianceCheck, getDailyGrid, dateKeyInTz, hasSufficien
 import { base44 } from '@/api/base44Client';
 import { Button } from '@/components/ui/button';
 import { AlertTriangle, CheckCircle2, Info, FileWarning, Lightbulb, RefreshCw } from 'lucide-react';
+import Header from '@/components/Header';
 
 const STATUS_LABELS = { OFF_DUTY: 'Off Duty', SLEEPER_BERTH: 'Sleeper', DRIVING: 'Driving', ON_DUTY: 'On Duty' };
 
@@ -54,8 +55,8 @@ export default function Compliance() {
 
   return (
     <div className="px-4 pt-6">
-      <div className="flex items-center justify-between mb-3">
-        <h1 className="text-xl font-bold">Compliance Check</h1>
+      <Header title="Compliance Check" />
+      <div className="flex justify-end mb-3">
         <Button size="sm" variant="outline" onClick={runCheck} disabled={checking}>
           <RefreshCw className="w-3.5 h-3.5 mr-1" /> {checking ? 'Checking...' : 'Re-check'}
         </Button>
