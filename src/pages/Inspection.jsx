@@ -53,9 +53,9 @@ export default function Inspection() {
   const buildDoc = (dates, options) => generateLogsPdf(profile, carrier, events, dates, tz, certifications, cycleType, { ...options, dvirs, documents });
 
   return (
-    <div className="px-4 pt-6 min-h-screen bg-slate-900 text-white">
+    <div className="px-4 min-h-screen bg-slate-900 text-white safe-top">
       {/* Inspection banner */}
-      <div className="flex items-center justify-between bg-slate-800 rounded-xl p-3 mb-4 border border-slate-700">
+      <div className="flex items-center justify-between bg-slate-800 rounded-xl p-3 mb-4 mt-6 border border-slate-700">
         <div className="flex items-center gap-2">
           <ShieldCheck className="w-5 h-5 text-blue-400" />
           <div>

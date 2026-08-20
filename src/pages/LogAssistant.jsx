@@ -9,6 +9,7 @@ import AssistantInput from '@/components/logAssistant/AssistantInput';
 import ProposalReview from '@/components/logAssistant/ProposalReview';
 import WhatCanIDoPanel from '@/components/logAssistant/WhatCanIDoPanel';
 import MakeItLegal from '@/components/logAssistant/MakeItLegal';
+import Header from '@/components/Header';
 import { Button } from '@/components/ui/button';
 import { Bot, Gavel, HelpCircle, AlertTriangle, Mic } from 'lucide-react';
 
@@ -204,7 +205,7 @@ export default function LogAssistant() {
 
   return (
     <div className="px-4 pt-6 pb-6 max-w-2xl mx-auto">
-      <h1 className="text-xl font-bold mb-1">Manual Log Assistant</h1>
+      <Header title="Manual Log Assistant" />
       <p className="text-xs text-slate-500 mb-3">LogbookAI checks the information you provide against the configured FMCSA HOS rules. LogbookAI is not an ELD. The driver remains responsible for the accuracy, completeness, and certification of the record. {remaining} of {usage.allowance} AI requests remaining.</p>
 
       <div className="grid grid-cols-3 gap-2 mb-3">

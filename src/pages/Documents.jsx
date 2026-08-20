@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Camera, Upload, Fuel, FileText, Check, X, AlertTriangle } from 'lucide-react';
+import Header from '@/components/Header';
 
 export default function Documents() {
   const { profile, carrier, events, reload } = useDriverData(9);
@@ -83,7 +84,7 @@ export default function Documents() {
 
   return (
     <div className="px-4 pt-6 pb-6">
-      <h1 className="text-xl font-bold mb-3">Documents</h1>
+      <Header title="Documents" />
 
       <div className="flex gap-2 mb-4">
         <button onClick={() => setTab('fuel')} className={`flex items-center gap-1 px-3 py-2 rounded-lg text-sm font-medium ${tab === 'fuel' ? 'bg-slate-900 text-white' : 'border border-slate-200'}`}>
