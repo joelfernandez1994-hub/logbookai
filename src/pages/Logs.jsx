@@ -158,7 +158,7 @@ export default function Logs() {
         <div className="flex items-center justify-between mb-2">
           <div className="font-semibold text-sm">Events</div>
           <div className="flex gap-1">
-            <Button size="sm" variant="outline" onClick={() => navigate('/log-assistant')}><Bot className="w-3.5 h-3.5 mr-1" /> Assistant</Button>
+            <Button size="sm" variant="outline" onClick={() => navigate('/log-assistant', { state: { returnTo: '/logs' } })}><Bot className="w-3.5 h-3.5 mr-1" /> Assistant</Button>
             <Button size="sm" variant="outline" onClick={() => { setPrefill(null); setAdding(true); }}><Plus className="w-3.5 h-3.5 mr-1" /> Add Event</Button>
           </div>
         </div>

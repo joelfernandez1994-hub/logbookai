@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useDriverData } from '@/hooks/useDriverData';
 import { base44 } from '@/api/base44Client';
 import { getAppSettings, getAIUsage, saveDriverProfile, saveCarrierProfile, saveEquipment } from '@/lib/driverData';
+import { purgeMyData } from '@/lib/accountDeletion';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -46,15 +47,26 @@ export default function More() {
   const handleDelete = async () => {
     setDeleting(true); setDeleteErr('');
     try {
+      // 1. Read the current authenticated user first.
+      const me = await base44.auth.me();
+
+      // 2. If the SDK exposes a native self-service account-deletion method, use it.
       if (typeof base44.auth.deleteAccount === 'function') {
         await base44.auth.deleteAccount();
-        window.location.href = '/login';
       } else {
-        setDeleteErr('Account deletion is not available in this build. Contact support to delete your account.');
+        // 3. Fallback: the Base44 SDK has no end-user auth-account deletion API
+        //    (end-user removal is a builder-dashboard-only action). As the
+        //    supported in-app fallback, purge all of the user's owned app data,
+        //    then revoke the session below so the deleted user is not left
+        //    authenticated.
+        await purgeMyData(me.id);
       }
+
+      // 4. Clear auth state and send the user to the login/welcome screen.
+      try { await base44.auth.logout(); } catch (e) {}
+      window.location.href = '/login';
     } catch (e) {
-      setDeleteErr(e.message || 'Could not delete account.');
-    } finally {
+      setDeleteErr(e?.message || 'Could not delete account. Please try again or contact support.');
       setDeleting(false);
     }
   };
