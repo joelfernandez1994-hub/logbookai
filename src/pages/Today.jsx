@@ -10,6 +10,8 @@ import { getDvirs } from '@/lib/dvirData';
 import { Button } from '@/components/ui/button';
 import PreTripDialog from '@/components/PreTripDialog';
 import { Truck, Clock, Coffee, RotateCcw, AlertTriangle, MapPin, Bot, FileCheck, ClipboardList, ClipboardCheck, Gauge, Moon, Gavel, HelpCircle } from 'lucide-react';
+import DailyMilesCard from '@/components/DailyMilesCard';
+import TimelineGapNotice from '@/components/TimelineGapNotice';
 
 const STATUS_LABELS = {
   OFF_DUTY: 'OFF DUTY',
@@ -36,6 +38,7 @@ export default function Today() {
 
   const tz = carrier?.home_terminal_timezone || profile?.home_terminal_timezone || 'America/Chicago';
   const cycleType = carrier?.hos_cycle || '70_8';
+  const speedProfile = profile?.trip_planning_speed_profile || 'conservative';
 
   const historyComplete = useMemo(() => hasSufficientCycleHistory(events, cycleType, profile?.entered_prior_history, tz, now), [events, cycleType, profile, tz, now]);
   const openSafetyDefects = useMemo(() => (dvirs || []).filter(d => d.has_safety_defect && d.repair_status === 'pending'), [dvirs]);
@@ -144,6 +147,9 @@ export default function Today() {
         )}
         <div className="text-[11px] text-slate-400 mt-1">Home terminal: {carrier?.home_terminal_timezone}</div>
       </div>
+
+      <TimelineGapNotice events={events} dateStr={todayKey} tz={tz} now={now} />
+      <DailyMilesCard events={events} dateStr={todayKey} tz={tz} speedProfile={speedProfile} />
 
       {/* HOS Clocks */}
       <div className="grid grid-cols-2 gap-2 mb-3">

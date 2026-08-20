@@ -12,6 +12,8 @@ import { Label } from '@/components/ui/label';
 import { ChevronLeft, ChevronRight, BadgeCheck, AlertTriangle, Pencil, Trash2, Plus, Bot } from 'lucide-react';
 import { validateProposal, hasBlocking } from '@/lib/proposalValidation';
 import { useEffect } from 'react';
+import DailyMilesCard from '@/components/DailyMilesCard';
+import TimelineGapNotice from '@/components/TimelineGapNotice';
 
 const STATUS_LABELS = { OFF_DUTY: 'Off Duty', SLEEPER_BERTH: 'Sleeper', DRIVING: 'Driving', ON_DUTY: 'On Duty' };
 const STATUSES = ['OFF_DUTY', 'SLEEPER_BERTH', 'DRIVING', 'ON_DUTY'];
@@ -23,14 +25,26 @@ export default function Logs() {
   const [certifications, setCertifications] = useState([]);
   const [editing, setEditing] = useState(null);
   const [adding, setAdding] = useState(false);
+  const [prefill, setPrefill] = useState(null);
 
   const tz = carrier?.home_terminal_timezone || 'America/Chicago';
   const cycleType = carrier?.hos_cycle || '70_8';
+  const speedProfile = profile?.trip_planning_speed_profile || 'conservative';
 
   const loadCerts = async () => {
     setCertifications(await getCertifications(9));
   };
   useEffect(() => { loadCerts(); }, []);
+
+  // "Add record" from a timeline gap notice: prefill the Add Event dialog.
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const fs = params.get('fill_start');
+    const fe = params.get('fill_end');
+    const date = params.get('date');
+    if (date) setSelectedDate(new Date(date + 'T12:00:00'));
+    if (fs) { setPrefill({ start_timestamp: fs, end_timestamp: fe }); setAdding(true); }
+  }, []);
 
   const dateStr = useMemo(() => dateKeyInTz(selectedDate, tz), [selectedDate, tz]);
   const grid = useMemo(() => getDailyGrid(events, dateStr, tz), [events, dateStr, tz]);
@@ -119,6 +133,9 @@ export default function Logs() {
         <Button variant="ghost" size="sm" onClick={() => shiftDay(1)}><ChevronRight className="w-4 h-4" /></Button>
       </div>
 
+      <TimelineGapNotice events={events} dateStr={dateStr} tz={tz} now={new Date()} />
+      <DailyMilesCard events={events} dateStr={dateStr} tz={tz} speedProfile={speedProfile} />
+
       {/* Graph */}
       <div className="rounded-xl border border-slate-200 bg-white p-3 mb-3">
         <RodsGraphEditor events={events} dateStr={dateStr} timezone={tz} carrier={carrier} equipment={equipment} profile={profile} certifications={certifications} reload={reload} />
@@ -141,7 +158,7 @@ export default function Logs() {
           <div className="font-semibold text-sm">Events</div>
           <div className="flex gap-1">
             <Button size="sm" variant="outline" onClick={() => navigate('/log-assistant')}><Bot className="w-3.5 h-3.5 mr-1" /> Assistant</Button>
-            <Button size="sm" variant="outline" onClick={() => setAdding(true)}><Plus className="w-3.5 h-3.5 mr-1" /> Add Event</Button>
+            <Button size="sm" variant="outline" onClick={() => { setPrefill(null); setAdding(true); }}><Plus className="w-3.5 h-3.5 mr-1" /> Add Event</Button>
           </div>
         </div>
         <div className="space-y-1">
@@ -167,26 +184,28 @@ export default function Logs() {
         {isCertified ? 'Certified ✓' : 'Certify Log'}
       </Button>
 
-      <EventEditor open={!!editing || adding} event={editing} onClose={() => { setEditing(null); setAdding(false); }}
+      <EventEditor open={!!editing || adding} event={editing} prefill={prefill} onClose={() => { setEditing(null); setAdding(false); setPrefill(null); }}
         onSave={saveEdit} tz={tz} carrier={carrier} equipment={equipment} isCertified={isCertified} />
     </div>
   );
 }
 
-function EventEditor({ open, event, onClose, onSave, tz, carrier, equipment, isCertified }) {
+function EventEditor({ open, event, prefill, onClose, onSave, tz, carrier, equipment, isCertified }) {
+  const pfStart = prefill?.start_timestamp ? new Date(prefill.start_timestamp).toISOString().slice(0, 16) : '';
+  const pfEnd = prefill?.end_timestamp ? new Date(prefill.end_timestamp).toISOString().slice(0, 16) : '';
   const [status, setStatus] = useState(event?.duty_status || 'DRIVING');
-  const [start, setStart] = useState(event ? new Date(event.start_timestamp).toISOString().slice(0, 16) : '');
-  const [end, setEnd] = useState(event?.end_timestamp ? new Date(event.end_timestamp).toISOString().slice(0, 16) : '');
+  const [start, setStart] = useState(event ? new Date(event.start_timestamp).toISOString().slice(0, 16) : pfStart);
+  const [end, setEnd] = useState(event?.end_timestamp ? new Date(event.end_timestamp).toISOString().slice(0, 16) : pfEnd);
   const [city, setCity] = useState(event?.city || '');
   const [stateVal, setStateVal] = useState(event?.state || '');
   const [remark, setRemark] = useState(event?.remark || '');
 
   useEffect(() => {
     setStatus(event?.duty_status || 'DRIVING');
-    setStart(event ? new Date(event.start_timestamp).toISOString().slice(0, 16) : '');
-    setEnd(event?.end_timestamp ? new Date(event.end_timestamp).toISOString().slice(0, 16) : '');
+    setStart(event ? new Date(event.start_timestamp).toISOString().slice(0, 16) : (prefill?.start_timestamp ? new Date(prefill.start_timestamp).toISOString().slice(0, 16) : ''));
+    setEnd(event?.end_timestamp ? new Date(event.end_timestamp).toISOString().slice(0, 16) : (prefill?.end_timestamp ? new Date(prefill.end_timestamp).toISOString().slice(0, 16) : ''));
     setCity(event?.city || ''); setStateVal(event?.state || ''); setRemark(event?.remark || '');
-  }, [event, open]);
+  }, [event, open, prefill]);
 
   const save = () => {
     const data = {

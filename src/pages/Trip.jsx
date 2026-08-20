@@ -4,6 +4,9 @@ import { useDriverData } from '@/hooks/useDriverData';
 import { computeHOS, fmtDur, dateKeyInTz } from '@/lib/hosEngine';
 import { truckEtaHours, speedProfileLabel } from '@/lib/proposalValidation';
 import { limitingClock, maxDriveMiles, buildComplianceEdits } from '@/lib/complianceStop';
+import { firstEventOfDay, loggedFuelStops, getFuelReceipts } from '@/lib/tripSync';
+import DailyMilesCard from '@/components/DailyMilesCard';
+import TimelineGapNotice from '@/components/TimelineGapNotice';
 import { base44 } from '@/api/base44Client';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -21,12 +24,35 @@ export default function Trip() {
   const [estimating, setEstimating] = useState(false);
   const [stops, setStops] = useState([]);
   const [trips, setTrips] = useState([]);
+  const [fuelReceipts, setFuelReceipts] = useState([]);
+  const [pickupTouched, setPickupTouched] = useState(false);
+  const [stopsTouched, setStopsTouched] = useState(false);
 
   const tz = carrier?.home_terminal_timezone || 'America/Chicago';
   const cycleType = carrier?.hos_cycle || '70_8';
   const speedProfile = profile?.trip_planning_speed_profile || 'conservative';
   const now = new Date();
+  const todayKey = dateKeyInTz(now, tz);
   const hos = computeHOS(events, cycleType, tz, now, { historyComplete: profile?.entered_prior_history });
+
+  // Auto-sync from logs: pickup starts where the day started; fuel stops the
+  // driver already logged are pre-filled. Both are skipped once the driver
+  // edits those fields manually.
+  useEffect(() => { getFuelReceipts(30).then(setFuelReceipts); }, []);
+  useEffect(() => {
+    if (pickupTouched) return;
+    const first = firstEventOfDay(events, todayKey, tz);
+    if (first && first.city) setPickup({ city: first.city, state: first.state || '' });
+  }, [events, todayKey, tz, pickupTouched]);
+  useEffect(() => {
+    if (stopsTouched) return;
+    const fs = loggedFuelStops(events, fuelReceipts, todayKey, tz);
+    setStops(fs.map(s => ({
+      type: 'fuel',
+      city: `${s.city}${s.state ? `, ${s.state}` : ''}`,
+      note: s.source === 'receipt' ? 'From fuel receipt' : 'From logged fuel event',
+    })));
+  }, [events, fuelReceipts, todayKey, tz, stopsTouched]);
 
   // Auto compliance assist — on by default; suggestions are generated
   // automatically but never applied without the driver's approval.
@@ -107,6 +133,7 @@ export default function Trip() {
 
   const applyEdits = () => {
     if (!edits) return;
+    setStopsTouched(true);
     setStops(prev => [...prev, { type: 'rest', city: edits.stopEvent.city, note: edits.stopEvent.note }]);
     setApplied(true);
   };
@@ -131,7 +158,10 @@ export default function Trip() {
   return (
     <div className="px-4 pt-6">
       <h1 className="text-xl font-bold mb-3">Trip Planner</h1>
-      <p className="text-xs text-slate-500 mb-4">Planned activity. Stops here are NOT official RODS until you confirm them when they occur.</p>
+      <p className="text-xs text-slate-500 mb-4">Planned activity. Stops here are NOT official RODS until you confirm them when they occur. Pickup and fuel stops auto-fill from your log; edit them to override.</p>
+
+      <TimelineGapNotice events={events} dateStr={todayKey} tz={tz} now={now} />
+      <DailyMilesCard events={events} dateStr={todayKey} tz={tz} speedProfile={speedProfile} />
 
       {/* Auto compliance assist setting */}
       <div className="rounded-xl border border-slate-200 bg-white p-3 mb-4 flex items-center justify-between">
@@ -170,8 +200,8 @@ export default function Trip() {
       <div className="rounded-xl border border-slate-200 bg-white p-4 mb-4 space-y-3">
         <div className="font-medium text-sm">Pickup</div>
         <div className="grid grid-cols-2 gap-2">
-          <Input placeholder="City" value={pickup.city} onChange={(e) => setPickup({ ...pickup, city: e.target.value })} />
-          <Input placeholder="ST" maxLength={2} value={pickup.state} onChange={(e) => setPickup({ ...pickup, state: e.target.value.toUpperCase() })} />
+          <Input placeholder="City" value={pickup.city} onChange={(e) => { setPickupTouched(true); setPickup({ ...pickup, city: e.target.value }); }} />
+          <Input placeholder="ST" maxLength={2} value={pickup.state} onChange={(e) => { setPickupTouched(true); setPickup({ ...pickup, state: e.target.value.toUpperCase() }); }} />
         </div>
         <Input type="datetime-local" value={pickupTime} onChange={(e) => setPickupTime(e.target.value)} />
         <div className="font-medium text-sm pt-2">Delivery</div>
@@ -269,16 +299,17 @@ export default function Trip() {
       <div className="rounded-xl border border-slate-200 bg-white p-3 mb-4">
         <div className="flex items-center justify-between mb-2">
           <div className="font-medium text-sm">Planned Stops</div>
-          <Button size="sm" variant="outline" onClick={() => setStops([...stops, { type: 'fuel', city: '', note: '' }])}>
+          <Button size="sm" variant="outline" onClick={() => { setStopsTouched(true); setStops([...stops, { type: 'fuel', city: '', note: '' }]); }}>
             <Plus className="w-3.5 h-3.5 mr-1" /> Add
           </Button>
         </div>
         {stops.map((s, i) => (
           <div key={i} className="flex gap-2 mb-2">
-            <select value={s.type} onChange={(e) => { const n = [...stops]; n[i].type = e.target.value; setStops(n); }} className="border rounded p-1 text-xs">
+            <select value={s.type} onChange={(e) => { setStopsTouched(true); const n = [...stops]; n[i].type = e.target.value; setStops(n); }} className="border rounded p-1 text-xs">
               <option value="fuel">Fuel</option><option value="rest">Rest</option><option value="break">Break</option>
             </select>
-            <Input placeholder="City, ST" value={s.city} onChange={(e) => { const n = [...stops]; n[i].city = e.target.value; setStops(n); }} className="text-xs" />
+            <Input placeholder="City, ST" value={s.city} onChange={(e) => { setStopsTouched(true); const n = [...stops]; n[i].city = e.target.value; setStops(n); }} className="text-xs" />
+            {s.note && <span className="text-[10px] text-slate-400 self-center">{s.note}</span>}
           </div>
         ))}
         <p className="text-[11px] text-slate-400 mt-1">Planned stops are not official RODS. Confirm with "Log This Event" when they happen.</p>
