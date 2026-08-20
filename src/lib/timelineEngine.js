@@ -132,36 +132,40 @@ export function findDuplicates(rawEvents) {
 // Returns { segments, conflicts, resolvedOverlaps, changed }.
 // ---------------------------------------------------------------------------
 export function resolveOverlaps(rawEvents, now = new Date()) {
-  const segs = sortByStart((rawEvents || []).map(e => toSegment(e, now)).filter(Boolean));
+  const all = sortByStart((rawEvents || []).map(e => toSegment(e, now)).filter(Boolean));
   const conflicts = [];
-  // same-start different-status conflicts
-  for (let i = 0; i < segs.length; i++) {
-    for (let j = i + 1; j < segs.length; j++) {
-      if (segs[j].start.getTime() !== segs[i].start.getTime()) break;
-      if (segs[j].duty_status !== segs[i].duty_status) {
+  const segs = [];
+  for (const cur of all) {
+    const prev = segs[segs.length - 1];
+    if (prev && prev.start.getTime() === cur.start.getTime()) {
+      if (prev.duty_status !== cur.duty_status) {
         conflicts.push({
-          start: new Date(segs[i].start),
-          statuses: [segs[i].duty_status, segs[j].duty_status],
+          start: new Date(cur.start),
+          statuses: [...new Set([prev.duty_status, cur.duty_status])],
         });
       }
+      continue; // newest authored record wins; conflict remains blocking
     }
+    segs.push(cur);
   }
-  // truncate overlaps where prev started earlier
+
   const out = [];
   let resolvedOverlaps = 0;
+  let filledGaps = 0;
   let changed = false;
   for (let i = 0; i < segs.length; i++) {
     const cur = { ...segs[i], end: new Date(segs[i].end) };
     const next = segs[i + 1];
-    if (next && cur.end > next.start && cur.start.getTime() < next.start.getTime()) {
-      cur.end = new Date(next.start);
-      resolvedOverlaps++;
-      changed = true;
-    }
-    if (cur.end <= cur.start && !cur.is_ongoing) { changed = true; continue; }
-    out.push(cur);
+    if (cur.start >= now) continue; // future RODS never enter elapsed calculations
+    const naturalEnd = next && next.start < now ? next.start : now;
+    if (cur.end > naturalEnd) resolvedOverlaps++;
+    if (cur.end < naturalEnd) filledGaps++;
+    if (cur.end.getTime() !== naturalEnd.getTime()) changed = true;
+    cur.end = new Date(naturalEnd);
+    cur.is_ongoing = !next || next.start >= now;
+    if (cur.end > cur.start) out.push(cur);
   }
-  return { segments: out, conflicts, resolvedOverlaps, changed };
+  return { segments: out, conflicts, resolvedOverlaps, filledGaps, changed };
 }
 
 // ---------------------------------------------------------------------------
@@ -178,6 +182,7 @@ export function normalizeTimeline(rawEvents, now = new Date()) {
     duplicates,
     conflicts: res.conflicts,
     resolvedOverlaps: res.resolvedOverlaps,
+    filledGaps: res.filledGaps,
     changed: res.changed || res.conflicts.length > 0 || duplicates.length > 0,
   };
 }
@@ -255,20 +260,55 @@ export function validateTimeline(rawEvents, opts = {}) {
       issues.push({ type: 'negative_duration', severity: 'blocking', message: 'An event ends before it starts.' });
     }
   }
+
+  let hasOverlap = norm.conflicts.length > 0;
+  let hasElapsedGap = false;
+  let totalCoveredDuration = 0;
+  let isContinuousThroughNow = false;
+  let expectedDuration = null;
   if (dateStr && timezone) {
-    const dt = dailyTotals(rawEvents, dateStr, timezone, t);
-    if (dt.totalHours > 24.01) {
-      issues.push({ type: 'daily_total', severity: 'blocking', message: `Day totals exceed 24 hours (${dt.totalHours.toFixed(2)}h).` });
+    const [y, m, d] = dateStr.split('-').map(Number);
+    const utcMid = Date.UTC(y, m - 1, d);
+    const dayStart = new Date(utcMid - tzOffsetMs(new Date(utcMid), timezone));
+    const dayEnd = new Date(dayStart.getTime() + 24 * H);
+    const isCurrent = dayStart <= t && t < dayEnd;
+    const targetEnd = isCurrent ? t : dayEnd;
+    expectedDuration = Math.max(0, targetEnd - dayStart);
+    const clipped = norm.segments
+      .filter(s => s.end > dayStart && s.start < targetEnd)
+      .map(s => ({ start: new Date(Math.max(s.start, dayStart)), end: new Date(Math.min(s.end, targetEnd)) }))
+      .sort((a, b) => a.start - b.start);
+    let cursor = dayStart.getTime();
+    for (const s of clipped) {
+      if (s.start.getTime() > cursor + 1000) hasElapsedGap = true;
+      if (s.start.getTime() < cursor - 1000) hasOverlap = true;
+      const from = Math.max(cursor, s.start.getTime());
+      if (s.end.getTime() > from) totalCoveredDuration += s.end.getTime() - from;
+      cursor = Math.max(cursor, s.end.getTime());
     }
-    if (dt.isCurrent && dt.totalHours > (t.getTime() - startOfDayInTz(t, timezone).getTime()) / H + 0.01) {
-      issues.push({ type: 'daily_total', severity: 'blocking', message: 'Current-day totals exceed elapsed time.' });
-    }
-    if (!dt.isFuture && !dt.isCurrent && Math.abs(dt.totalHours - 24) > 0.01) {
-      issues.push({ type: 'daily_total', severity: 'warning', message: `Completed day totals ${dt.totalHours.toFixed(2)}h (expected 24h).` });
-    }
+    if (cursor < targetEnd.getTime() - 1000) hasElapsedGap = true;
+    isContinuousThroughNow = !hasElapsedGap && !hasOverlap && cursor >= targetEnd.getTime() - 1000;
+    if (hasElapsedGap) issues.push({ type: 'elapsed_gap', severity: 'blocking', message: 'Elapsed duty-status coverage has an unassigned gap.' });
+    const hours = totalCoveredDuration / H;
+    if (hours > expectedDuration / H + 0.01) issues.push({ type: 'daily_total', severity: 'blocking', message: 'Covered time exceeds elapsed time.' });
+    if (!isCurrent && Math.abs(hours - 24) > 0.01) issues.push({ type: 'daily_total', severity: 'blocking', message: `Completed day totals ${hours.toFixed(2)}h (expected 24h).` });
   }
+
+  const hasDuplicateCoverage = duplicates.length > 0;
   const blocking = issues.filter(i => i.severity === 'blocking');
-  return { valid: blocking.length === 0, issues, segments: norm.segments, duplicates, conflicts: norm.conflicts };
+  return {
+    valid: blocking.length === 0,
+    issues,
+    segments: norm.segments,
+    duplicates,
+    conflicts: norm.conflicts,
+    hasOverlap,
+    hasDuplicateCoverage,
+    hasElapsedGap,
+    totalCoveredDuration,
+    isContinuousThroughNow,
+    expectedDuration,
+  };
 }
 
 // Can the HOS engine confidently compute on this timeline? (item 34)
@@ -405,6 +445,7 @@ export function repairTimeline(rawEvents, now = new Date()) {
     repaired,
     removedDuplicates: duplicates.reduce((n, g) => n + g.length - 1, 0),
     resolvedOverlaps: norm.resolvedOverlaps,
+    filledGaps: norm.filledGaps,
     conflicts: norm.conflicts,
   };
 }

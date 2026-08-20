@@ -50,7 +50,12 @@ export default function RodsGraphEditor({
   }).map((e) => e.end_timestamp ? e : { ...e, end_timestamp: new Date(dayEndMs).toISOString() }),
   [events, dayStartMs, dayEndMs]);
 
-  const daySegs = useMemo(() => daySegments(dayEvents, dayStartMs, dayEndMs), [dayEvents, dayStartMs, dayEndMs]);
+  const daySegs = useMemo(() => ROW_ORDER.flatMap((status) =>
+    grid.rows[status].map((s) => ({
+      id: s.id, status, startMs: s.start.getTime(), endMs: s.end.getTime(),
+      startHour: s.startHour, endHour: s.endHour,
+    }))
+  ).sort((a, b) => a.startMs - b.startMs), [grid]);
   const totals = grid.totals;
 
   const [mode, setMode] = useState('view');

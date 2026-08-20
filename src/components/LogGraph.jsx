@@ -1,4 +1,5 @@
-import { computeHOS, getDailyGrid, fmtHours } from '@/lib/hosEngine';
+import { getDailyGrid, fmtHours } from '@/lib/hosEngine';
+import { validateTimeline } from '@/lib/timelineEngine';
 
 const STATUS_LABELS = {
   OFF_DUTY: 'OFF DUTY',
@@ -18,7 +19,9 @@ const STATUS_COLORS = {
 const ROW_ORDER = ['OFF_DUTY', 'SLEEPER_BERTH', 'DRIVING', 'ON_DUTY'];
 
 export default function LogGraph({ events, dateStr, timezone, interactive = true }) {
-  const grid = getDailyGrid(events, dateStr, timezone);
+  const now = new Date();
+  const grid = getDailyGrid(events, dateStr, timezone, now);
+  const validation = validateTimeline(events, { dateStr, timezone, now });
 
   const W = 1000;
   const H = 300;
@@ -97,8 +100,8 @@ export default function LogGraph({ events, dateStr, timezone, interactive = true
           </div>
         ))}
       </div>
-      <div className="text-center text-xs text-muted-foreground mt-1">
-        Total: {grid.totalHours.toFixed(2)} hr {Math.abs(grid.totalHours - 24) < 0.01 ? '(complete)' : '(incomplete)'}
+      <div className="text-center text-xs text-muted-foreground mt-1" data-testid="timeline-validation">
+        Total: {grid.totalHours.toFixed(2)} hr · {validation.valid ? 'continuous, valid' : 'correction required'}
       </div>
       <div className="mt-3 space-y-1">
         {grid.remarks.map((r, i) => (

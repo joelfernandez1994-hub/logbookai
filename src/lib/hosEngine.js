@@ -25,7 +25,7 @@
 // and driving time moving forward as the tiebreak.
 // ============================================================================
 
-import { normalizedSegments, dailyTotals as canonicalDailyTotals } from './timelineEngine';
+import { normalizedSegments, dailyTotals as canonicalDailyTotals, validateTimeline } from './timelineEngine';
 
 const MS = {
   MINUTE: 60 * 1000,
@@ -808,7 +808,21 @@ export function fmtHoursShort(ms) {
 // MASTER: compute full HOS status from events (split-aware).
 // ---------------------------------------------------------------------------
 export function computeHOS(rawEvents, cycleType, timezone, now = new Date(), opts = {}) {
-  const segments = normalizeEvents(rawEvents, now);
+  const validity = validateTimeline(rawEvents, { now, dateStr: dateKeyInTz(now, timezone), timezone });
+  if (!validity.valid) {
+    return {
+      calculable: false, validity, currentStatus: null,
+      governing: { type: 'none', referenceTime: null, split: { status: 'none', note: 'Timeline correction required.' } },
+      driving: { applicable: false, drivingUsedMs: 0, drivingRemainingMs: 0, expiresAt: null, tourStart: null },
+      window14: { applicable: false, windowStart: null, elapsedMs: 0, remainingMs: 0, expiresAt: null },
+      break30: { drivingAccumulatedMs: 0, remainingBeforeBreakMs: 0, satisfied: false, breakRequired: false },
+      cycle: { cycleType, cycleLimit: cycleType === '60_7' ? 60 : 70, cycleDays: cycleType === '60_7' ? 7 : 8, cycleUsedHours: 0, cycleRemainingHours: 0, returningTomorrowHours: 0, dailyTotals: [] },
+      restart: { completed: null, inProgress: null },
+      split: { status: 'none', note: 'Timeline correction required.' },
+      historyComplete: false,
+    };
+  }
+  const segments = validity.segments;
   const governing = computeGoverningReset(segments, now);
   const driving = computeDrivingLimit(segments, now, governing);
   const window14 = compute14HourWindow(segments, now, governing);
@@ -823,6 +837,8 @@ export function computeHOS(rawEvents, cycleType, timezone, now = new Date(), opt
   }
 
   return {
+    calculable: true,
+    validity,
     currentStatus,
     governing,
     driving,

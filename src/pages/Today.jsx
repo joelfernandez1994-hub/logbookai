@@ -6,6 +6,7 @@ import LogGraph from '@/components/LogGraph';
 import ClockCard from '@/components/ClockCard';
 import StatusChangeSheet from '@/components/StatusChangeSheet';
 import { changeStatus, insertEvent } from '@/lib/timelineWriter';
+import { validateTimeline } from '@/lib/timelineEngine';
 import { getDvirs } from '@/lib/dvirData';
 import { Button } from '@/components/ui/button';
 import PreTripDialog from '@/components/PreTripDialog';
@@ -46,6 +47,7 @@ export default function Today() {
   const historyComplete = useMemo(() => hasSufficientCycleHistory(events, cycleType, profile?.entered_prior_history, tz, now), [events, cycleType, profile, tz, now]);
   const openSafetyDefects = useMemo(() => (dvirs || []).filter(d => d.has_safety_defect && d.repair_status === 'pending'), [dvirs]);
 
+  const timelineValidation = useMemo(() => validateTimeline(events, { now, dateStr: dateKeyInTz(now, tz), timezone: tz }), [events, now, tz]);
   const hos = useMemo(() => computeHOS(events, cycleType, tz, now, { historyComplete }),
     [events, cycleType, tz, now, historyComplete]);
 
@@ -154,6 +156,11 @@ export default function Today() {
         <div className="text-[11px] text-muted-foreground mt-1">Home terminal: {carrier?.home_terminal_timezone}</div>
       </div>
 
+      {!timelineValidation.valid && (
+        <div className="rounded-xl border border-error/40 bg-error-surface p-3 mb-3 text-xs text-error-surface-foreground flex gap-2">
+          <AlertTriangle className="w-4 h-4 shrink-0" /> Timeline correction required. HOS calculations are unavailable until elapsed coverage is continuous and conflict-free.
+        </div>
+      )}
       <TimelineGapNotice events={events} dateStr={todayKey} tz={tz} now={now} />
       <DailyMilesCard events={events} dateStr={todayKey} tz={tz} speedProfile={speedProfile} />
 

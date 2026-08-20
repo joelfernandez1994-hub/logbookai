@@ -334,7 +334,95 @@ export function isFabricatedViolationFix(existing, proposedCorrections) {
 }
 
 // ---------------------------------------------------------------------------
-// Convert a future plan (from AI) into planned TripStops — NOT actual events.
+// FUTURE PLAN — deterministic legal ETA simulation from ACTUAL HOS outputs.
+// `hos` is the split-aware result from computeHOS; route driving time comes from
+// OSRM, never OpenAI. The simulator respects the available 11h drive clock,
+// 14h window, 30-minute-break clock, cycle balance, required 10h/34h rest, and
+// an available/active split-sleeper pairing where it legally improves the plan.
+// ---------------------------------------------------------------------------
+export function earliestLegalEta(hos, driveMsTotal, now = new Date()) {
+  if (!hos?.calculable) return { eta: null, segments: [], error: 'Timeline correction required.' };
+  const cycleLimitMs = (hos.cycle.cycleLimit || 70) * H;
+  const start = new Date(now).getTime();
+  let t = start;
+  let remaining = Math.max(0, Number(driveMsTotal) || 0);
+  let driveLeft = Math.max(0, hos.driving.drivingRemainingMs || 0);
+  let windowLeft = Math.max(0, hos.window14.remainingMs || 0);
+  let cycleLeft = Math.max(0, (hos.cycle.cycleRemainingHours || 0) * H);
+  let driveSinceBreak = Math.max(0, hos.break30.drivingAccumulatedMs || 0);
+  let splitUsed = hos.split?.status === 'active';
+  const segments = [];
+  const add = (type, ms, duty_status, label) => {
+    segments.push({
+      type, duty_status, label,
+      start_offset_min: Math.round((t - start) / MIN),
+      duration_min: Math.round(ms / MIN),
+    });
+    t += ms;
+  };
+
+  let guard = 0;
+  while (remaining > 1000 && guard++ < 80) {
+    const untilBreak = Math.max(0, 8 * H - driveSinceBreak);
+    const stint = Math.min(remaining, driveLeft, windowLeft, cycleLeft, untilBreak);
+    if (stint > 1000) {
+      add('drive', stint, 'DRIVING', 'Drive');
+      remaining -= stint;
+      driveLeft -= stint;
+      windowLeft -= stint;
+      cycleLeft -= stint;
+      driveSinceBreak += stint;
+    }
+    if (remaining <= 1000) break;
+
+    if (driveSinceBreak >= 8 * H - 1000 && driveLeft > 0 && windowLeft >= 30 * MIN && cycleLeft >= 30 * MIN) {
+      add('break', 30 * MIN, 'ON_DUTY', '30-Minute Break');
+      windowLeft -= 30 * MIN;
+      cycleLeft -= 30 * MIN;
+      driveSinceBreak = 0;
+      continue;
+    }
+    if (cycleLeft <= 1000) {
+      add('offduty', 34 * H, 'OFF_DUTY', '34-Hour Restart');
+      driveLeft = 11 * H;
+      windowLeft = 14 * H;
+      cycleLeft = cycleLimitMs;
+      driveSinceBreak = 0;
+      continue;
+    }
+    if (!splitUsed && hos.split?.status === 'available' &&
+        hos.split.additionalMs > 0 &&
+        hos.split.projectedDrivingRemainingMs > 0 &&
+        hos.split.projectedWindowRemainingMs > 0) {
+      add('sleeper', hos.split.additionalMs, 'SLEEPER_BERTH', 'Complete Optional Split-Sleeper Pair');
+      driveLeft = Math.max(0, hos.split.projectedDrivingRemainingMs);
+      windowLeft = Math.max(0, hos.split.projectedWindowRemainingMs);
+      driveSinceBreak = 0;
+      splitUsed = true;
+      continue;
+    }
+    add('sleeper', 10 * H, 'SLEEPER_BERTH', '10-Hour Sleeper Reset');
+    driveLeft = 11 * H;
+    windowLeft = 14 * H;
+    driveSinceBreak = 0;
+  }
+
+  return {
+    eta: new Date(t),
+    segments,
+    inputs: {
+      drivingAvailableMs: hos.driving.drivingRemainingMs,
+      windowAvailableMs: hos.window14.remainingMs,
+      drivingSinceBreakMs: hos.break30.drivingAccumulatedMs,
+      cycleAvailableHours: hos.cycle.cycleRemainingHours,
+      splitStatus: hos.split?.status || 'none',
+      routeDrivingMs: driveMsTotal,
+    },
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Convert a future plan into planned TripStops — NOT actual events.
 // Returns stops only; the page may save them as a planned Trip.
 // ---------------------------------------------------------------------------
 export function planToStops(plan, now = new Date()) {

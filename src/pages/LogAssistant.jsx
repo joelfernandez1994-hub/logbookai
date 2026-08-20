@@ -3,8 +3,8 @@ import { useDriverData } from '@/hooks/useDriverData';
 import { base44 } from '@/api/base44Client';
 import { getAppSettings, getAIUsage } from '@/lib/driverData';
 import { computeHOS, fmtDur, startOfDayInTz, dateKeyInTz } from '@/lib/hosEngine';
-import { whatCanIDo, computeProposedHOS } from '@/lib/logAssistant';
-import { addRouteWarning, fetchRoute, DEFAULT_SPEED_PROFILE } from '@/lib/proposalValidation';
+import { whatCanIDo, computeProposedHOS, earliestLegalEta } from '@/lib/logAssistant';
+import { addRouteWarning, fetchRoute, truckEtaHours, DEFAULT_SPEED_PROFILE } from '@/lib/proposalValidation';
 import { insertEventsBatch, editEvent, replaceRangeEvents } from '@/lib/timelineWriter';
 import { parseVoiceCommand } from '@/lib/voiceParser';
 import { validateInterpretResult, isQuestionIntent, shouldOfferApply, replaceDayRange } from '@/lib/aiLayer';
@@ -258,6 +258,50 @@ export default function LogAssistant() {
   };
 
   // --- HOS CHECK: FUTURE ---
+  // OpenAI parses only origin/destination/requested arrival. OSRM supplies the
+  // road route and earliestLegalEta uses the actual deterministic HOS outputs.
+  const handleFuture = async (text) => {
+    if (!hos.calculable) { setError('Correct the duty timeline before calculating a legal future plan.'); return false; }
+    setBusy(true); setError('');
+    try {
+      const res = await base44.functions.invoke('manualLogAssistant', {
+        mode: 'parse_future', input: text, source: 'typed', hosSummary,
+      });
+      if (res.status === 429 || res.data?.limit) { setError(res.data?.error || 'AI limit reached.'); return false; }
+      if (res.data?.unavailable || res.data?.error) { setError(res.data?.error || 'LogbookAI is temporarily unavailable.'); return false; }
+      const parsed = res.data;
+      if (parsed.refuses_fabrication) {
+        setFutureResult({ feasibility: 'not_feasible', plan: [], earliest_eta: null, notes: parsed.notes, refuses_fabrication: true, origin: parsed.origin, destination: parsed.destination });
+        return true;
+      }
+      if (!parsed.origin || !parsed.destination) { setError('Please include an origin and destination.'); return false; }
+      const route = await fetchRoute(parsed.origin, parsed.destination);
+      const driveHours = truckEtaHours(route, speedProfile);
+      if (!route || !Number.isFinite(driveHours)) { setError('Could not calculate the road route. Check the city and state.'); return false; }
+      const legal = earliestLegalEta(hos, driveHours * 3600000, new Date());
+      if (!legal.eta) { setError(legal.error || 'A legal ETA could not be calculated.'); return false; }
+      const requested = parsed.requestedArrival ? new Date(parsed.requestedArrival) : null;
+      const feasible = !requested || legal.eta <= requested;
+      setFutureResult({
+        origin: parsed.origin,
+        destination: parsed.destination,
+        requested_arrival: parsed.requestedArrival,
+        earliest_eta: legal.eta.toISOString(),
+        feasibility: feasible ? 'feasible' : 'not_feasible',
+        plan: legal.segments.map((s, i) => ({ ...s, sequence: i + 1, city: '', state: '' })),
+        notes: `OSRM road route: ${Math.round(route.miles)} mi · truck planning time: ${driveHours.toFixed(1)} hr. ${parsed.notes || ''}`.trim(),
+        deterministic_inputs: legal.inputs,
+      });
+      const used = await getAIUsage(); setUsage(u => ({ ...u, used }));
+      return true;
+    } catch (e) {
+      setError('LogbookAI is temporarily unavailable. Your request has not been applied.');
+      return false;
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const savePlan = async (stops) => {
     if (!stops?.length) return;
     const trip = await base44.entities.Trip.create({
@@ -360,7 +404,7 @@ export default function LogAssistant() {
             </>
           ) : (
             <>
-              <AssistantInput onSend={(text) => callAssistant('make_legal_future', text, {})} disabled={busy || remaining <= 0} />
+              <AssistantInput onSend={handleFuture} disabled={busy || remaining <= 0} />
               {busy && <div className="text-sm text-muted-foreground text-center py-4"><Gavel className="w-4 h-4 inline animate-pulse mr-1" /> Building a compliant plan…</div>}
               {!busy && <MakeItLegal mode="future" future={futureResult} tz={tz} onSavePlan={savePlan} />}
             </>
