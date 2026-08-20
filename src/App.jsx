@@ -23,12 +23,10 @@ import Trip from './pages/Trip';
 import Inspection from './pages/Inspection';
 import More from './pages/More';
 import Compliance from './pages/Compliance';
-import Assistant from './pages/Assistant';
 import Documents from './pages/Documents';
 import EngineTests from './pages/EngineTests';
 import VehicleInspection from './pages/VehicleInspection';
 import LogAssistant from './pages/LogAssistant';
-import VoiceLog from './pages/VoiceLog';
 
 const AuthenticatedApp = () => {
   const { isLoadingAuth, isLoadingPublicSettings, authError, navigateToLogin } = useAuth();
@@ -80,12 +78,10 @@ const AuthenticatedApp = () => {
           <Route path="/inspection" element={<Inspection />} />
           <Route path="/more" element={<More />} />
           <Route path="/compliance" element={<Compliance />} />
-          <Route path="/assistant" element={<Assistant />} />
           <Route path="/documents" element={<Documents />} />
           <Route path="/engine-tests" element={<EngineTests />} />
           <Route path="/vehicle-inspection" element={<VehicleInspection />} />
           <Route path="/log-assistant" element={<LogAssistant />} />
-          <Route path="/voice-log" element={<VoiceLog />} />
         </Route>
       </Route>
       <Route path="*" element={<PageNotFound />} />
