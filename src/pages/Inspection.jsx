@@ -117,9 +117,9 @@ export default function Inspection() {
           <div>14-hr window remaining: {fmtDur(hosForDay.window14.remainingMs)}</div>
           <div className="col-span-2 text-slate-400 pt-1">
             {hosForDay.split.status === 'active'
-              ? 'Split sleeper active — 11-hr & 14-hr clocks recalculated from the qualifying pairing.'
-              : hosForDay.split.status === 'incomplete'
-                ? 'Split sleeper incomplete — not applied.'
+              ? 'Split sleeper active (optional) — 11-hr & 14-hr clocks recalculated from the qualifying pairing.'
+              : hosForDay.split.status === 'available'
+                ? 'Split sleeper available — one qualifying period on record; pairing not yet completed (optional).'
                 : 'No split-sleeper pairing in effect.'}
           </div>
         </div>

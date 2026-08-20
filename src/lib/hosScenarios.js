@@ -43,10 +43,10 @@ export function formatPairingLabel(split) {
     const sl = s.status === 'SLEEPER_BERTH' ? 'Sleeper' : 'Off';
     return `${fmtHoursShort(f.duration)} ${fl} + ${fmtHoursShort(s.duration)} ${sl}`;
   }
-  if (split.status === 'incomplete' && split.firstPeriod) {
+  if (split.status === 'available' && split.firstPeriod) {
     const f = split.firstPeriod;
     const fl = f.status === 'SLEEPER_BERTH' ? 'Sleeper' : 'Off';
-    return `Incomplete (${fmtHoursShort(f.duration)} ${fl}; need ${fmtHoursShort(split.requiredSecondMs)})`;
+    return `Available (${fmtHoursShort(f.duration)} ${fl}; need ${fmtHoursShort(split.requiredSecondMs)})`;
   }
   return 'None (invalid)';
 }
@@ -116,7 +116,7 @@ export const SCENARIOS = [
   },
   {
     id: 5,
-    name: 'Incomplete — first period only (7h sleeper, no second)',
+    name: 'Available — first period only (7h sleeper, no second)',
     events: [
       ev(20, 10, 'OFF_DUTY'),      // 10h full reset
       ev(10, 8, 'DRIVING'),
@@ -124,9 +124,9 @@ export const SCENARIOS = [
       ev(1, 0, 'DRIVING'),
     ],
     expected: {
-      pairing: 'Incomplete (7h Sleeper; need 3h)',
+      pairing: 'Available (7h Sleeper; need 3h)',
       driveAccumH: 3, driveRemH: 8, windowRemH: 4, cycleRemH: 67,
-      splitStatus: 'incomplete', violation: false,
+      splitStatus: 'available', violation: false,
     },
   },
   {

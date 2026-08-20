@@ -294,11 +294,14 @@ export function selectAuthoritativeSplit(pairings, segments, now) {
 }
 
 // ---------------------------------------------------------------------------
-// Detect an incomplete split: a qualifying first period (>=7h consecutive
-// sleeper) exists but no later block completes the 10h combined requirement.
-// Reported (never applied) so the driver knows what is still required.
+// Detect a SINGLE qualifying split-sleeper period (>=7h consecutive sleeper)
+// that has not yet been paired. Per FMCSA §395.1(g) the split is an OPTIONAL
+// optimization, never a requirement — so this is reported as INFORMATIONAL
+// ("Split Sleeper Available"), not a warning. The driver is told how much
+// additional qualifying rest would complete a pairing and what the 11-hr /
+// 14-hr availability is projected to become at completion. Nothing is applied.
 // ---------------------------------------------------------------------------
-export function detectIncompleteSplit(blocks, tFullMs) {
+export function detectIncompleteSplit(blocks, tFullMs, segments, now) {
   const eligible = blocks.filter(
     b => b.duration >= MS.SPLIT_MIN && b.duration < MS.QUAL_REST && b.end.getTime() > tFullMs
   );
@@ -319,15 +322,27 @@ export function detectIncompleteSplit(blocks, tFullMs) {
       const required = MS.SPLIT_FULL - c.duration;
       const already = partialSecond ? partialSecond.duration : 0;
       const moreNeeded = Math.max(0, required - already);
+      // Project the 11h/14h availability IF the driver completes the pairing by
+      // taking the minimum additional qualifying rest now. Reference point
+      // remains the end of the FIRST qualifying period (§395.1(g)).
+      const projSecond = { duration: required, end: new Date(now), start: new Date(now.getTime() - required) };
+      const proj = computeClocksForPairing(
+        segments,
+        { first: c, second: projSecond, combinedMs: c.duration + required, referenceTime: c.end, effectiveTime: now },
+        now
+      );
+      const note = partialSecond
+        ? `Split Sleeper Available — you have a ${fmtDur(c.duration)} qualifying period with ${fmtDur(already)} toward the second. Complete ${fmtDur(moreNeeded)} more qualifying rest to activate the split. This is optional; a full 10-hour rest always works too.`
+        : `Split Sleeper Available — you have a ${fmtDur(c.duration)} qualifying period. Complete a second qualifying period of at least ${fmtDur(required)} to activate the split. This is optional; a full 10-hour rest always works too.`;
       return {
         firstPeriod: periodInfo(c),
         secondPeriod: partialSecond ? periodInfo(partialSecond) : null,
         completedPeriodMs: c.duration,
         requiredSecondMs: required,
         additionalMs: moreNeeded,
-        note: partialSecond
-          ? `Split Sleeper Incomplete — ${fmtDur(c.duration)} qualifying period taken with ${fmtDur(already)} toward the second. Requires ${fmtDur(moreNeeded)} more to complete the split.`
-          : `Split Sleeper Incomplete — qualifying period of ${fmtDur(c.duration)} taken. Requires a second qualifying period of at least ${fmtDur(required)} to complete the split.`,
+        projectedDrivingRemainingMs: proj.drivingRemainingMs,
+        projectedWindowRemainingMs: proj.windowRemainingMs,
+        note,
       };
     }
   }
@@ -336,10 +351,13 @@ export function detectIncompleteSplit(blocks, tFullMs) {
 
 // ---------------------------------------------------------------------------
 // Evaluate the split-sleeper state for the current timeline.
-// Returns { status: 'active'|'incomplete'|'none', ... }.
-//   active: a valid pairing governs; clocks recalculated from the first period.
-//   incomplete: a qualifying first period exists but the split is unfinished.
-//   none: no valid pairing (and no incomplete candidate).
+// Returns { status: 'active'|'available'|'none', ... }.
+//   active:   a valid pairing governs; 11h & 14h recalculated from the first
+//             qualifying period. An OPTIONAL optimization, not a requirement.
+//   available: a single qualifying period exists; reported INFORMATIONALLY so
+//             the driver knows what rest would complete a pairing and what the
+//             projected availability becomes. Never a warning, never mandatory.
+//   none:     no qualifying split-sleeper periods.
 // ---------------------------------------------------------------------------
 export function evaluateSplitSleeper(segments, now = new Date(), blocksArg) {
   const blocks = blocksArg || buildRestBlocksWithSleeper(segments, now);
@@ -365,14 +383,14 @@ export function evaluateSplitSleeper(segments, now = new Date(), blocksArg) {
         secondDuration: p.second.duration,
         combinedMs: p.combinedMs,
         clocks: selected.clocks,
-        note: 'Split Sleeper Active — the 11-hour driving limit and 14-hour window were recalculated using the qualifying paired periods (reference: end of the first qualifying period).',
+        note: 'Split Sleeper Active (optional optimization) — the 11-hour driving limit and 14-hour window were recalculated using the qualifying paired periods (reference: end of the first qualifying period). The 60/70-hour cycle and 30-minute break are unchanged.',
       };
     }
   }
-  const incomplete = detectIncompleteSplit(blocks, tFull);
-  if (incomplete) {
+  const available = detectIncompleteSplit(blocks, tFull, segments, now);
+  if (available) {
     return {
-      status: 'incomplete',
+      status: 'available',
       hasCandidate: true,
       isValid: false,
       pairing: null,
@@ -380,7 +398,7 @@ export function evaluateSplitSleeper(segments, now = new Date(), blocksArg) {
       effectiveTime: null,
       secondDuration: null,
       clocks: null,
-      ...incomplete,
+      ...available,
     };
   }
   return {

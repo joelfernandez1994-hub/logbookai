@@ -75,12 +75,12 @@ export default function WhatCanIDoPanel({ info, tz }) {
         <Row label="34-hour restart completes at" value={info.thirtyFourCompletesAt ? fmtClockShort(info.thirtyFourCompletesAt, tz) : info.restartCompleted ? 'Already complete' : info.restartInProgress ? fmtClockShort(info.restartInProgress.estimatedCompletion, tz) : 'Not in progress'} />
       </Section>
 
-      <Section title="Split sleeper">
+      <Section title="Split sleeper (optional)">
         {info.splitAvailableNow
-          ? <div className="text-xs text-success-surface-foreground">Available now — your existing qualifying periods form a valid split; 11h & 14h clocks are already recalculated.</div>
+          ? <div className="text-xs text-muted-foreground">Active — your qualifying periods form a valid split, so the 11h & 14h clocks are already recalculated. This is an optional optimization; the 60/70-hour cycle is unchanged.</div>
           : info.splitConditional
-            ? <div className="text-xs text-warning-surface-foreground"><div className="font-medium">Would become available if you complete qualifying rest.</div>{info.splitConditional.description}</div>
-            : <div className="text-xs text-muted-foreground">No qualifying split-sleeper periods in your current records.</div>}
+            ? <div className="text-xs text-muted-foreground"><div className="font-medium">{info.splitConditional.label}.</div>{info.splitConditional.description}</div>
+            : <div className="text-xs text-muted-foreground">No qualifying split-sleeper periods in your current records. A split is never required — a full 10-hour rest always works.</div>}
       </Section>
 
       <Section title="Cycle hours returning">

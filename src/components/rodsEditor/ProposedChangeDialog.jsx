@@ -60,7 +60,7 @@ export default function ProposedChangeDialog({ open, isCertified, beforeSegs, af
     { label: '14-hr window remaining', val: fmt(hos.window14?.remainingMs) },
     { label: 'Cycle remaining', val: `${fmtHours(hos.cycle?.cycleRemainingHours)}` },
     { label: '30-min break', val: hos.break30?.breakRequired ? 'Required' : 'OK' },
-    { label: 'Split sleeper', val: hos.split?.status === 'active' ? 'Active' : (hos.split?.status === 'incomplete' ? 'Incomplete' : 'None') },
+    { label: 'Split sleeper', val: hos.split?.status === 'active' ? 'Active' : (hos.split?.status === 'available' ? 'Available' : 'None') },
     { label: '34h restart', val: hos.restart?.completed ? 'Completed' : (hos.restart?.inProgress ? 'In progress' : '—') },
   ] : [];
 

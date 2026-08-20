@@ -183,19 +183,29 @@ export default function Today() {
         </div>
       )}
       {hos.split.status !== 'none' && (
-        <div className={`rounded-xl border p-3 mb-3 ${hos.split.status === 'active' ? 'border-success/40 bg-success-surface' : 'border-warning/50 bg-warning-surface'}`}>
-          <div className={`flex items-center gap-2 text-sm font-medium ${hos.split.status === 'active' ? 'text-success-surface-foreground' : 'text-warning-surface-foreground'}`}>
-            <Moon className="w-4 h-4" /> {hos.split.status === 'active' ? 'Split Sleeper Active' : 'Split Sleeper Incomplete'}
+        <div className="rounded-xl border border-border bg-card p-3 mb-3">
+          <div className="flex items-center gap-2 text-sm font-medium text-card-foreground">
+            <Moon className="w-4 h-4" /> {hos.split.status === 'active' ? 'Split Sleeper Active' : 'Split Sleeper Available'}
+            <span className="ml-auto text-[10px] font-medium text-muted-foreground border border-border rounded px-1.5 py-0.5">Optional</span>
           </div>
-          <div className={`text-xs mt-1 ${hos.split.status === 'active' ? 'text-success-surface-foreground' : 'text-warning-surface-foreground'}`}>{hos.split.note}</div>
+          <div className="text-xs text-muted-foreground mt-1">{hos.split.note}</div>
           {hos.split.status === 'active' && hos.split.firstPeriod && hos.split.secondPeriod && (
-            <div className="text-xs text-success-surface-foreground mt-1">
-              Paired periods: {fmtDur(hos.split.firstPeriod.duration)} {hos.split.firstPeriod.status === 'SLEEPER_BERTH' ? 'Sleeper Berth' : 'Off Duty'} + {fmtDur(hos.split.secondPeriod.duration)} {hos.split.secondPeriod.status === 'SLEEPER_BERTH' ? 'Sleeper Berth' : 'Off Duty'} · 11-hr & 14-hr clocks recalculated from the first qualifying period.
+            <div className="text-xs text-muted-foreground mt-1">
+              Paired periods: {fmtDur(hos.split.firstPeriod.duration)} {hos.split.firstPeriod.status === 'SLEEPER_BERTH' ? 'Sleeper Berth' : 'Off Duty'} + {fmtDur(hos.split.secondPeriod.duration)} {hos.split.secondPeriod.status === 'SLEEPER_BERTH' ? 'Sleeper Berth' : 'Off Duty'} · 11-hr & 14-hr clocks recalculated from the first qualifying period (FMCSA §395.1(g)).
             </div>
           )}
-          {hos.split.status === 'incomplete' && (
-            <div className="text-xs text-warning-surface-foreground mt-1">
-              Required second period: at least {fmtDur(hos.split.requiredSecondMs)}{hos.split.secondPeriod ? ` (${fmtDur(hos.split.secondPeriod.duration)} taken so far, ${fmtDur(hos.split.additionalMs)} more)` : ''}.
+          {hos.split.status === 'available' && (
+            <div className="text-xs text-muted-foreground mt-1 space-y-0.5">
+              <div>
+                Complete the pair with at least {fmtDur(hos.split.requiredSecondMs)} more qualifying rest
+                {hos.split.secondPeriod ? ` (${fmtDur(hos.split.secondPeriod.duration)} taken so far, ${fmtDur(hos.split.additionalMs)} more needed)` : ''}.
+              </div>
+              {hos.split.projectedDrivingRemainingMs != null && hos.split.projectedWindowRemainingMs != null && (
+                <div>
+                  Once completed: ~{fmtDur(Math.max(0, hos.split.projectedDrivingRemainingMs))} driving and ~{fmtDur(Math.max(0, hos.split.projectedWindowRemainingMs))} on the 14-hour window would be available.
+                </div>
+              )}
+              <div className="text-[11px] text-muted-foreground/80">Optional — a full 10-hour rest always works too. Split sleeper does not reset the 60/70-hour cycle.</div>
             </div>
           )}
         </div>

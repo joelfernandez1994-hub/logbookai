@@ -115,14 +115,18 @@ export function whatCanIDo(events, cycleType, tz, now = new Date()) {
     if (elapsed < 34 * H) thirtyFourCompletesAt = new Date(lastBlock.start.getTime() + 34 * H);
   }
 
-  // Split sleeper availability (from actual records only)
+  // Split sleeper is an OPTIONAL optimization (FMCSA §395.1(g)). Surfaced
+  // informationally — never as a warning or requirement.
   const split = evaluateSplitSleeper(segments, now);
   let splitAvailableNow = split.status === 'active';
   let splitConditional = null;
-  if (split.status === 'incomplete' && split.firstPeriod) {
+  if (split.status === 'available' && split.firstPeriod) {
+    const proj = split.projectedDrivingRemainingMs != null && split.projectedWindowRemainingMs != null
+      ? ` Once completed, ~${fmtDur(Math.max(0, split.projectedDrivingRemainingMs))} driving and ~${fmtDur(Math.max(0, split.projectedWindowRemainingMs))} on the 14-hour window would be available.`
+      : '';
     splitConditional = {
-      label: 'Split Sleeper',
-      description: `You have a ${fmtDur(split.firstPeriod.duration)} qualifying period. Complete ${fmtDur(split.requiredSecondMs)} more qualifying rest to activate the split.`,
+      label: 'Split Sleeper Available',
+      description: `You have a ${fmtDur(split.firstPeriod.duration)} qualifying period. Complete ${fmtDur(split.requiredSecondMs)} more qualifying rest to activate the split (optional).${proj}`,
       completesAt: null,
     };
   }
