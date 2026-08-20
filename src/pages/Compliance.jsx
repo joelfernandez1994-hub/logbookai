@@ -1,10 +1,10 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useDriverData } from '@/hooks/useDriverData';
-import { computeHOS, runComplianceCheck, getDailyGrid, dateKeyInTz, hasSufficientCycleHistory } from '@/lib/hosEngine';
-import { base44 } from '@/api/base44Client';
+import { computeHOS, runComplianceCheck, getDailyGrid, dateKeyInTz, hasSufficientCycleHistory, fmtDur, fmtClock } from '@/lib/hosEngine';
+import { whatCanIDo } from '@/lib/logAssistant';
 import { Button } from '@/components/ui/button';
-import { AlertTriangle, CheckCircle2, Info, FileWarning, Lightbulb, RefreshCw } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, Info, FileWarning, Lightbulb, RefreshCw, Truck, Clock, Coffee, Gauge, RotateCcw, Moon, ShieldCheck, XCircle } from 'lucide-react';
 import Header from '@/components/Header';
 
 const STATUS_LABELS = { OFF_DUTY: 'Off Duty', SLEEPER_BERTH: 'Sleeper', DRIVING: 'Driving', ON_DUTY: 'On Duty' };
@@ -16,14 +16,19 @@ export default function Compliance() {
 
   const tz = carrier?.home_terminal_timezone || 'America/Chicago';
   const cycleType = carrier?.hos_cycle || '70_8';
-  const now = new Date();
+  const [now, setNow] = useState(new Date());
+
+  const hos = useMemo(() => computeHOS(events, cycleType, tz, now, { historyComplete: hasSufficientCycleHistory(events, cycleType, profile?.entered_prior_history, tz, now) }), [events, cycleType, tz, now, profile]);
+  const info = useMemo(() => whatCanIDo(events, cycleType, tz, now), [events, cycleType, tz, now]);
 
   const runCheck = () => {
     setChecking(true);
-    const todayKey = dateKeyInTz(now, tz);
+    setNow(new Date());
+    const t = new Date();
+    const todayKey = dateKeyInTz(t, tz);
     const grid = getDailyGrid(events, todayKey, tz);
-    const result = runComplianceCheck(events, cycleType, tz, now, {
-      historyComplete: hasSufficientCycleHistory(events, cycleType, profile?.entered_prior_history, tz, now),
+    const result = runComplianceCheck(events, cycleType, tz, t, {
+      historyComplete: hasSufficientCycleHistory(events, cycleType, profile?.entered_prior_history, tz, t),
       dailyTotal: grid.totalHours,
       firstDrivingWithoutPretrip: false,
       equipmentMissing: false,
@@ -54,17 +59,110 @@ export default function Compliance() {
   );
 
   return (
-    <div className="px-4 pt-6">
-      <Header title="Compliance Check" />
+    <div className="px-4 pt-6 pb-6">
+      <Header title="HOS / Compliance" />
+      <div className="text-[11px] text-muted-foreground mb-3 flex items-center gap-1">
+        <ShieldCheck className="w-3.5 h-3.5" /> Deterministic — computed from your actual log records. No AI request is used.
+      </div>
       <div className="flex justify-end mb-3">
         <Button size="sm" variant="outline" onClick={runCheck} disabled={checking}>
           <RefreshCw className="w-3.5 h-3.5 mr-1" /> {checking ? 'Checking...' : 'Re-check'}
         </Button>
       </div>
 
+      {/* One-click HOS verdict: can drive now, exact blockers, eligible time */}
+      <div className={`rounded-xl border p-3 mb-3 ${info.canDrive ? 'border-success/40 bg-success-surface text-success-surface-foreground' : 'border-error/40 bg-error-surface text-error-surface-foreground'}`}>
+        <div className="flex items-center gap-2">
+          {info.canDrive ? <CheckCircle2 className="w-5 h-5" /> : <XCircle className="w-5 h-5" />}
+          <div className="font-semibold">{info.canDrive ? 'You can drive right now' : 'You cannot drive right now'}</div>
+        </div>
+        {!info.canDrive && info.driveBlockers?.length > 0 && (
+          <div className="mt-2 space-y-1.5 text-xs">
+            {info.driveBlockers.map((b, i) => (
+              <div key={i} className="flex items-start gap-1.5">
+                <AlertTriangle className="w-3.5 h-3.5 mt-0.5 shrink-0" />
+                <div>
+                  <div className="font-medium">{b.rule}</div>
+                  <div>{b.message}</div>
+                  {b.eligibleAt && <div className="opacity-80">Eligible at {fmtClock(b.eligibleAt, tz)}.</div>}
+                </div>
+              </div>
+            ))}
+            {info.driveEligibleAt && (
+              <div className="pt-1 border-t border-error/30 mt-1">
+                Earliest you may drive again: <b>{fmtClock(info.driveEligibleAt, tz)}</b>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* Usable-now vs remaining-on-clock distinction */}
+      <div className="grid grid-cols-2 gap-2 mb-3">
+        <div className="rounded-xl border border-border bg-card p-3">
+          <div className="flex items-center gap-1.5 text-xs text-muted-foreground"><Truck className="w-3.5 h-3.5" /> Driving usable now</div>
+          <div className={`text-xl font-bold mt-1 ${info.usableDriveMs > 0 ? 'text-success' : 'text-muted-foreground'}`}>{fmtDur(info.usableDriveMs)}</div>
+          <div className="text-[10px] text-muted-foreground">what you can actually drive this shift</div>
+        </div>
+        <div className="rounded-xl border border-border bg-card p-3">
+          <div className="flex items-center gap-1.5 text-xs text-muted-foreground"><Truck className="w-3.5 h-3.5" /> Driving remaining</div>
+          <div className="text-xl font-bold mt-1 text-card-foreground">{fmtDur(info.driveRemainingMs)}</div>
+          <div className="text-[10px] text-muted-foreground">11-hour driving limit total</div>
+        </div>
+      </div>
+      {info.usableDriveMs < info.driveRemainingMs && info.usableDriveMs > 0 && (
+        <div className="text-[11px] text-warning-surface-foreground bg-warning-surface rounded-md px-2 py-1 mb-3">
+          Your 14-hour window limits usable driving to {fmtDur(info.usableDriveMs)} even though {fmtDur(info.driveRemainingMs)} remains on the drive clock.
+        </div>
+      )}
+      {info.usableDriveMs === 0 && info.driveRemainingMs > 0 && !info.canDrive && (
+        <div className="text-[11px] text-warning-surface-foreground bg-warning-surface rounded-md px-2 py-1 mb-3">
+          {fmtDur(info.driveRemainingMs)} remains on your driving clock, but you cannot legally use it until the blockers above clear.
+        </div>
+      )}
+
+      {/* HOS clock grid */}
+      <div className="grid grid-cols-2 gap-2 mb-3">
+        <ClockCard icon={Clock} label="14-hour window" value={fmtDur(hos.window14.applicable ? hos.window14.remainingMs : 0)} />
+        <ClockCard icon={Coffee} label="30-min break" value={hos.break30.satisfied ? 'Satisfied' : (hos.break30.breakRequired ? 'Required now' : 'Not yet required')} />
+        <ClockCard icon={Gauge} label={`Cycle ${hos.cycle.cycleLimit}/${hos.cycle.cycleDays}`} value={`${hos.cycle.cycleRemainingHours.toFixed(1)} hr left`} />
+        <ClockCard icon={RotateCcw} label="34-hour restart" value={hos.restart.completed ? 'Completed' : (hos.restart.inProgress ? `${fmtDur(hos.restart.inProgress.remainingMs)} left` : 'Not in progress')} />
+      </div>
+
+      {/* Split sleeper — always informational, never a warning */}
+      {hos.split.status !== 'none' && (
+        <div className="rounded-xl border border-border bg-card p-3 mb-3">
+          <div className="flex items-center gap-2 text-sm font-medium text-card-foreground">
+            <Moon className="w-4 h-4" /> {hos.split.status === 'active' ? 'Split Sleeper Active' : 'Split Sleeper Available'}
+            <span className="ml-auto text-[10px] font-medium text-muted-foreground border border-border rounded px-1.5 py-0.5">Optional</span>
+          </div>
+          <div className="text-xs text-muted-foreground mt-1">{hos.split.note}</div>
+          {hos.split.status === 'available' && hos.split.projectedDrivingRemainingMs != null && hos.split.projectedWindowRemainingMs != null && (
+            <div className="text-xs text-muted-foreground mt-1">
+              If completed: ~{fmtDur(Math.max(0, hos.split.projectedDrivingRemainingMs))} driving and ~{fmtDur(Math.max(0, hos.split.projectedWindowRemainingMs))} on the 14-hour window available.
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Violations (HOS rules) — deterministic */}
+      {issues?.hos?.length > 0 && (
+        <div className="rounded-xl border border-error/40 bg-error-surface p-3 mb-3">
+          <div className="flex items-center gap-2 font-semibold text-sm mb-2 text-error-surface-foreground">
+            <AlertTriangle className="w-4 h-4" /> Violations
+          </div>
+          <div className="space-y-1.5">
+            {issues.hos.map((it, i) => (
+              <div key={i} className="text-xs text-error-surface-foreground border-l-2 border-error/50 pl-2">
+                {it.rule ? <span className="font-medium">{it.rule}: </span> : null}{it.message}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {issues ? (
         <>
-          {renderSection('HOS Issues', issues.hos, <AlertTriangle className="w-4 h-4" />, 'text-error')}
           {renderSection('Missing Information', issues.missingInfo, <Info className="w-4 h-4" />, 'text-warning')}
           {renderSection('Supporting Document Conflicts', issues.docConflicts, <FileWarning className="w-4 h-4" />, 'text-warning')}
           {renderSection('Suggestions', issues.suggestions, <Lightbulb className="w-4 h-4" />, 'text-success')}
@@ -77,6 +175,15 @@ export default function Compliance() {
       ) : (
         <div className="text-sm text-muted-foreground text-center py-8">Running compliance check...</div>
       )}
+    </div>
+  );
+}
+
+function ClockCard({ icon: Icon, label, value }) {
+  return (
+    <div className="rounded-xl border border-border bg-card p-3">
+      <div className="flex items-center gap-1.5 text-xs text-muted-foreground"><Icon className="w-3.5 h-3.5" /> {label}</div>
+      <div className="font-semibold mt-1 text-card-foreground">{value}</div>
     </div>
   );
 }

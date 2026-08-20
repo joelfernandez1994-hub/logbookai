@@ -4,7 +4,7 @@ import {
   daySegments, planDayInsertion, planEdit, applyOps, buildAfterEvents,
   validateTimeline, snapHour, formatHour, hourToX,
 } from '@/lib/rodsEditor';
-import { base44 } from '@/api/base44Client';
+import { applyTimelineOps } from '@/lib/timelineWriter';
 import EventSheet from './EventSheet';
 import ProposedChangeDialog from './ProposedChangeDialog';
 import TimeBubble from './TimeBubble';
@@ -209,6 +209,7 @@ export default function RodsGraphEditor({
   const review = () => {
     const sv = sheetValue; if (!sv) return;
     const newEvent = {
+      log_date: dateStr,
       start_timestamp: new Date(sv.startMs).toISOString(),
       end_timestamp: new Date(sv.endMs).toISOString(),
       duty_status: sv.status,
@@ -232,25 +233,16 @@ export default function RodsGraphEditor({
 
   const applyProposed = async () => {
     const p = proposed; if (!p) return;
-    const cert = certifications.find((c) => c.log_date === dateStr && !c.is_superseded);
     const editedBy = profile?.legal_name || '';
-    if (cert) {
-      for (const u of p.ops.updates) {
-        const orig = dayEvents.find((e) => e.id === u.id);
-        if (orig) await base44.entities.EventVersion.create({ original_event_id: u.id, version_number: 1, snapshot: { ...orig }, edited_by: editedBy, edit_reason: 'Graph edit', action: 'edited' });
-      }
-      for (const id of p.ops.deletes) {
-        const orig = dayEvents.find((e) => e.id === id);
-        if (orig) await base44.entities.EventVersion.create({ original_event_id: id, version_number: 1, snapshot: { ...orig }, edited_by: editedBy, edit_reason: 'Graph edit', action: 'deleted' });
-      }
-      await base44.entities.Certification.update(cert.id, { is_superseded: true });
-    }
-    for (const id of p.ops.deletes) await base44.entities.DutyStatusEvent.delete(id);
-    for (const u of p.ops.updates) await base44.entities.DutyStatusEvent.update(u.id, u.data);
-    for (const c of p.ops.creates) {
-      const { id, ...rest } = c;
-      await base44.entities.DutyStatusEvent.create({ ...rest, log_date: dateStr, method_of_creation: 'Manual', carrier_name: carrier?.carrier_name || '' });
-    }
+    // Route through the canonical writer: applies deletes/updates/creates in
+    // order, preserves EventVersion audit snapshots for certified-day edits,
+    // and invalidates the active Certification for every affected log_date.
+    await applyTimelineOps(p.ops, events, {
+      editedBy,
+      reason: 'Graph edit',
+      carrierName: carrier?.carrier_name || '',
+      createVersions: true,
+    });
     setProposed(null); setSheetValue(null); setDraft(null);
     reload && reload();
   };

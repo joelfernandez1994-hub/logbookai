@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { MapPin, Loader2 } from 'lucide-react';
-import { base44 } from '@/api/base44Client';
+import { resolveCurrentLocation } from '@/lib/locationService';
 
 const STATUSES = [
   { key: 'OFF_DUTY', label: 'Off Duty', color: 'bg-slate-500' },
@@ -28,18 +28,16 @@ export default function StatusChangeSheet({ open, onOpenChange, onApply, default
   const [locating, setLocating] = useState(false);
   const [locationConfirmed, setLocationConfirmed] = useState(false);
 
-  const useMyLocation = () => {
+  // Shared GPS + reverse-geocode service (same resolver as Add/Edit Event),
+  // standardized to "City, ST" (2-letter state abbreviation).
+  const useMyLocation = async () => {
     setLocating(true);
-    if (!navigator.geolocation) { setLocating(false); return; }
-    navigator.geolocation.getCurrentPosition(async (pos) => {
-      try {
-        const res = await base44.functions.invoke('reverseGeocode', { latitude: pos.coords.latitude, longitude: pos.coords.longitude });
-        if (res.data?.city) setCity(res.data.city);
-        if (res.data?.state) setStateVal(res.data.state);
-        setLocationConfirmed(false);
-      } catch (e) {}
-      setLocating(false);
-    }, () => setLocating(false), { enableHighAccuracy: true, timeout: 10000 });
+    const res = await resolveCurrentLocation();
+    if (res.error) { setLocating(false); return; }
+    if (res.city) setCity(res.city);
+    if (res.state) setStateVal(res.state);
+    setLocationConfirmed(false);
+    setLocating(false);
   };
 
   const handleApply = () => {

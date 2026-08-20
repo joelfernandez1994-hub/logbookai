@@ -7,6 +7,7 @@ import { getCertifications } from '@/lib/driverData';
 import { base44 } from '@/api/base44Client';
 import { insertEvent, editEvent, deleteEventById, clearDayEvents } from '@/lib/timelineWriter';
 import { validateTimeline } from '@/lib/timelineEngine';
+import { resolveCurrentLocation } from '@/lib/locationService';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
@@ -224,15 +225,15 @@ export default function Logs() {
 
       <Dialog open={confirmClear} onOpenChange={(o) => !clearing && setConfirmClear(o)}>
         <DialogContent className="max-w-md">
-          <DialogHeader><DialogTitle className="flex items-center gap-2"><AlertTriangle className="w-5 h-5 text-error" /> Clear Day Log?</DialogTitle></DialogHeader>
+          <DialogHeader><DialogTitle className="flex items-center gap-2"><AlertTriangle className="w-5 h-5 text-error" /> Clear {selectedDate.toLocaleDateString('en-US', { month: 'long', day: 'numeric', timeZone: tz })} Log?</DialogTitle></DialogHeader>
           <div className="text-sm text-muted-foreground space-y-2">
-            <p>This permanently deletes <b>all duty-status events on {selectedDate.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', timeZone: tz })}</b> and invalidates that day's certification.</p>
-            <p>Events that cross midnight into an adjacent day are split — the adjacent day's records are preserved. Mileage, totals, the graph, and HOS/cycle recalculation update automatically.</p>
+            <p>This will permanently remove all log events for <b>{selectedDate.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric', timeZone: tz })}</b>.</p>
+            <p>Events that cross midnight into an adjacent day are split — the adjacent day's records are preserved. Certification for this day is invalidated, and the graph, totals, mileage, HOS, and cycle recap recalculate automatically.</p>
             <p className="text-error font-medium">This cannot be undone.</p>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setConfirmClear(false)} disabled={clearing}>Cancel</Button>
-            <Button variant="destructive" onClick={doClearDay} disabled={clearing}>{clearing ? 'Clearing…' : 'Yes, clear this day'}</Button>
+            <Button variant="destructive" onClick={doClearDay} disabled={clearing}>{clearing ? 'Clearing…' : 'Clear Entire Day'}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -261,27 +262,16 @@ function EventEditor({ open, event, prefill, onClose, onSave, tz, carrier, equip
     setLocalError(''); setLocNote('');
   }, [event, open, prefill]);
 
-  // Reuse the exact GPS + reverse-geocode service from Change Duty Status.
-  // Standardizes to City, ST for display/storage.
-  const useMyLocation = () => {
-    if (!navigator.geolocation) { setLocalError('Location not available on this device.'); return; }
+  // Shared GPS + reverse-geocode service (same resolver as Change Status).
+  // Standardizes to City, ST (2-letter state abbreviation).
+  const useMyLocation = async () => {
     setLocating(true); setLocalError('');
-    navigator.geolocation.getCurrentPosition(async (pos) => {
-      try {
-        const res = await base44.functions.invoke('reverseGeocode', { latitude: pos.coords.latitude, longitude: pos.coords.longitude });
-        if (res.data?.city) setCity(res.data.city);
-        if (res.data?.state) {
-          // Normalize state to 2-letter uppercase; standardize City, ST.
-          const st = String(res.data.state).trim();
-          setStateVal(st.length > 2 ? st.slice(0, 2).toUpperCase() : st.toUpperCase());
-        }
-        setLocNote(`Located as ${res.data?.city || city}, ${res.data?.state || stateVal}. Please confirm or edit.`);
-      } catch (e) {
-        setLocalError('Could not determine your location. Enter city and state manually.');
-      }
-      setLocating(false);
-    }, () => { setLocalError('Location permission denied. Enter city and state manually.'); setLocating(false); },
-      { enableHighAccuracy: true, timeout: 10000 });
+    const res = await resolveCurrentLocation();
+    setLocating(false);
+    if (res.error) { setLocalError(res.error); return; }
+    if (res.city) setCity(res.city);
+    if (res.state) setStateVal(res.state);
+    setLocNote(`Located as ${res.city || city}, ${res.state || stateVal}. Please confirm or edit.`);
   };
 
   const save = () => {
