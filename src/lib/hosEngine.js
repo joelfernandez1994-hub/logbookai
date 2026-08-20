@@ -25,6 +25,8 @@
 // and driving time moving forward as the tiebreak.
 // ============================================================================
 
+import { normalizedSegments, dailyTotals as canonicalDailyTotals } from './timelineEngine';
+
 const MS = {
   MINUTE: 60 * 1000,
   HOUR: 3600000,
@@ -84,20 +86,15 @@ export function dateKeyInTz(date, timezone) {
 }
 
 // ---------------------------------------------------------------------------
-// Normalize raw events into a sorted segment list.
-// Each segment: { start: Date, end: Date, status, city, state, remark, ... }
+// Normalize raw events into a sorted, DEDUPED, NON-OVERLAPPING segment list.
+// Delegates to the canonical Timeline Engine so the graph, event list, daily
+// totals, and HOS engine all read from ONE source of truth (no duplicates, no
+// overlaps — "one status at any instant"). Each segment: { start, end, status,
+// city, state, remark, ... }.
 // ---------------------------------------------------------------------------
 export function normalizeEvents(rawEvents, now = new Date()) {
   if (!rawEvents || rawEvents.length === 0) return [];
-  const segments = rawEvents
-    .filter(e => e && e.start_timestamp && e.duty_status)
-    .map(e => ({
-      ...e,
-      start: new Date(e.start_timestamp),
-      end: e.end_timestamp ? new Date(e.end_timestamp) : (e.is_ongoing ? now : new Date(e.start_timestamp)),
-    }))
-    .sort((a, b) => a.start - b.start);
-  return segments;
+  return normalizedSegments(rawEvents, now);
 }
 
 // ---------------------------------------------------------------------------
@@ -632,6 +629,9 @@ export function compute34Restart(segments, now = new Date()) {
 
 // ---------------------------------------------------------------------------
 // DAILY GRID — 24-hour four-row graph for a given date (home-terminal TZ).
+// Reads from the canonical normalized timeline (deduped, non-overlapping).
+// Totals come from the canonical dailyTotals so a CURRENT day clips to `now`
+// and a FUTURE date stays blank unless a real event legitimately falls in it.
 // ---------------------------------------------------------------------------
 export function getDailyGrid(rawEvents, dateStr, timezone, now = new Date()) {
   const segments = normalizeEvents(rawEvents, now);
@@ -640,15 +640,20 @@ export function getDailyGrid(rawEvents, dateStr, timezone, now = new Date()) {
   const offset = tzOffsetMs(new Date(utcMidnight), timezone);
   const dayStart = new Date(utcMidnight - offset);
   const dayEnd = new Date(dayStart.getTime() + 24 * 3600000);
+  const t = now instanceof Date ? now : new Date(now);
+  const isCurrent = dayStart.getTime() <= t.getTime() && t.getTime() < dayEnd.getTime();
+  const isFuture = dayStart.getTime() >= t.getTime();
+  const clipEnd = isCurrent ? t : dayEnd; // current day shows only up to now
 
   const rows = { OFF_DUTY: [], SLEEPER_BERTH: [], DRIVING: [], ON_DUTY: [] };
-  let totalMs = { OFF_DUTY: 0, SLEEPER_BERTH: 0, DRIVING: 0, ON_DUTY: 0 };
   const remarks = [];
 
   for (const seg of segments) {
     if (seg.end <= dayStart || seg.start >= dayEnd) continue;
+    if (isFuture && seg.is_ongoing) continue; // ongoing never extends into a future day
     const s = seg.start < dayStart ? dayStart : seg.start;
-    const e = seg.end > dayEnd ? dayEnd : seg.end;
+    let e = seg.end > dayEnd ? dayEnd : seg.end;
+    if (isCurrent && e > t) e = new Date(t); // clip to now on the current day
     if (e <= s) continue;
     const startHour = (s - dayStart) / MS.HOUR;
     const endHour = (e - dayStart) / MS.HOUR;
@@ -658,7 +663,6 @@ export function getDailyGrid(rawEvents, dateStr, timezone, now = new Date()) {
       city: seg.city, state: seg.state, remark: seg.remark,
       id: seg.id,
     });
-    totalMs[seg.duty_status] += (e - s);
     remarks.push({
       time: new Date(s),
       status: seg.duty_status,
@@ -668,14 +672,15 @@ export function getDailyGrid(rawEvents, dateStr, timezone, now = new Date()) {
     });
   }
   remarks.sort((a, b) => a.time - b.time);
+  const dt = canonicalDailyTotals(rawEvents, dateStr, timezone, t);
   const totals = {
-    OFF_DUTY: totalMs.OFF_DUTY / MS.HOUR,
-    SLEEPER_BERTH: totalMs.SLEEPER_BERTH / MS.HOUR,
-    DRIVING: totalMs.DRIVING / MS.HOUR,
-    ON_DUTY: totalMs.ON_DUTY / MS.HOUR,
+    OFF_DUTY: dt.OFF_DUTY,
+    SLEEPER_BERTH: dt.SLEEPER_BERTH,
+    DRIVING: dt.DRIVING,
+    ON_DUTY: dt.ON_DUTY,
   };
-  const totalHours = totals.OFF_DUTY + totals.SLEEPER_BERTH + totals.DRIVING + totals.ON_DUTY;
-  return { dayStart, dayEnd, rows, totals, totalHours, remarks };
+  const totalHours = dt.totalHours;
+  return { dayStart, dayEnd, rows, totals, totalHours, remarks, isCurrent, isFuture };
 }
 
 // ---------------------------------------------------------------------------

@@ -38,19 +38,31 @@ export async function getCurrentOngoingEvent(events) {
 }
 
 export async function changeStatus(newStatus, details = {}) {
-  const events = await base44.entities.DutyStatusEvent.filter({ is_ongoing: true }, '-start_timestamp', 10);
+  const events = await base44.entities.DutyStatusEvent.filter({ is_ongoing: true }, '-start_timestamp', 50);
   const now = new Date().toISOString();
-  const logDate = new Date().toISOString().slice(0, 10);
+  const startTs = details.start_timestamp || now;
+  const logDate = startTs.slice(0, 10);
+  // End EVERY currently-ongoing event at the new status start (there should be
+  // exactly one, but corrupted V2 data can leave several — close them all so
+  // the timeline stays single-status).
   if (events && events.length) {
-    const ongoing = events[0];
-    await base44.entities.DutyStatusEvent.update(ongoing.id, {
-      end_timestamp: details.start_timestamp || now,
-      is_ongoing: false,
-    });
+    await Promise.all(events.map((ongoing) =>
+      base44.entities.DutyStatusEvent.update(ongoing.id, {
+        end_timestamp: startTs,
+        is_ongoing: false,
+      })
+    ));
   }
+  // Guard against an exact duplicate (same start time + status) already existing.
+  const startMs = new Date(startTs).getTime();
+  const existing = await base44.entities.DutyStatusEvent.filter({}, '-start_timestamp', 500);
+  const dup = (existing || []).some(e =>
+    e && e.duty_status === newStatus && e.start_timestamp &&
+    Math.abs(new Date(e.start_timestamp).getTime() - startMs) < 1000);
+  if (dup) return existing.find(e => e.duty_status === newStatus && e.start_timestamp && Math.abs(new Date(e.start_timestamp).getTime() - startMs) < 1000);
   return await base44.entities.DutyStatusEvent.create({
     log_date: logDate,
-    start_timestamp: details.start_timestamp || now,
+    start_timestamp: startTs,
     duty_status: newStatus,
     city: details.city || '',
     state: details.state || '',

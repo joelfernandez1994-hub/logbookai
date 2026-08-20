@@ -9,6 +9,7 @@ import {
 } from './proposalValidation';
 import { computeHOS, runComplianceCheck } from './hosEngine';
 import { collectViolations } from './logAssistant';
+import { planInsert as canonicalInsert } from './timelineEngine';
 
 const MS = 60000;
 
@@ -83,32 +84,10 @@ export function daySegments(events, dayStartMs, dayEndMs) {
 // Returns { creates:[event], updates:[{id,data}], deletes:[id] }.
 // ---------------------------------------------------------------------------
 export function planDayInsertion(dayEvents, newEvent) {
-  const ns = toMs(newEvent.start_timestamp);
-  const ne = toMs(newEvent.end_timestamp);
-  if (!isFinite(ns) || !isFinite(ne) || ne <= ns) return { creates: [], updates: [], deletes: [] };
-
-  const creates = [], updates = [], deletes = [];
-  for (const ev of dayEvents) {
-    if (!ev || !ev.start_timestamp || !ev.end_timestamp) continue;
-    if (ev.id === newEvent.id) continue;
-    const es = toMs(ev.start_timestamp), ee = toMs(ev.end_timestamp);
-    if (ee <= ns || es >= ne) continue; // no overlap
-    if (es >= ns && ee <= ne) { deletes.push(ev.id); continue; } // fully inside -> remove
-    if (es < ns && ee > ne) {
-      // new event sits inside ev -> split ev into [es,ns] + [ne,ee]
-      updates.push({ id: ev.id, data: { end_timestamp: new Date(ns).toISOString() } });
-      const { id, ...rest } = ev;
-      creates.push({ ...rest, start_timestamp: new Date(ne).toISOString(), end_timestamp: new Date(ee).toISOString(), is_ongoing: false, is_current_version: true });
-      continue;
-    }
-    if (es < ns) { // overlap at start -> truncate ev end
-      updates.push({ id: ev.id, data: { end_timestamp: new Date(ns).toISOString() } });
-    } else { // es >= ns && ee > ne -> overlap at end -> truncate ev start
-      updates.push({ id: ev.id, data: { start_timestamp: new Date(ne).toISOString() } });
-    }
-  }
-  creates.push({ ...newEvent, is_ongoing: false, is_current_version: true });
-  return { creates, updates, deletes };
+  // Delegate to the canonical Timeline Engine so graph edits use the same
+  // duplicate-guarded, non-overlapping insertion as every other writer.
+  const ops = canonicalInsert(dayEvents, { ...newEvent, is_ongoing: false });
+  return { creates: ops.creates, updates: ops.updates, deletes: ops.deletes };
 }
 
 // Edit an existing event in place (preserve id for version history) while
