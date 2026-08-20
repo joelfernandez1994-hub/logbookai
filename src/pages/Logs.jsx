@@ -2,7 +2,7 @@ import { useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useDriverData } from '@/hooks/useDriverData';
 import { getDailyGrid, computeCycle, dateKeyInTz, fmtHours, startOfDayInTz } from '@/lib/hosEngine';
-import LogGraph from '@/components/LogGraph';
+import RodsGraphEditor from '@/components/rodsEditor/RodsGraphEditor';
 import { getCertifications, updateEvent, deleteEvent, createHistoricalEvent } from '@/lib/driverData';
 import { base44 } from '@/api/base44Client';
 import { Button } from '@/components/ui/button';
@@ -121,7 +121,7 @@ export default function Logs() {
 
       {/* Graph */}
       <div className="rounded-xl border border-slate-200 bg-white p-3 mb-3">
-        <LogGraph events={events} dateStr={dateStr} timezone={tz} />
+        <RodsGraphEditor events={events} dateStr={dateStr} timezone={tz} carrier={carrier} equipment={equipment} profile={profile} certifications={certifications} reload={reload} />
       </div>
 
       {/* Recap */}

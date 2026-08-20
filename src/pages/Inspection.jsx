@@ -1,7 +1,7 @@
 import { useState, useMemo, useEffect } from 'react';
 import { useDriverData } from '@/hooks/useDriverData';
 import { getDailyGrid, computeCycle, computeHOS, fmtDur, dateKeyInTz } from '@/lib/hosEngine';
-import LogGraph from '@/components/LogGraph';
+import RodsGraphEditor from '@/components/rodsEditor/RodsGraphEditor';
 import LogExportSheet from '@/components/LogExportSheet';
 import { getCertifications, getAllEvents, getDocuments } from '@/lib/driverData';
 import { getDvirs } from '@/lib/dvirData';
@@ -88,7 +88,7 @@ export default function Inspection() {
 
       {/* Graph (read-only) */}
       <div className="bg-white rounded-xl p-3 mb-3 text-slate-900">
-        <LogGraph events={events} dateStr={selectedKey} timezone={tz} interactive={false} />
+        <RodsGraphEditor events={events} dateStr={selectedKey} timezone={tz} readOnly carrier={carrier} />
       </div>
 
       {/* Recap */}
