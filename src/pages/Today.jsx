@@ -243,24 +243,25 @@ export default function Today() {
       </div>
 
       {/* Primary action */}
-      <Button className="w-full h-14 text-base mb-3" onClick={() => setStatusOpen(true)}>
+      <Button className="w-full h-14 text-base font-semibold mb-3" onClick={() => setStatusOpen(true)}>
         Change Status
       </Button>
 
-      {/* Secondary actions */}
-      <div className="grid grid-cols-2 gap-2 mb-3">
+      {/* Secondary actions — stack on phones, side-by-side only when both labels fit (≥640px) */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 mb-2.5">
         <Button variant="outline" className="h-12 text-sm" onClick={() => navigate('/log-assistant')}>
-          <Bot className="w-4 h-4 mr-2" /> Ask LogbookAI
+          <Bot className="w-4 h-4 shrink-0" /> Ask LogbookAI
         </Button>
         <Button variant="outline" className="h-12 text-sm" onClick={() => navigate('/compliance')}>
-          <ShieldCheck className="w-4 h-4 mr-2" /> HOS / Compliance
+          <ShieldCheck className="w-4 h-4 shrink-0" /> HOS / Compliance
         </Button>
       </div>
+
       <Button variant="outline" className="w-full h-12 text-sm mb-4" onClick={() => navigate('/logs')}>
-        <ClipboardList className="w-4 h-4 mr-2" /> View Full Log
+        <ClipboardList className="w-4 h-4 shrink-0" /> View Full Log
       </Button>
 
-      {/* Help link */}
+      {/* Help link — small, not a boxed action */}
       <button
         type="button"
         onClick={() => navigate('/log-assistant?tab=whatCanIDo')}
