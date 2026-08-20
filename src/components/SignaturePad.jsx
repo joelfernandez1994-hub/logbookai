@@ -61,8 +61,8 @@ export default function SignaturePad({ value, onChange, typedName, onTypedNameCh
   return (
     <div>
       <div className="flex gap-2 mb-2">
-        <button onClick={() => setMode('drawn')} className={`text-xs px-3 py-1 rounded-full border ${mode === 'drawn' ? 'bg-slate-900 text-white' : 'border-slate-300'}`}>Draw</button>
-        <button onClick={() => setMode('typed')} className={`text-xs px-3 py-1 rounded-full border ${mode === 'typed' ? 'bg-slate-900 text-white' : 'border-slate-300'}`}>Type Name</button>
+        <button onClick={() => setMode('drawn')} className={`text-xs px-3 py-1 rounded-full border ${mode === 'drawn' ? 'bg-primary text-primary-foreground border-primary' : 'border-border text-card-foreground'}`}>Draw</button>
+        <button onClick={() => setMode('typed')} className={`text-xs px-3 py-1 rounded-full border ${mode === 'typed' ? 'bg-primary text-primary-foreground border-primary' : 'border-border text-card-foreground'}`}>Type Name</button>
       </div>
       {mode === 'drawn' ? (
         <div>
@@ -72,16 +72,16 @@ export default function SignaturePad({ value, onChange, typedName, onTypedNameCh
             height={140}
             onMouseDown={start} onMouseMove={move} onMouseUp={end} onMouseLeave={end}
             onTouchStart={start} onTouchMove={move} onTouchEnd={end}
-            className="w-full border border-slate-300 rounded-lg bg-white touch-none"
+            className="w-full border border-border rounded-lg bg-card touch-none"
           />
-          <button onClick={clear} className="text-xs text-slate-500 mt-1 underline">Clear</button>
+          <button onClick={clear} className="text-xs text-muted-foreground mt-1 underline">Clear</button>
         </div>
       ) : (
         <input
           value={typedName}
           onChange={(e) => { onTypedNameChange(e.target.value); onChange(e.target.value); }}
           placeholder="Type your legal name"
-          className="w-full border border-slate-300 rounded-lg p-3 text-lg font-serif italic"
+          className="w-full border border-input bg-input-bg text-input-fg rounded-lg p-3 text-lg font-serif italic"
         />
       )}
     </div>

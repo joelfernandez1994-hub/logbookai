@@ -87,10 +87,10 @@ export default function Documents() {
       <Header title="Documents" />
 
       <div className="flex gap-2 mb-4">
-        <button onClick={() => setTab('fuel')} className={`flex items-center gap-1 px-3 py-2 rounded-lg text-sm font-medium ${tab === 'fuel' ? 'bg-slate-900 text-white' : 'border border-slate-200'}`}>
+        <button onClick={() => setTab('fuel')} className={`flex items-center gap-1 px-3 py-2 rounded-lg text-sm font-medium ${tab === 'fuel' ? 'bg-primary text-primary-foreground' : 'border border-border text-card-foreground'}`}>
           <Fuel className="w-4 h-4" /> Fuel Receipt
         </button>
-        <button onClick={() => setTab('bol')} className={`flex items-center gap-1 px-3 py-2 rounded-lg text-sm font-medium ${tab === 'bol' ? 'bg-slate-900 text-white' : 'border border-slate-200'}`}>
+        <button onClick={() => setTab('bol')} className={`flex items-center gap-1 px-3 py-2 rounded-lg text-sm font-medium ${tab === 'bol' ? 'bg-primary text-primary-foreground' : 'border border-border text-card-foreground'}`}>
           <FileText className="w-4 h-4" /> Bill of Lading
         </button>
       </div>
@@ -107,22 +107,22 @@ export default function Documents() {
         </Button>
       </div>
 
-      {error && <div className="rounded-lg border border-red-300 bg-red-50 p-3 text-sm text-red-700 mb-3">{error}</div>}
+      {error && <div className="rounded-lg border border-error/40 bg-error-surface p-3 text-sm text-error-surface-foreground mb-3">{error}</div>}
 
       {review && (
-        <div className="rounded-xl border border-slate-200 bg-white p-4 mb-4">
-          <div className="font-semibold text-sm mb-2">Review Extracted Data</div>
-          <p className="text-xs text-slate-500 mb-3">Confirm this information before saving. Do not alter the receipt timestamp.</p>
+        <div className="rounded-xl border border-border bg-card p-4 mb-4">
+          <div className="font-semibold text-sm mb-2 text-card-foreground">Review Extracted Data</div>
+          <p className="text-xs text-muted-foreground mb-3">Confirm this information before saving. Do not alter the receipt timestamp.</p>
           <div className="space-y-2 text-sm">
             {Object.entries(review.extracted).filter(([k]) => k !== 'file_url').map(([k, v]) => (
-              <div key={k} className="flex justify-between border-b border-slate-100 pb-1">
-                <span className="text-slate-500 capitalize">{k.replace(/_/g, ' ')}</span>
-                <span className="font-medium">{v == null ? '—' : String(v)}</span>
+              <div key={k} className="flex justify-between border-b border-border pb-1">
+                <span className="text-muted-foreground capitalize">{k.replace(/_/g, ' ')}</span>
+                <span className="font-medium text-card-foreground">{v == null ? '—' : String(v)}</span>
               </div>
             ))}
           </div>
           {tab === 'fuel' && (
-            <div className="flex gap-2 mt-4">
+            <div className="flex flex-col sm:flex-row gap-2 mt-4">
               <Button className="flex-1" onClick={saveFuel}><Check className="w-4 h-4 mr-1" /> Save Receipt</Button>
               <Button variant="outline" className="flex-1" onClick={logFuelEvent}>Save &amp; Log Fuel Stop</Button>
             </div>
@@ -133,21 +133,21 @@ export default function Documents() {
             </div>
           )}
           <Button variant="ghost" className="w-full mt-2" onClick={() => setReview(null)}><X className="w-4 h-4" /> Discard</Button>
-          <p className="text-[11px] text-slate-400 mt-2">No RODS events are modified automatically by uploading a document.</p>
+          <p className="text-[11px] text-muted-foreground mt-2">No RODS events are modified automatically by uploading a document.</p>
         </div>
       )}
 
       {/* Saved documents */}
-      <div className="rounded-xl border border-slate-200 bg-white p-3">
-        <div className="font-semibold text-sm mb-2">Saved Documents</div>
+      <div className="rounded-xl border border-border bg-card p-3">
+        <div className="font-semibold text-sm mb-2 text-card-foreground">Saved Documents</div>
         {docs.map((d) => (
-          <div key={d.id} className="flex items-center gap-2 border-b border-slate-100 py-2 text-sm">
-            {d.category === 'Fuel Receipt' ? <Fuel className="w-4 h-4 text-slate-400" /> : <FileText className="w-4 h-4 text-slate-400" />}
-            <span className="flex-1 truncate">{d.description}</span>
-            <a href={d.file_url} target="_blank" className="text-xs text-blue-600">view</a>
+          <div key={d.id} className="flex items-center gap-2 border-b border-border py-2 text-sm">
+            {d.category === 'Fuel Receipt' ? <Fuel className="w-4 h-4 text-muted-foreground" /> : <FileText className="w-4 h-4 text-muted-foreground" />}
+            <span className="flex-1 truncate text-card-foreground">{d.description}</span>
+            <a href={d.file_url} target="_blank" rel="noreferrer" className="text-xs text-primary">view</a>
           </div>
         ))}
-        {docs.length === 0 && <div className="text-xs text-slate-400 text-center py-3">No documents yet.</div>}
+        {docs.length === 0 && <div className="text-xs text-muted-foreground text-center py-3">No documents yet.</div>}
       </div>
     </div>
   );

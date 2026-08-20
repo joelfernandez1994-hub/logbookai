@@ -34,7 +34,7 @@ export default function AssistantInput({ onSend, disabled }) {
   };
 
   return (
-    <div className="rounded-xl border border-slate-200 bg-white p-3 mb-3">
+    <div className="rounded-xl border border-border bg-card p-3 mb-3">
       <div className="flex gap-2">
         <Input
           value={input}
@@ -44,17 +44,17 @@ export default function AssistantInput({ onSend, disabled }) {
           disabled={disabled}
         />
         <Button variant="outline" onClick={listening ? stopVoice : startVoice} disabled={disabled}>
-          {listening ? <Square className="w-4 h-4 text-red-500 animate-pulse" /> : <Mic className="w-4 h-4" />}
+          {listening ? <Square className="w-4 h-4 text-error animate-pulse" /> : <Mic className="w-4 h-4" />}
         </Button>
         <Button onClick={send} disabled={disabled || !input}>
           <Send className="w-4 h-4" />
         </Button>
       </div>
       {transcript && (
-        <div className="rounded-lg border border-blue-200 bg-blue-50 p-2 mt-2 text-xs">
-          <span className="font-medium text-blue-700">Heard: </span>
-          <span className="text-blue-900">{transcript}</span>
-          <div className="text-blue-500 mt-0.5">Review the transcription before sending. Pay attention to cities and numbers.</div>
+        <div className="rounded-lg border border-border bg-accent p-2 mt-2 text-xs">
+          <span className="font-medium text-accent-foreground">Heard: </span>
+          <span className="text-accent-foreground">{transcript}</span>
+          <div className="text-muted-foreground mt-0.5">Review the transcription before sending. Pay attention to cities and numbers.</div>
         </div>
       )}
     </div>

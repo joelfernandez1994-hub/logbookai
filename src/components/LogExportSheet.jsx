@@ -88,16 +88,16 @@ export default function LogExportSheet({ open, onClose, tz, allDates, buildDoc, 
 
   return (
     <div className="fixed inset-0 bg-black/60 flex items-end justify-center z-50" onClick={onClose}>
-      <div className="bg-white text-slate-900 rounded-t-2xl p-4 w-full max-w-md max-h-[88vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+      <div className="bg-card text-card-foreground rounded-t-2xl p-4 w-full max-w-md max-h-[88vh] overflow-y-auto safe-bottom" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between mb-2">
           <div className="font-bold">Export / Share Logs</div>
-          <button onClick={onClose}><X className="w-5 h-5" /></button>
+          <button onClick={onClose} className="inline-flex items-center justify-center min-h-[44px] min-w-[44px] text-muted-foreground"><X className="w-5 h-5" /></button>
         </div>
 
         <div className="space-y-1.5 mb-3">
           {PRESETS.map((p) => (
             <button key={p.key} onClick={() => setPreset(p.key)}
-              className={`w-full text-left p-2.5 rounded-lg border text-sm ${preset === p.key ? 'border-slate-900 bg-slate-50 font-medium' : 'border-slate-200'}`}>
+              className={`w-full text-left p-2.5 rounded-lg border text-sm ${preset === p.key ? 'border-primary bg-accent font-medium text-accent-foreground' : 'border-border text-card-foreground'}`}>
               {p.label}
             </button>
           ))}
@@ -105,25 +105,25 @@ export default function LogExportSheet({ open, onClose, tz, allDates, buildDoc, 
 
         {preset === 'custom' && (
           <div className="grid grid-cols-2 gap-2 mb-3">
-            <div><label className="text-xs text-slate-500">From</label>
-              <input type="date" value={from} onChange={(e) => setFrom(e.target.value)} className="w-full border rounded p-2 text-sm" />
+            <div><label className="text-xs text-muted-foreground">From</label>
+              <input type="date" value={from} onChange={(e) => setFrom(e.target.value)} className="w-full border border-input bg-input-bg text-input-fg rounded p-2 text-sm" />
             </div>
-            <div><label className="text-xs text-slate-500">To</label>
-              <input type="date" value={to} onChange={(e) => setTo(e.target.value)} className="w-full border rounded p-2 text-sm" />
+            <div><label className="text-xs text-muted-foreground">To</label>
+              <input type="date" value={to} onChange={(e) => setTo(e.target.value)} className="w-full border border-input bg-input-bg text-input-fg rounded p-2 text-sm" />
             </div>
           </div>
         )}
 
-        <div className="rounded-lg bg-slate-50 border border-slate-200 p-2 mb-3 text-xs text-slate-600">
+        <div className="rounded-lg bg-muted border border-border p-2 mb-3 text-xs text-muted-foreground">
           {selectedDates.length} day(s): {selectedDates[0]} – {selectedDates[selectedDates.length - 1]}
         </div>
 
         <div className="space-y-1.5 mb-3">
           {hasDvirs && (
-            <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={includeDvir} onChange={(e) => setIncludeDvir(e.target.checked)} className="w-4 h-4" /> Include Vehicle Inspection Reports (DVIR)</label>
+            <label className="flex items-center gap-2 text-sm text-card-foreground"><input type="checkbox" checked={includeDvir} onChange={(e) => setIncludeDvir(e.target.checked)} className="w-4 h-4" /> Include Vehicle Inspection Reports (DVIR)</label>
           )}
           {hasDocs && (
-            <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={includeDocs} onChange={(e) => setIncludeDocs(e.target.checked)} className="w-4 h-4" /> Include Supporting Documents</label>
+            <label className="flex items-center gap-2 text-sm text-card-foreground"><input type="checkbox" checked={includeDocs} onChange={(e) => setIncludeDocs(e.target.checked)} className="w-4 h-4" /> Include Supporting Documents</label>
           )}
         </div>
 
@@ -133,13 +133,13 @@ export default function LogExportSheet({ open, onClose, tz, allDates, buildDoc, 
         </div>
         <Button variant="outline" className="w-full mb-2" disabled={busy} onClick={doShare}><Share2 className="w-4 h-4 mr-1" /> Share</Button>
 
-        <div className="border-t pt-2">
-          <div className="text-xs text-slate-500 mb-1">Email a summary (PDF not attached):</div>
+        <div className="border-t border-border pt-2">
+          <div className="text-xs text-muted-foreground mb-1">Email a summary (PDF not attached):</div>
           <div className="flex gap-2">
-            <input placeholder="recipient email" value={emailTo} onChange={(e) => setEmailTo(e.target.value)} className="flex-1 border rounded p-2 text-sm" />
+            <input placeholder="recipient email" value={emailTo} onChange={(e) => setEmailTo(e.target.value)} className="flex-1 border border-input bg-input-bg text-input-fg rounded p-2 text-sm" />
             <Button size="sm" disabled={busy || !emailTo} onClick={doEmail}><Mail className="w-4 h-4" /></Button>
           </div>
-          {status && <div className="text-xs text-slate-500 mt-1">{status}</div>}
+          {status && <div className="text-xs text-muted-foreground mt-1">{status}</div>}
         </div>
       </div>
     </div>

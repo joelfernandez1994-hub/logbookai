@@ -142,7 +142,7 @@ export default function LogAssistant() {
     }
   };
 
-  // --- MAKE IT LEGAL: PAST ---
+  // --- HOS CHECK: PAST ---
   const pastHosBeforeAfter = useMemo(() => {
     if (!pastResult?.factual_corrections) return [];
     return pastResult.factual_corrections.map((c) => {
@@ -183,7 +183,7 @@ export default function LogAssistant() {
     reload();
   };
 
-  // --- MAKE IT LEGAL: FUTURE ---
+  // --- HOS CHECK: FUTURE ---
   const savePlan = async (stops) => {
     if (!stops?.length) return;
     const trip = await base44.entities.Trip.create({
@@ -199,33 +199,33 @@ export default function LogAssistant() {
     reload();
   };
 
-  if (loading) return <div className="flex items-center justify-center h-screen"><div className="w-8 h-8 border-4 border-slate-200 border-t-slate-800 rounded-full animate-spin" /></div>;
+  if (loading) return <div className="flex items-center justify-center h-screen"><div className="w-8 h-8 border-4 border-muted border-t-foreground rounded-full animate-spin" /></div>;
 
   const remaining = usage.allowance - usage.used;
 
   return (
     <div className="px-4 pt-6 pb-6 max-w-2xl mx-auto">
       <Header title="Manual Log Assistant" />
-      <p className="text-xs text-slate-500 mb-3">LogbookAI checks the information you provide against the configured FMCSA HOS rules. LogbookAI is not an ELD. The driver remains responsible for the accuracy, completeness, and certification of the record. {remaining} of {usage.allowance} AI requests remaining.</p>
+      <p className="text-xs text-muted-foreground mb-3">LogbookAI checks the information you provide against the configured FMCSA HOS rules. LogbookAI is not an ELD. The driver remains responsible for the accuracy, completeness, and certification of the record. {remaining} of {usage.allowance} AI requests remaining.</p>
 
       <div className="grid grid-cols-3 gap-2 mb-3">
         {TABS.map(t => {
           const Icon = t.icon;
           return (
             <button key={t.id} onClick={() => { setTab(t.id); resetResults(); }}
-              className={`rounded-xl border p-3 text-xs font-medium flex flex-col items-center gap-1 ${tab === t.id ? 'border-slate-900 bg-slate-50' : 'border-slate-200'}`}>
+              className={`rounded-xl border p-3 text-xs font-medium flex flex-col items-center gap-1 ${tab === t.id ? 'border-primary bg-accent text-accent-foreground' : 'border-border text-card-foreground'}`}>
               <Icon className="w-5 h-5" /> {t.label}
             </button>
           );
         })}
       </div>
 
-      {error && <div className="rounded-lg border border-amber-300 bg-amber-50 p-2 mb-3 text-xs text-amber-900 flex gap-1"><AlertTriangle className="w-4 h-4 shrink-0" /> {error}</div>}
+      {error && <div className="rounded-lg border border-warning/50 bg-warning-surface p-2 mb-3 text-xs text-warning-surface-foreground flex gap-1"><AlertTriangle className="w-4 h-4 shrink-0" /> {error}</div>}
 
       {tab === 'tell' && (
         <>
           <AssistantInput onSend={(text, type) => callAssistant('interpret', text, {})} disabled={busy || remaining <= 0} />
-          {busy && <div className="text-sm text-slate-500 text-center py-4"><Bot className="w-4 h-4 inline animate-pulse mr-1" /> Interpreting…</div>}
+          {busy && <div className="text-sm text-muted-foreground text-center py-4"><Bot className="w-4 h-4 inline animate-pulse mr-1" /> Interpreting…</div>}
           {proposal && !busy && (
             <ProposalReview
               existing={events}
@@ -240,8 +240,8 @@ export default function LogAssistant() {
             />
           )}
           {proposal?.refuses_fabrication && (
-            <div className="rounded-xl border border-red-300 bg-red-50 p-3 text-red-800 text-sm mb-3">
-              <AlertTriangle className="w-4 h-4 inline mr-1" /> LogbookAI will not fabricate or hide events to make a log appear legal. Review what actually happened.
+            <div className="rounded-xl border border-error/40 bg-error-surface p-3 text-error-surface-foreground text-sm mb-3">
+              <AlertTriangle className="w-4 h-4 inline mr-1" /> LogbookAI will not fabricate or hide events to make a log appear compliant. Review what actually happened.
             </div>
           )}
         </>
@@ -249,20 +249,20 @@ export default function LogAssistant() {
 
       {tab === 'makeLegal' && (
         <>
-          <div className="flex gap-2 mb-3">
+          <div className="flex flex-col sm:flex-row gap-2 mb-3">
             <Button variant={mlMode === 'past' ? 'default' : 'outline'} size="sm" onClick={() => { setMlMode('past'); setPastResult(null); }}>Past / Current Log</Button>
             <Button variant={mlMode === 'future' ? 'default' : 'outline'} size="sm" onClick={() => { setMlMode('future'); setFutureResult(null); }}>Future Plan</Button>
           </div>
           {mlMode === 'past' ? (
             <>
               <AssistantInput onSend={(text) => callAssistant('make_legal_past', text, {})} disabled={busy || remaining <= 0} />
-              {busy && <div className="text-sm text-slate-500 text-center py-4"><Gavel className="w-4 h-4 inline animate-pulse mr-1" /> Analyzing your log…</div>}
+              {busy && <div className="text-sm text-muted-foreground text-center py-4"><Gavel className="w-4 h-4 inline animate-pulse mr-1" /> Analyzing your log…</div>}
               {!busy && <MakeItLegal mode="past" past={pastResult} hosBeforeAfter={pastHosBeforeAfter} tz={tz} onApplyCorrection={applyCorrection} />}
             </>
           ) : (
             <>
               <AssistantInput onSend={(text) => callAssistant('make_legal_future', text, {})} disabled={busy || remaining <= 0} />
-              {busy && <div className="text-sm text-slate-500 text-center py-4"><Gavel className="w-4 h-4 inline animate-pulse mr-1" /> Building a compliant plan…</div>}
+              {busy && <div className="text-sm text-muted-foreground text-center py-4"><Gavel className="w-4 h-4 inline animate-pulse mr-1" /> Building a compliant plan…</div>}
               {!busy && <MakeItLegal mode="future" future={futureResult} tz={tz} onSavePlan={savePlan} />}
             </>
           )}
@@ -271,7 +271,7 @@ export default function LogAssistant() {
 
       {tab === 'whatCanIDo' && (
         <>
-          <div className="text-xs text-slate-500 mb-2">Answers from your actual records — no AI request used.</div>
+          <div className="text-xs text-muted-foreground mb-2">Answers from your actual records — no AI request used.</div>
           <WhatCanIDoPanel info={whatInfo} tz={tz} />
         </>
       )}

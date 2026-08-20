@@ -18,6 +18,19 @@ const STATUS_COLORS = {
 const STATUS_LABELS = { OFF_DUTY: 'Off', SLEEPER_BERTH: 'Sleeper', DRIVING: 'Drive', ON_DUTY: 'On' };
 const LEFT_W = 84, TOP_PAD = 24, ROW_H = 52;
 
+const C = {
+  gridStrong: 'hsl(var(--graph-grid))',
+  gridMid: 'hsl(var(--graph-grid) / 0.7)',
+  gridFaint: 'hsl(var(--graph-grid) / 0.35)',
+  labels: 'hsl(var(--graph-labels))',
+  bg: 'hsl(var(--graph-background))',
+  bgAlt: 'hsl(var(--graph-grid) / 0.12)',
+  rowBorder: 'hsl(var(--graph-grid))',
+  fg: 'hsl(var(--foreground))',
+  gripBg: 'hsl(var(--primary))',
+  gripFg: 'hsl(var(--primary-foreground))',
+};
+
 export default function RodsGraphEditor({
   events = [], dateStr, timezone = 'America/Chicago', readOnly = false,
   carrier, equipment, profile, certifications = [], reload,
@@ -253,7 +266,7 @@ export default function RodsGraphEditor({
       {/* mode bar */}
       <div className="flex items-center justify-between mb-2">
         {readOnly ? (
-          <div className="flex items-center gap-2 text-xs font-semibold text-blue-700 bg-blue-50 border border-blue-200 rounded-lg px-3 py-1.5">
+          <div className="flex items-center gap-2 text-xs font-semibold text-primary bg-accent border border-border rounded-lg px-3 py-1.5">
             <ShieldCheck className="w-4 h-4" /> READ ONLY — INSPECTION MODE
           </div>
         ) : (
@@ -262,26 +275,26 @@ export default function RodsGraphEditor({
             <Button size="sm" variant={editMode ? 'default' : 'outline'} onClick={() => setMode('edit')}><Pencil className="w-3.5 h-3.5 mr-1" />Edit Log Graph</Button>
           </div>
         )}
-        <div className="text-[11px] text-slate-400">{visibleHours >= 24 ? 'Full 24h' : `~${visibleHours}h view · swipe ↔`}</div>
+        <div className="text-[11px] text-muted-foreground">{visibleHours >= 24 ? 'Full 24h' : `~${visibleHours}h view · swipe ↔`}</div>
       </div>
 
       {editMode && (
-        <div className="text-[11px] text-amber-800 bg-amber-50 border border-amber-200 rounded-md px-2.5 py-1.5 mb-2">
+        <div className="text-[11px] text-warning-surface-foreground bg-warning-surface border border-warning/50 rounded-md px-2.5 py-1.5 mb-2">
           <b>EDIT MODE</b> — Press a row and drag to draw. Tap a segment to edit. Drag the ruler to pan.
         </div>
       )}
 
       {/* graph */}
-      <div ref={scrollRef} className="overflow-x-auto overflow-y-hidden rounded-lg border border-slate-200 bg-white touch-pan-x"
+      <div ref={scrollRef} className="overflow-x-auto overflow-y-hidden rounded-lg border border-border bg-graph touch-pan-x"
         style={{ touchAction: 'pan-x' }}>
         <div ref={contentRef} style={{ width: contentW, position: 'relative', height: TOP_PAD + ROW_H * 4 + 6 }}>
           {/* hour ruler (scrolls) */}
           <div style={{ position: 'absolute', left: LEFT_W, top: 0, width: graphW, height: TOP_PAD }}>
             {hourLabels.map((h) => (
               <div key={h}>
-                <div style={{ position: 'absolute', left: hourToX(h, pxPerHour) - 0.5, top: 0, width: 1, height: TOP_PAD, background: h % 6 === 0 ? '#94a3b8' : (h % 2 === 0 ? '#cbd5e1' : '#e2e8f0') }} />
+                <div style={{ position: 'absolute', left: hourToX(h, pxPerHour) - 0.5, top: 0, width: 1, height: TOP_PAD, background: h % 6 === 0 ? C.gridStrong : (h % 2 === 0 ? C.gridMid : C.gridFaint) }} />
                 {h < 24 && (
-                  <span style={{ position: 'absolute', left: hourToX(h, pxPerHour) + 3, top: 4, fontSize: 10, color: '#64748b' }}>
+                  <span style={{ position: 'absolute', left: hourToX(h, pxPerHour) + 3, top: 4, fontSize: 10, color: C.labels }}>
                     {h === 0 ? '12A' : h === 12 ? 'Noon' : h < 12 ? `${h}A` : `${h - 12}P`}
                   </span>
                 )}
@@ -289,16 +302,16 @@ export default function RodsGraphEditor({
             ))}
             {/* quarter ticks */}
             {Array.from({ length: 96 }).map((_, i) => (
-              <div key={`q${i}`} style={{ position: 'absolute', left: hourToX(i / 4, pxPerHour), top: TOP_PAD - 4, width: 1, height: 4, background: i % 4 === 0 ? '#cbd5e1' : '#f1f5f9' }} />
+              <div key={`q${i}`} style={{ position: 'absolute', left: hourToX(i / 4, pxPerHour), top: TOP_PAD - 4, width: 1, height: 4, background: i % 4 === 0 ? C.gridMid : C.gridFaint }} />
             ))}
           </div>
 
           {/* rows background + vertical grid + segments */}
           <div ref={rowsRef} style={{ position: 'absolute', left: LEFT_W, top: TOP_PAD, width: graphW, height: ROW_H * 4, touchAction: editMode ? 'none' : 'pan-x' }}>
             {ROW_ORDER.map((s, i) => (
-              <div key={s} style={{ position: 'absolute', left: 0, top: i * ROW_H, width: graphW, height: ROW_H, background: i % 2 === 0 ? '#f8fafc' : '#ffffff', borderBottom: '1px solid #e2e8f0' }}>
+              <div key={s} style={{ position: 'absolute', left: 0, top: i * ROW_H, width: graphW, height: ROW_H, background: i % 2 === 0 ? C.bg : C.bgAlt, borderBottom: `1px solid ${C.rowBorder}` }}>
                 {hourLabels.map((h) => (
-                  <div key={h} style={{ position: 'absolute', left: hourToX(h, pxPerHour), top: 0, width: 1, height: ROW_H, background: h % 6 === 0 ? '#e2e8f0' : (h % 2 === 0 ? '#f1f5f9' : 'transparent') }} />
+                  <div key={h} style={{ position: 'absolute', left: hourToX(h, pxPerHour), top: 0, width: 1, height: ROW_H, background: h % 6 === 0 ? C.gridStrong : (h % 2 === 0 ? C.gridFaint : 'transparent') }} />
                 ))}
               </div>
             ))}
@@ -317,20 +330,20 @@ export default function RodsGraphEditor({
             {draft && !sheetValue && (() => {
               const ri = ROW_ORDER.indexOf(draft.status); if (ri < 0) return null;
               const lo = Math.min(draft.startHour, draft.endHour), hi = Math.max(draft.startHour, draft.endHour);
-              return <div style={{ position: 'absolute', left: hourToX(lo, pxPerHour), top: ri * ROW_H + 4, width: Math.max(2, hourToX(hi, pxPerHour) - hourToX(lo, pxPerHour)), height: ROW_H - 8, background: STATUS_COLORS[draft.status], opacity: 0.5, borderRadius: 3, border: '2px solid #0f172a' }} />;
+              return <div style={{ position: 'absolute', left: hourToX(lo, pxPerHour), top: ri * ROW_H + 4, width: Math.max(2, hourToX(hi, pxPerHour) - hourToX(lo, pxPerHour)), height: ROW_H - 8, background: STATUS_COLORS[draft.status], opacity: 0.5, borderRadius: 3, border: `2px solid ${C.fg}` }} />;
             })()}
             {/* pending (sheet open) highlight + handles */}
             {sheetValue && editMode && (() => {
               const ri = ROW_ORDER.indexOf(sheetValue.status); if (ri < 0) return null;
               const lo = Math.min(sheetStartHour, sheetEndHour), hi = Math.max(sheetStartHour, sheetEndHour);
               return (<>
-                <div style={{ position: 'absolute', left: hourToX(lo, pxPerHour), top: ri * ROW_H + 4, width: Math.max(2, hourToX(hi, pxPerHour) - hourToX(lo, pxPerHour)), height: ROW_H - 8, background: STATUS_COLORS[sheetValue.status], opacity: 0.45, borderRadius: 3, border: '2px dashed #0f172a' }} />
+                <div style={{ position: 'absolute', left: hourToX(lo, pxPerHour), top: ri * ROW_H + 4, width: Math.max(2, hourToX(hi, pxPerHour) - hourToX(lo, pxPerHour)), height: ROW_H - 8, background: STATUS_COLORS[sheetValue.status], opacity: 0.45, borderRadius: 3, border: `2px dashed ${C.fg}` }} />
                 {['start', 'end'].map((which) => {
                   const hh = which === 'start' ? lo : hi;
                   return (
                     <div key={which} onPointerDown={(e) => onHandleDown(e, which)} onPointerMove={onPointerMove} onPointerUp={onPointerUp}
                       style={{ position: 'absolute', left: hourToX(hh, pxPerHour) - 18, top: ri * ROW_H + ROW_H / 2 - 18, width: 36, height: 36, cursor: 'ew-resize', touchAction: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                      <GripVertical style={{ width: 16, height: 16, color: '#0f172a', background: '#fff', borderRadius: 9, boxShadow: '0 1px 3px rgba(0,0,0,0.3)' }} />
+                      <GripVertical style={{ width: 16, height: 16, color: C.gripFg, background: C.gripBg, borderRadius: 9, boxShadow: '0 1px 3px rgba(0,0,0,0.3)' }} />
                     </div>
                   );
                 })}
@@ -344,7 +357,7 @@ export default function RodsGraphEditor({
           </div>
 
           {/* frozen status labels */}
-          <div style={{ position: 'sticky', left: 0, top: 0, width: LEFT_W, height: TOP_PAD + ROW_H * 4, background: 'white', borderRight: '1px solid #e2e8f0', zIndex: 5 }}>
+          <div style={{ position: 'sticky', left: 0, top: 0, width: LEFT_W, height: TOP_PAD + ROW_H * 4, background: C.bg, borderRight: `1px solid ${C.rowBorder}`, zIndex: 5 }}>
             {ROW_ORDER.map((s, i) => (
               <div key={s} style={{ position: 'absolute', top: TOP_PAD + i * ROW_H, width: LEFT_W, height: ROW_H, display: 'flex', alignItems: 'center', justifyContent: 'flex-end', paddingRight: 6 }}>
                 <span style={{ fontSize: 10, fontWeight: 700, color: STATUS_COLORS[s] }}>{STATUS_LABELS[s]}</span>
@@ -357,9 +370,9 @@ export default function RodsGraphEditor({
       {/* totals */}
       <div className="grid grid-cols-4 gap-2 mt-3 text-center text-xs">
         {ROW_ORDER.map((s) => (
-          <div key={s} className="rounded-md border border-slate-200 py-1.5">
-            <div className="font-semibold text-slate-700">{STATUS_LABELS[s]}</div>
-            <div className="text-slate-500">{(totals[s] || 0).toFixed(2)}h</div>
+          <div key={s} className="rounded-md border border-border py-1.5">
+            <div className="font-semibold text-card-foreground">{STATUS_LABELS[s]}</div>
+            <div className="text-muted-foreground">{(totals[s] || 0).toFixed(2)}h</div>
           </div>
         ))}
       </div>

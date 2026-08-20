@@ -34,18 +34,18 @@ export default function Compliance() {
 
   useEffect(() => { runCheck(); }, [events]);
 
-  if (loading) return <div className="flex justify-center h-screen items-center"><div className="w-8 h-8 border-4 border-slate-200 border-t-slate-800 rounded-full animate-spin" /></div>;
+  if (loading) return <div className="flex justify-center h-screen items-center"><div className="w-8 h-8 border-4 border-muted border-t-foreground rounded-full animate-spin" /></div>;
 
-  const renderSection = (title, items, icon, color) => (
+  const renderSection = (title, items, icon, colorClass) => (
     items.length > 0 && (
-      <div className="rounded-xl border border-slate-200 bg-white p-3 mb-3">
-        <div className={`flex items-center gap-2 font-semibold text-sm mb-2 ${color}`}>
+      <div className="rounded-xl border border-border bg-card p-3 mb-3">
+        <div className={`flex items-center gap-2 font-semibold text-sm mb-2 ${colorClass}`}>
           {icon} {title}
         </div>
         <div className="space-y-1.5">
           {items.map((it, i) => (
-            <div key={i} className="text-xs text-slate-700 border-l-2 border-slate-200 pl-2">
-              {it.rule ? <span className="font-medium">{it.rule}: </span> : null}{it.message}
+            <div key={i} className="text-xs text-muted-foreground border-l-2 border-border pl-2">
+              {it.rule ? <span className="font-medium text-card-foreground">{it.rule}: </span> : null}{it.message}
             </div>
           ))}
         </div>
@@ -64,18 +64,18 @@ export default function Compliance() {
 
       {issues ? (
         <>
-          {renderSection('HOS Issues', issues.hos, <AlertTriangle className="w-4 h-4" />, 'text-red-600')}
-          {renderSection('Missing Information', issues.missingInfo, <Info className="w-4 h-4" />, 'text-amber-600')}
-          {renderSection('Supporting Document Conflicts', issues.docConflicts, <FileWarning className="w-4 h-4" />, 'text-orange-600')}
-          {renderSection('Suggestions', issues.suggestions, <Lightbulb className="w-4 h-4" />, 'text-emerald-600')}
+          {renderSection('HOS Issues', issues.hos, <AlertTriangle className="w-4 h-4" />, 'text-error')}
+          {renderSection('Missing Information', issues.missingInfo, <Info className="w-4 h-4" />, 'text-warning')}
+          {renderSection('Supporting Document Conflicts', issues.docConflicts, <FileWarning className="w-4 h-4" />, 'text-warning')}
+          {renderSection('Suggestions', issues.suggestions, <Lightbulb className="w-4 h-4" />, 'text-success')}
           {issues.hos.length === 0 && issues.missingInfo.length === 0 && issues.docConflicts.length === 0 && (
-            <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-emerald-800 text-sm flex items-center gap-2">
+            <div className="rounded-xl border border-success/40 bg-success-surface p-4 text-success-surface-foreground text-sm flex items-center gap-2">
               <CheckCircle2 className="w-5 h-5" /> No issues detected by the current LogbookAI compliance checks.
             </div>
           )}
         </>
       ) : (
-        <div className="text-sm text-slate-500 text-center py-8">Running compliance check...</div>
+        <div className="text-sm text-muted-foreground text-center py-8">Running compliance check...</div>
       )}
     </div>
   );

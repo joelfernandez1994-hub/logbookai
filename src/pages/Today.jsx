@@ -172,37 +172,37 @@ export default function Today() {
       </div>
 
       {restartProgress && (
-        <div className="rounded-xl border border-violet-200 bg-violet-50 p-3 mb-3">
-          <div className="flex items-center gap-2 text-sm font-medium text-violet-900">
+        <div className="rounded-xl border border-border bg-accent p-3 mb-3">
+          <div className="flex items-center gap-2 text-sm font-medium text-accent-foreground">
             <RotateCcw className="w-4 h-4" /> 34-Hour Restart In Progress
           </div>
-          <div className="text-xs text-violet-700 mt-1">
+          <div className="text-xs text-muted-foreground mt-1">
             Elapsed {fmtDur(restartProgress.elapsedMs)} · {fmtDur(restartProgress.remainingMs)} remaining · est. {fmtClock(restartProgress.estimatedCompletion, tz)}
           </div>
         </div>
       )}
       {hos.split.status !== 'none' && (
-        <div className={`rounded-xl border p-3 mb-3 ${hos.split.status === 'active' ? 'border-blue-200 bg-blue-50' : 'border-amber-200 bg-amber-50'}`}>
-          <div className={`flex items-center gap-2 text-sm font-medium ${hos.split.status === 'active' ? 'text-blue-900' : 'text-amber-900'}`}>
+        <div className={`rounded-xl border p-3 mb-3 ${hos.split.status === 'active' ? 'border-success/40 bg-success-surface' : 'border-warning/50 bg-warning-surface'}`}>
+          <div className={`flex items-center gap-2 text-sm font-medium ${hos.split.status === 'active' ? 'text-success-surface-foreground' : 'text-warning-surface-foreground'}`}>
             <Moon className="w-4 h-4" /> {hos.split.status === 'active' ? 'Split Sleeper Active' : 'Split Sleeper Incomplete'}
           </div>
-          <div className={`text-xs mt-1 ${hos.split.status === 'active' ? 'text-blue-700' : 'text-amber-700'}`}>{hos.split.note}</div>
+          <div className={`text-xs mt-1 ${hos.split.status === 'active' ? 'text-success-surface-foreground' : 'text-warning-surface-foreground'}`}>{hos.split.note}</div>
           {hos.split.status === 'active' && hos.split.firstPeriod && hos.split.secondPeriod && (
-            <div className="text-xs text-blue-700 mt-1">
+            <div className="text-xs text-success-surface-foreground mt-1">
               Paired periods: {fmtDur(hos.split.firstPeriod.duration)} {hos.split.firstPeriod.status === 'SLEEPER_BERTH' ? 'Sleeper Berth' : 'Off Duty'} + {fmtDur(hos.split.secondPeriod.duration)} {hos.split.secondPeriod.status === 'SLEEPER_BERTH' ? 'Sleeper Berth' : 'Off Duty'} · 11-hr & 14-hr clocks recalculated from the first qualifying period.
             </div>
           )}
           {hos.split.status === 'incomplete' && (
-            <div className="text-xs text-amber-700 mt-1">
+            <div className="text-xs text-warning-surface-foreground mt-1">
               Required second period: at least {fmtDur(hos.split.requiredSecondMs)}{hos.split.secondPeriod ? ` (${fmtDur(hos.split.secondPeriod.duration)} taken so far, ${fmtDur(hos.split.additionalMs)} more)` : ''}.
             </div>
           )}
         </div>
       )}
       {openSafetyDefects.length > 0 && (
-        <div className="rounded-xl border border-red-300 bg-red-50 p-3 mb-3 flex items-start gap-2">
-          <AlertTriangle className="w-4 h-4 text-red-600 mt-0.5 shrink-0" />
-          <div className="text-xs text-red-900">
+        <div className="rounded-xl border border-error/40 bg-error-surface p-3 mb-3 flex items-start gap-2">
+          <AlertTriangle className="w-4 h-4 text-error mt-0.5 shrink-0" />
+          <div className="text-xs text-error-surface-foreground">
             <span className="font-semibold">Safety-affecting defect with repair pending.</span> Vehicle should not be operated if unsafe.
             <button className="underline ml-1 font-medium" onClick={() => navigate('/vehicle-inspection')}>Review DVIR →</button>
           </div>
@@ -218,9 +218,9 @@ export default function Today() {
         </div>
       )}
       {!historyComplete && (
-        <div className="rounded-xl border border-amber-300 bg-amber-50 p-3 mb-3 flex items-start gap-2">
-          <AlertTriangle className="w-4 h-4 text-amber-600 mt-0.5 shrink-0" />
-          <div className="text-xs text-amber-900">
+        <div className="rounded-xl border border-warning/50 bg-warning-surface p-3 mb-3 flex items-start gap-2">
+          <AlertTriangle className="w-4 h-4 text-warning mt-0.5 shrink-0" />
+          <div className="text-xs text-warning-surface-foreground">
             Cycle availability based only on records entered in LogbookAI. Prior duty history was not provided, so cycle balance is not verified until enough history exists to cover your {cycleType === '70_8' ? '8-day' : '7-day'} cycle.
           </div>
         </div>

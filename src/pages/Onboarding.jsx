@@ -70,24 +70,24 @@ export default function Onboarding() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 px-4 pt-[calc(env(safe-area-inset-top)+1.5rem)] pb-20">
+    <div className="min-h-screen bg-background px-4 pt-[calc(env(safe-area-inset-top)+1.5rem)] pb-20">
       <div className="max-w-md mx-auto">
         <div className="flex gap-1 mb-6">
           {steps.map((s, i) => (
-            <div key={s} className={`h-1 flex-1 rounded ${i <= step ? 'bg-slate-900' : 'bg-slate-200'}`} />
+            <div key={s} className={`h-1 flex-1 rounded ${i <= step ? 'bg-primary' : 'bg-muted'}`} />
           ))}
         </div>
 
         {step === 0 && (
           <div>
-            <h1 className="text-xl font-bold mb-3">Welcome to LogbookAI</h1>
-            <div className="rounded-xl border border-amber-300 bg-amber-50 p-4 mb-4 flex gap-2">
-              <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0" />
-              <p className="text-sm text-amber-900">
+            <h1 className="text-xl font-bold mb-3 text-foreground">Welcome to LogbookAI</h1>
+            <div className="rounded-xl border border-warning/40 bg-warning-surface p-4 mb-4 flex gap-2">
+              <AlertTriangle className="w-5 h-5 text-warning shrink-0" />
+              <p className="text-sm text-warning-surface-foreground">
                 LogbookAI is an AI-assisted Record of Duty Status tool and is <b>not an Electronic Logging Device (ELD)</b>. It is intended only for drivers legally permitted to maintain non-ELD records of duty status or when applicable regulations permit their use. The driver remains responsible for the truthfulness, accuracy, completeness, and certification of every record.
               </p>
             </div>
-            <label className="flex items-start gap-2 text-sm">
+            <label className="flex items-start gap-2 text-sm text-foreground">
               <input type="checkbox" checked={acknowledged} onChange={(e) => setAcknowledged(e.target.checked)} className="mt-1 w-5 h-5" />
               <span>I understand LogbookAI is not an ELD, and I am responsible for the accuracy and certification of my records.</span>
             </label>
@@ -97,7 +97,7 @@ export default function Onboarding() {
 
         {step === 1 && (
           <div>
-            <h2 className="text-lg font-bold mb-4">Driver Profile</h2>
+            <h2 className="text-lg font-bold mb-4 text-foreground">Driver Profile</h2>
             <div className="space-y-3">
               <div><Label>Legal Name *</Label><Input value={driver.legal_name} onChange={(e) => setDriver({ ...driver, legal_name: e.target.value })} /></div>
               <div><Label>Email</Label><Input value={driver.email} onChange={(e) => setDriver({ ...driver, email: e.target.value })} /></div>
@@ -109,7 +109,7 @@ export default function Onboarding() {
 
         {step === 2 && (
           <div>
-            <h2 className="text-lg font-bold mb-4">Carrier Profile</h2>
+            <h2 className="text-lg font-bold mb-4 text-foreground">Carrier Profile</h2>
             <div className="space-y-3">
               <div><Label>Carrier Name *</Label><Input value={carrierData.carrier_name} onChange={(e) => setCarrierData({ ...carrierData, carrier_name: e.target.value })} /></div>
               <div><Label>USDOT Number *</Label><Input value={carrierData.usdot_number} onChange={(e) => setCarrierData({ ...carrierData, usdot_number: e.target.value })} /></div>
@@ -124,7 +124,7 @@ export default function Onboarding() {
                 <div className="grid grid-cols-2 gap-2">
                   {['60_7', '70_8'].map((c) => (
                     <button key={c} onClick={() => setCarrierData({ ...carrierData, hos_cycle: c })}
-                      className={`p-3 rounded-lg border text-sm font-medium ${carrierData.hos_cycle === c ? 'border-slate-900 bg-slate-50' : 'border-slate-200'}`}>
+                      className={`p-3 rounded-lg border text-sm font-medium ${carrierData.hos_cycle === c ? 'border-primary bg-accent text-accent-foreground' : 'border-border text-card-foreground'}`}>
                       {c === '60_7' ? '60 hr / 7 day' : '70 hr / 8 day'}
                     </button>
                   ))}
@@ -137,11 +137,11 @@ export default function Onboarding() {
 
         {step === 3 && (
           <div>
-            <h2 className="text-lg font-bold mb-4">Equipment</h2>
+            <h2 className="text-lg font-bold mb-4 text-foreground">Equipment</h2>
             <div className="space-y-3">
-              <div className="font-medium text-sm text-slate-500">Tractor</div>
+              <div className="font-medium text-sm text-muted-foreground">Tractor</div>
               <div><Label>Tractor / Unit #</Label><Input value={tractor.unit_number} onChange={(e) => setTractor({ ...tractor, unit_number: e.target.value })} /></div>
-              <div className="font-medium text-sm text-slate-500 mt-3">Trailer (optional)</div>
+              <div className="font-medium text-sm text-muted-foreground mt-3">Trailer (optional)</div>
               <div><Label>Trailer Number</Label><Input value={trailer.unit_number} onChange={(e) => setTrailer({ ...trailer, unit_number: e.target.value })} placeholder="Drop/hook/swappable" /></div>
             </div>
             <Button className="w-full mt-6" disabled={!tractor.unit_number} onClick={() => setStep(4)}>Next</Button>
@@ -150,8 +150,8 @@ export default function Onboarding() {
 
         {step === 4 && (
           <div>
-            <h2 className="text-lg font-bold mb-4">Signature</h2>
-            <p className="text-sm text-slate-600 mb-3">Create your default signature for certifying logs.</p>
+            <h2 className="text-lg font-bold mb-4 text-foreground">Signature</h2>
+            <p className="text-sm text-muted-foreground mb-3">Create your default signature for certifying logs.</p>
             <SignaturePad value={signature} onChange={setSignature} typedName={typedName} onTypedNameChange={setTypedName} />
             <Button className="w-full mt-6" disabled={!signature && !typedName} onClick={() => setStep(5)}>Next</Button>
           </div>
@@ -159,8 +159,8 @@ export default function Onboarding() {
 
         {step === 5 && (
           <div>
-            <h2 className="text-lg font-bold mb-1">Prior Duty History — Optional</h2>
-            <p className="text-sm text-slate-600 mb-3">
+            <h2 className="text-lg font-bold mb-1 text-foreground">Prior Duty History — Optional</h2>
+            <p className="text-sm text-muted-foreground mb-3">
               If you enter your recent duty history, LogbookAI can calculate your 60/7 or 70/8 cycle availability more accurately from your first day.
             </p>
 
@@ -173,12 +173,12 @@ export default function Onboarding() {
 
             {enteredPrior === 'enter' && (
               <>
-                <p className="text-sm text-slate-600 mb-3">Enter on-duty hours for the previous {carrierData.hos_cycle === '70_8' ? 8 : 7} days. Leave blank for days with no on-duty time. LogbookAI cannot assume prior days were zero.</p>
+                <p className="text-sm text-muted-foreground mb-3">Enter on-duty hours for the previous {carrierData.hos_cycle === '70_8' ? 8 : 7} days. Leave blank for days with no on-duty time. LogbookAI cannot assume prior days were zero.</p>
                 <div className="space-y-2">
                   {priorDays.map((h, i) => {
                     const d = new Date(Date.now() - (priorDays.length - i) * 24 * 3600000);
                     return (
-                      <div key={i} className="flex items-center justify-between rounded-lg border border-slate-200 p-2">
+                      <div key={i} className="flex items-center justify-between rounded-lg border border-border p-2 text-card-foreground">
                         <span className="text-sm">{d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}</span>
                         <Input type="number" step="0.25" placeholder="0" value={h}
                           onChange={(e) => { const next = [...priorDays]; next[i] = e.target.value; setPriorDays(next); }}
@@ -191,7 +191,7 @@ export default function Onboarding() {
             )}
 
             {enteredPrior === 'skip' && (
-              <div className="rounded-lg bg-amber-50 border border-amber-200 p-3 text-xs text-amber-900">
+              <div className="rounded-lg bg-warning-surface border border-warning/40 p-3 text-xs text-warning-surface-foreground">
                 Cycle availability will be based only on records entered in LogbookAI. Prior duty history was not provided, so your cycle balance is not verified until enough history exists within LogbookAI to cover your {carrierData.hos_cycle === '70_8' ? '8-day' : '7-day'} cycle.
               </div>
             )}

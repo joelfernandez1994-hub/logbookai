@@ -12,16 +12,18 @@ const STATUS_COLORS = {
 function MiniGraph({ segs, label }) {
   const W = 280, H = 96, pad = 4, rowH = 18;
   const x = (h) => pad + (h / 24) * (W - pad * 2);
+  const grid = 'hsl(var(--graph-grid))';
+  const rowLine = 'hsl(var(--graph-grid) / 0.5)';
   return (
     <div>
-      <div className="text-[11px] font-medium text-slate-500 mb-1">{label}</div>
-      <svg viewBox={`0 0 ${W} ${H}`} className="w-full rounded-md border border-slate-200 bg-white">
+      <div className="text-[11px] font-medium text-muted-foreground mb-1">{label}</div>
+      <svg viewBox={`0 0 ${W} ${H}`} className="w-full rounded-md border border-border bg-graph">
         {[0, 6, 12, 18, 24].map((h) => (
-          <line key={h} x1={x(h)} y1={pad} x2={x(h)} y2={H - pad} stroke="#e2e8f0" strokeWidth={0.8} />
+          <line key={h} x1={x(h)} y1={pad} x2={x(h)} y2={H - pad} stroke={grid} strokeWidth={0.8} />
         ))}
         {ROW_ORDER.map((s, i) => (
           <g key={s}>
-            <line x1={pad} y1={pad + i * rowH + rowH / 2} x2={W - pad} y2={pad + i * rowH + rowH / 2} stroke="#f1f5f9" strokeWidth={rowH - 2} />
+            <line x1={pad} y1={pad + i * rowH + rowH / 2} x2={W - pad} y2={pad + i * rowH + rowH / 2} stroke={rowLine} strokeWidth={rowH - 2} />
           </g>
         ))}
         {segs.map((sg, i) => {
@@ -42,9 +44,9 @@ function HosRow({ before, after }) {
   const cell = (v) => <span className="tabular-nums">{v == null ? '--' : v}</span>;
   return (
     <div className="grid grid-cols-3 gap-1 text-xs py-0.5">
-      <div className="text-slate-500">{before.label}</div>
-      <div className="text-slate-400 line-through text-right">{before.val}</div>
-      <div className="font-semibold text-right">{after.val}</div>
+      <div className="text-muted-foreground">{before.label}</div>
+      <div className="text-muted-foreground line-through text-right">{before.val}</div>
+      <div className="font-semibold text-right text-card-foreground">{after.val}</div>
     </div>
   );
 }
@@ -67,12 +69,12 @@ export default function ProposedChangeDialog({ open, isCertified, beforeSegs, af
       <DialogContent className="max-w-md max-h-[92vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            <ShieldAlert className="w-5 h-5 text-amber-500" /> Proposed Log Change
+            <ShieldAlert className="w-5 h-5 text-warning" /> Proposed Log Change
           </DialogTitle>
         </DialogHeader>
 
         {isCertified && (
-          <div className="rounded-md bg-amber-50 border border-amber-300 p-2 text-xs text-amber-900">
+          <div className="rounded-md bg-warning-surface border border-warning/50 p-2 text-xs text-warning-surface-foreground">
             This day is certified. Applying will preserve the previous event/version and certification in audit history, and mark the new log <b>Needs Re-Certification</b>.
           </div>
         )}
@@ -82,8 +84,8 @@ export default function ProposedChangeDialog({ open, isCertified, beforeSegs, af
           <MiniGraph segs={afterSegs || []} label="After" />
         </div>
 
-        <div className="rounded-lg border border-slate-200 p-2">
-          <div className="grid grid-cols-3 gap-1 text-[11px] font-semibold text-slate-400 mb-1">
+        <div className="rounded-lg border border-border p-2">
+          <div className="grid grid-cols-3 gap-1 text-[11px] font-semibold text-muted-foreground mb-1">
             <div>HOS</div><div className="text-right">Before</div><div className="text-right">After</div>
           </div>
           {hosSummary(beforeHos).map((r, i) => (
@@ -92,21 +94,27 @@ export default function ProposedChangeDialog({ open, isCertified, beforeSegs, af
         </div>
 
         {violations?.length > 0 && (
-          <div className="rounded-lg border border-red-200 bg-red-50 p-2 text-xs text-red-800 space-y-1">
+          <div className="rounded-lg border border-error/40 bg-error-surface p-2 text-xs text-error-surface-foreground space-y-1">
             <div className="font-semibold flex items-center gap-1"><AlertTriangle className="w-3.5 h-3.5" /> HOS Violations</div>
-            {violations.map((v, i) => <div key={i}>• {v.rule}: {v.message}</div>)}
+            {violations.map((v, i) => (
+              <div key={i}>• {v.rule}: {v.message}</div>
+            ))}
           </div>
         )}
 
         {blocking.length > 0 && (
-          <div className="rounded-lg border border-amber-300 bg-amber-50 p-2 text-xs text-amber-900 space-y-1">
+          <div className="rounded-lg border border-warning/50 bg-warning-surface p-2 text-xs text-warning-surface-foreground space-y-1">
             <div className="font-semibold">Blocking checks:</div>
-            {blocking.map((w, i) => <div key={i}>• {w.title}: {w.message}</div>)}
+            {blocking.map((w, i) => (
+              <div key={i}>• {w.title}: {w.message}</div>
+            ))}
           </div>
         )}
         {warnings?.filter((w) => w.severity !== 'blocking').length > 0 && (
-          <div className="rounded-lg border border-slate-200 bg-slate-50 p-2 text-xs text-slate-600 space-y-1">
-            {warnings.filter((w) => w.severity !== 'blocking').map((w, i) => <div key={i}>• {w.title}: {w.message}</div>)}
+          <div className="rounded-lg border border-border bg-muted p-2 text-xs text-muted-foreground space-y-1">
+            {warnings.filter((w) => w.severity !== 'blocking').map((w, i) => (
+              <div key={i}>• {w.title}: {w.message}</div>
+            ))}
           </div>
         )}
 

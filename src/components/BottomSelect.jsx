@@ -15,10 +15,10 @@ export default function BottomSelect({ value, onChange, options, placeholder = '
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className={cn('flex items-center justify-between gap-2 border rounded bg-white p-2 text-sm', className)}
+        className={cn('flex items-center justify-between gap-2 border border-input bg-input-bg rounded p-2 text-sm text-input-fg', className)}
       >
-        <span className={current ? '' : 'text-slate-400'}>{label}</span>
-        <ChevronDown className="w-4 h-4 text-slate-400 shrink-0" />
+        <span className={current ? '' : 'text-muted-foreground'}>{label}</span>
+        <ChevronDown className="w-4 h-4 text-muted-foreground shrink-0" />
       </button>
       <Drawer open={open} onOpenChange={setOpen}>
         <DrawerContent className="max-w-3xl mx-auto">
@@ -30,12 +30,12 @@ export default function BottomSelect({ value, onChange, options, placeholder = '
                 type="button"
                 onClick={() => { onChange(o.value); setOpen(false); }}
                 className={cn(
-                  'flex items-center justify-between w-full p-3 rounded-lg border mb-1.5 text-sm',
-                  o.value === value ? 'border-slate-900 bg-slate-50' : 'border-slate-200'
+                  'flex items-center justify-between w-full p-3 rounded-lg border mb-1.5 text-sm text-card-foreground',
+                  o.value === value ? 'border-primary bg-accent text-accent-foreground' : 'border-border'
                 )}
               >
                 {o.label}
-                {o.value === value && <Check className="w-4 h-4 text-slate-900" />}
+                {o.value === value && <Check className="w-4 h-4 text-primary" />}
               </button>
             ))}
           </div>

@@ -93,7 +93,7 @@ export default function Assistant() {
   return (
     <div className="px-4 pt-6 pb-6">
       <Header title="LogbookAI Assistant" />
-      <div className="text-xs text-slate-500 mb-3">
+      <div className="text-xs text-muted-foreground mb-3">
         AI Assistant — {usage.allowance - usage.used} of {usage.allowance} free requests remaining this month
       </div>
 
@@ -102,7 +102,7 @@ export default function Assistant() {
         <Input value={input} onChange={(e) => setInput(e.target.value)} placeholder="Type a command..."
           onKeyDown={(e) => e.key === 'Enter' && send(input)} />
         <Button variant="outline" onClick={startVoice} disabled={listening}>
-          <Mic className={`w-4 h-4 ${listening ? 'text-red-500 animate-pulse' : ''}`} />
+          <Mic className={`w-4 h-4 ${listening ? 'text-error animate-pulse' : ''}`} />
         </Button>
         <Button onClick={() => send(input)} disabled={loading || !input}>
           <Send className="w-4 h-4" />
@@ -110,41 +110,41 @@ export default function Assistant() {
       </div>
 
       {transcript && (
-        <div className="rounded-lg border border-blue-200 bg-blue-50 p-2 mb-3 text-sm">
-          <div className="text-xs text-blue-600 font-medium">Heard:</div>
-          <div>{transcript}</div>
+        <div className="rounded-lg border border-border bg-accent p-2 mb-3 text-sm">
+          <div className="text-xs text-muted-foreground font-medium">Heard:</div>
+          <div className="text-accent-foreground">{transcript}</div>
         </div>
       )}
 
       {error && (
-        <div className="rounded-lg border border-amber-300 bg-amber-50 p-3 mb-3 text-sm text-amber-900 flex gap-2">
+        <div className="rounded-lg border border-warning/50 bg-warning-surface p-3 mb-3 text-sm text-warning-surface-foreground flex gap-2">
           <AlertTriangle className="w-4 h-4 shrink-0" /> {error}
         </div>
       )}
 
-      {loading && <div className="text-sm text-slate-500 text-center py-4 flex items-center justify-center gap-2">
+      {loading && <div className="text-sm text-muted-foreground text-center py-4 flex items-center justify-center gap-2">
         <Bot className="w-4 h-4 animate-pulse" /> Interpreting...
       </div>}
 
       {/* Result / Review */}
       {result && !result.applied && (
-        <div className="rounded-xl border border-slate-200 bg-white p-4 mb-3">
-          <div className="text-sm font-semibold mb-1">Interpretation</div>
-          <div className="text-sm text-slate-700 mb-3">{result.interpretation}</div>
+        <div className="rounded-xl border border-border bg-card p-4 mb-3">
+          <div className="text-sm font-semibold mb-1 text-card-foreground">Interpretation</div>
+          <div className="text-sm text-muted-foreground mb-3">{result.interpretation}</div>
 
           {result.proposed_changes?.length > 0 && (
             <>
-              <div className="text-sm font-semibold mb-2">PROPOSED LOG CHANGES</div>
+              <div className="text-sm font-semibold mb-2 text-card-foreground">PROPOSED LOG CHANGES</div>
               <div className="space-y-2 mb-3">
                 {result.proposed_changes.map((c, i) => (
-                  <div key={i} className="rounded-lg border border-slate-200 p-2 text-xs">
-                    <div className="font-medium">{formatTime(c.start_timestamp)} - {c.end_timestamp ? formatTime(c.end_timestamp) : 'ongoing'}</div>
-                    <div className="font-semibold">{STATUS_LABELS[c.duty_status] || c.duty_status}</div>
-                    <div className="text-slate-600">{c.remark}{c.city ? ` · ${c.city}${c.state ? ', ' + c.state : ''}` : ''}</div>
+                  <div key={i} className="rounded-lg border border-border p-2 text-xs">
+                    <div className="font-medium text-card-foreground">{formatTime(c.start_timestamp)} - {c.end_timestamp ? formatTime(c.end_timestamp) : 'ongoing'}</div>
+                    <div className="font-semibold text-card-foreground">{STATUS_LABELS[c.duty_status] || c.duty_status}</div>
+                    <div className="text-muted-foreground">{c.remark}{c.city ? ` · ${c.city}${c.state ? ', ' + c.state : ''}` : ''}</div>
                   </div>
                 ))}
               </div>
-              {result.compliance_note && <div className="text-xs text-slate-500 mb-3">{result.compliance_note}</div>}
+              {result.compliance_note && <div className="text-xs text-muted-foreground mb-3">{result.compliance_note}</div>}
               <div className="flex gap-2">
                 <Button className="flex-1" onClick={applyChanges}><Check className="w-4 h-4 mr-1" /> Apply Changes</Button>
                 <Button variant="outline" onClick={() => setResult(null)}><X className="w-4 h-4" /> Cancel</Button>
@@ -155,17 +155,17 @@ export default function Assistant() {
       )}
 
       {result?.applied && (
-        <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-emerald-800 text-sm flex items-center gap-2 mb-3">
+        <div className="rounded-xl border border-success/40 bg-success-surface p-3 text-success-surface-foreground text-sm flex items-center gap-2 mb-3">
           <Check className="w-4 h-4" /> Changes applied to your log.
         </div>
       )}
 
-      <div className="text-xs text-slate-400 mt-4">
+      <div className="text-xs text-muted-foreground mt-4">
         <p className="font-medium mb-1">Try:</p>
         <p>"Log me on duty for a 30-minute pre-trip and then driving."</p>
         <p>"How many hours do I have left?"</p>
         <p>"Can I use split sleeper here?"</p>
-        <p>"Make my plan legal."</p>
+        <p>"Check if my plan is HOS-compliant."</p>
       </div>
     </div>
   );

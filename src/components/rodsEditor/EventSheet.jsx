@@ -58,23 +58,23 @@ export default function EventSheet({ open, value, isNew, dayStartMs, tz, carrier
 
         <div className="space-y-3">
           {/* status */}
-          <div className="grid grid-cols-4 gap-1.5">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5">
             {ROW_ORDER.map((s) => (
               <button key={s} onClick={() => onChange({ status: s })}
-                className={`rounded-lg border px-1 py-2 text-[11px] font-medium ${v.status === s ? 'border-slate-900 bg-slate-900 text-white' : 'border-slate-200'}`}>
+                className={`rounded-lg border px-1 py-2 text-[11px] font-medium ${v.status === s ? 'border-primary bg-primary text-primary-foreground' : 'border-border text-card-foreground'}`}>
                 {STATUS_LABELS[s]}
               </button>
             ))}
           </div>
 
           {/* live time readout */}
-          <div className="rounded-lg bg-slate-900 text-white p-3 text-center">
+          <div className="rounded-lg bg-primary text-primary-foreground p-3 text-center">
             <div className="text-lg font-bold tabular-nums">{formatHour(startHour)} → {formatHour(endHour)}</div>
-            <div className="text-xs text-slate-300 mt-0.5">{fmtDurationMs(dur)}</div>
+            <div className="text-xs text-primary-foreground/80 mt-0.5">{fmtDurationMs(dur)}</div>
           </div>
 
           {/* exact time inputs */}
-          <div className="grid grid-cols-2 gap-2">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
             <div>
               <Label className="text-xs">Start (24h)</Label>
               <Input type="time" value={formatH24(startHour)} onChange={(e) => setTime('start', e.target.value)} />
@@ -91,7 +91,7 @@ export default function EventSheet({ open, value, isNew, dayStartMs, tz, carrier
             <div className="flex flex-wrap gap-1.5 mt-1">
               {ACTIVITIES.map((a) => (
                 <button key={a} onClick={() => setActivity(a)}
-                  className={`rounded-full border px-2.5 py-1 text-xs ${v.activity === a ? 'border-slate-900 bg-slate-100' : 'border-slate-200'}`}>
+                  className={`rounded-full border px-2.5 py-1 text-xs ${v.activity === a ? 'border-primary bg-accent text-accent-foreground' : 'border-border text-card-foreground'}`}>
                   {a}
                 </button>
               ))}
@@ -112,7 +112,7 @@ export default function EventSheet({ open, value, isNew, dayStartMs, tz, carrier
           <Button variant="outline" size="sm" className="w-full" onClick={useGps} disabled={gpsLoading}>
             <Navigation className="w-3.5 h-3.5 mr-1.5" /> {gpsLoading ? 'Locating…' : 'Use current location (GPS)'}
           </Button>
-          {gpsErr && <div className="text-xs text-red-600 -mt-1">{gpsErr}</div>}
+          {gpsErr && <div className="text-xs text-error -mt-1">{gpsErr}</div>}
 
           {/* remark */}
           <div>
@@ -121,7 +121,7 @@ export default function EventSheet({ open, value, isNew, dayStartMs, tz, carrier
           </div>
 
           {/* equipment */}
-          <div className="grid grid-cols-2 gap-2">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
             <div>
               <Label className="text-xs">Tractor #</Label>
               <Input value={v.tractor_number ?? defaultTractor} onChange={(e) => onChange({ tractor_number: e.target.value })} />

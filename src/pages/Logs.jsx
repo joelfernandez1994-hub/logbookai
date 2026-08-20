@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { useDriverData } from '@/hooks/useDriverData';
 import { getDailyGrid, computeCycle, dateKeyInTz, fmtHours } from '@/lib/hosEngine';
 import RodsGraphEditor from '@/components/rodsEditor/RodsGraphEditor';
@@ -22,6 +22,7 @@ const STATUSES = ['OFF_DUTY', 'SLEEPER_BERTH', 'DRIVING', 'ON_DUTY'];
 export default function Logs() {
   const { profile, carrier, equipment, events, loading, reload } = useDriverData(9);
   const navigate = useNavigate();
+  const location = useLocation();
   const [selectedDate, setSelectedDate] = useState(() => new Date());
   const [certifications, setCertifications] = useState([]);
   const [editing, setEditing] = useState(null);
@@ -38,14 +39,17 @@ export default function Logs() {
   useEffect(() => { loadCerts(); }, []);
 
   // "Add record" from a timeline gap notice: prefill the Add Event dialog.
+  // "Add record" from a timeline gap notice: prefill the Add Event dialog.
+  // Depend on location.search so tapping "Add record" while already on /logs
+  // (where the gap notice also appears) re-opens the editor for the new gap.
   useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
+    const params = new URLSearchParams(location.search);
     const fs = params.get('fill_start');
     const fe = params.get('fill_end');
     const date = params.get('date');
     if (date) setSelectedDate(new Date(date + 'T12:00:00'));
     if (fs) { setPrefill({ start_timestamp: fs, end_timestamp: fe }); setAdding(true); }
-  }, []);
+  }, [location.search]);
 
   const dateStr = useMemo(() => dateKeyInTz(selectedDate, tz), [selectedDate, tz]);
   const grid = useMemo(() => getDailyGrid(events, dateStr, tz), [events, dateStr, tz]);
@@ -177,7 +181,7 @@ export default function Logs() {
         {isCertified ? 'Certified ✓' : 'Certify Log'}
       </Button>
 
-      <EventEditor open={!!editing || adding} event={editing} prefill={prefill} onClose={() => { setEditing(null); setAdding(false); setPrefill(null); }}
+      <EventEditor open={!!editing || adding} event={editing} prefill={prefill} onClose={() => { setEditing(null); setAdding(false); setPrefill(null); if (location.search) navigate('/logs', { replace: true }); }}
         onSave={saveEdit} tz={tz} carrier={carrier} equipment={equipment} isCertified={isCertified} />
     </PullToRefresh>
   );
