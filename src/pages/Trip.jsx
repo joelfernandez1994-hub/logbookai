@@ -23,6 +23,13 @@ const fmtHM = (h) => {
   const mm = totalMin % 60;
   return `${hh} hr ${String(mm).padStart(2, '0')} min`;
 };
+// Labeled row for the structured rest-stop breakdown.
+const Row = ({ label, value }) => (
+  <div className="flex gap-2">
+    <div className="w-28 shrink-0 text-muted-foreground">{label}</div>
+    <div className="flex-1 text-card-foreground">{value}</div>
+  </div>
+);
 // Strip AI/web citation markup, URLs and search brackets from provider notes.
 const cleanNotes = (s) => (s || '')
   .replace(/\[+https?:[^\]]*\]+/g, '')
@@ -263,13 +270,25 @@ export default function Trip() {
           {stopSugg && edits && (
             <div className="mt-2 space-y-2">
               <div className="rounded-lg border border-warning/40 bg-card p-3">
-                <div className="text-sm font-medium text-card-foreground">{stopSugg.stop_city}, {stopSugg.stop_state}</div>
-                <div className="text-xs text-muted-foreground">~{Math.round(stopSugg.miles_from_origin)} mi from origin · ~{Math.round(stopSugg.miles_remaining)} mi to destination · {fmtHM(edits.restHours)} rest</div>
-                {stopSugg.note && <div className="text-[11px] text-muted-foreground mt-1">{cleanNotes(stopSugg.note)}</div>}
+                <div className="text-[11px] uppercase tracking-wide text-muted-foreground">Suggested stopping area</div>
+                <div className="text-sm font-medium text-card-foreground">
+                  {stopSugg.verified
+                    ? `${stopSugg.stop_city}${stopSugg.stop_state ? ', ' + stopSugg.stop_state : ''}`
+                    : 'Suggested stopping range'}
+                </div>
+                <div className="text-[11px] text-muted-foreground mt-0.5">
+                  {stopSugg.verified
+                    ? 'Approximate area from road routing — confirm a truck-accessible stop before arriving. Named truck-stop verification is a future integration.'
+                    : (stopSugg.note ? cleanNotes(stopSugg.note) : 'No named stop verified — plan to stop within this mileage range.')}
+                </div>
               </div>
 
-              <div className="text-xs text-muted-foreground space-y-1">
-                {edits.notes.map((n, i) => <div key={i} className="border-l-2 border-warning/60 pl-2">{n}</div>)}
+              <div className="rounded-lg border border-border bg-card p-3 space-y-1.5 text-xs">
+                <Row label="Miles into trip" value={`~${Math.round(stopSugg.miles_from_origin)} mi`} />
+                <Row label="Leg 1" value={`${pickup.city}, ${pickup.state} → ${edits.stopEvent.city || 'stop'} · ~${Math.round(edits.leg1Miles)} mi · ${fmtHM(edits.leg1Hours)}`} />
+                <Row label="Rest" value={fmtHM(edits.restHours)} />
+                <Row label="Leg 2" value={`${edits.stopEvent.city || 'stop'} → ${delivery.city}, ${delivery.state} · ~${Math.round(edits.leg2Miles)} mi · ${fmtHM(edits.leg2Hours)}`} />
+                <Row label="Estimated remaining mileage" value={`~${Math.round(stopSugg.miles_remaining)} mi`} />
               </div>
 
               <div className={`rounded-lg p-2 text-xs ${edits.overallOk ? 'bg-success-surface border border-success/40 text-success-surface-foreground' : 'bg-error-surface border border-error/40 text-error-surface-foreground'}`}>

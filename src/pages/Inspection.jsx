@@ -10,6 +10,13 @@ import { Button } from '@/components/ui/button';
 import { ChevronLeft, ChevronRight, Share2, X, ShieldCheck } from 'lucide-react';
 
 const STATUS_LABELS = { OFF_DUTY: 'Off Duty', SLEEPER_BERTH: 'Sleeper', DRIVING: 'Driving', ON_DUTY: 'On Duty' };
+// Format hours as X hr YY min; NaN/undefined -> 0 hr 00 min (never expose "NaN").
+// Guards the cycle recap against computeCycle returning NaN for empty/new drivers.
+const fmtHM = (h) => {
+  const v = Number.isFinite(h) ? h : 0;
+  const totalMin = Math.round(v * 60);
+  return `${Math.floor(totalMin / 60)} hr ${String(totalMin % 60).padStart(2, '0')} min`;
+};
 
 export default function Inspection() {
   const { profile, carrier } = useDriverData(9);
@@ -93,12 +100,12 @@ export default function Inspection() {
 
       {/* Recap */}
       <div className="bg-slate-800 rounded-xl p-3 mb-3 text-sm">
-        <div className="font-semibold mb-1">{cycle.cycleLimit}-Hour / {cycle.cycleDays}-Day Recap</div>
+        <div className="font-semibold mb-1">{cycle?.cycleLimit || (cycleType === '60_7' ? 60 : 70)}-Hour / {cycle?.cycleDays || (cycleType === '60_7' ? 7 : 8)}-Day Recap</div>
         <div className="grid grid-cols-2 gap-1 text-xs text-slate-300">
-          <div>Used: {cycle.cycleUsedHours.toFixed(2)}</div>
-          <div>Available: {cycle.cycleRemainingHours.toFixed(2)}</div>
-          <div>Today: {(cycle.dailyTotals[cycle.dailyTotals.length - 1]?.onDutyHours || 0).toFixed(2)}</div>
-          <div>Back tomorrow: {cycle.returningTomorrowHours.toFixed(2)}</div>
+          <div>Used: {fmtHM(cycle?.cycleUsedHours)}</div>
+          <div>Available: {fmtHM(cycle?.cycleRemainingHours)}</div>
+          <div>Today: {fmtHM(cycle?.dailyTotals?.[cycle.dailyTotals.length - 1]?.onDutyHours)}</div>
+          <div>Back tomorrow: {fmtHM(cycle?.returningTomorrowHours)}</div>
         </div>
       </div>
 

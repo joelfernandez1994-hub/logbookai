@@ -19,6 +19,15 @@ import { SPEED_PROFILES } from './proposalValidation';
 
 const H = 3600000;
 
+// Always render durations as X hr YY min — never raw floating point.
+const fmtHM = (h) => {
+  if (h == null || isNaN(h)) return '—';
+  const totalMin = Math.round(h * 60);
+  const hh = Math.floor(totalMin / 60);
+  const mm = totalMin % 60;
+  return `${hh} hr ${String(mm).padStart(2, '0')} min`;
+};
+
 // Planning mph for "how far can I get in X driving hours". Conservative uses a
 // safe 55 mph planning average; fixed profiles use their value; provider falls
 // back to the 50 mph assumed by the routing estimator.
@@ -91,12 +100,13 @@ export function buildComplianceEdits({ origin, destination, stop, hos, profileId
   const leg2CycleOk = leg2Hours <= leg2CycleAvail;
   const overallOk = leg1Ok && leg2DriveOk && leg2CycleOk;
 
-  const stopCity = `${stop?.stop_city || ''}, ${stop?.stop_state || ''}`.trim().replace(/,\s*$/, '');
+  const stopCity = `${stop?.stop_city || ''}, ${stop?.stop_state || ''}`.trim().replace(/,\s*$/, '').replace(/^,\s*/, '') || 'Suggested stopping area';
+  const stopArea = stop?.verified ? stopCity : 'Suggested stopping area';
 
   const notes = [
-    `Leg 1: ${origin} → ${stopCity} · ~${Math.round(leg1Miles)} mi · ${leg1Hours.toFixed(1)} h driving.`,
-    `Rest ${rest}h at ${stopCity} — resets ${[restResetsDrive ? '11h driving & 14h window' : null, restResetsCycle ? 'cycle' : null].filter(Boolean).join(', ') || 'no HOS clock (rest too short)'}.`,
-    `Leg 2: ${stopCity} → ${destination} · ~${Math.round(leg2Miles)} mi · ${leg2Hours.toFixed(1)} h driving.`,
+    `Leg 1: ${origin} → ${stopArea} · ~${Math.round(leg1Miles)} mi · ${fmtHM(leg1Hours)} driving.`,
+    `Rest ${fmtHM(rest)} at ${stopArea} — resets ${[restResetsDrive ? '11h driving & 14h window' : null, restResetsCycle ? 'cycle' : null].filter(Boolean).join(', ') || 'no HOS clock (rest too short)'}.`,
+    `Leg 2: ${stopArea} → ${destination} · ~${Math.round(leg2Miles)} mi · ${fmtHM(leg2Hours)} driving.`,
     leg2CycleOk ? '' : 'Cycle still limiting after this rest — a 34h restart or a correction to an over-stated prior driving entry is needed before Leg 2.',
   ].filter(Boolean);
 
@@ -110,8 +120,8 @@ export function buildComplianceEdits({ origin, destination, stop, hos, profileId
     needsCycleFix: !leg2CycleOk,
     stopEvent: {
       type: 'rest',
-      city: stopCity,
-      note: `${rest}h rest (compliance stop)`,
+      city: stopArea,
+      note: `${fmtHM(rest)} rest (planned)`,
       miles_from_origin: leg1Miles,
     },
     notes,
