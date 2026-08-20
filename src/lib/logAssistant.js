@@ -102,12 +102,6 @@ export function whatCanIDo(events, cycleType, tz, now = new Date()) {
   const segments = normalizeEvents(events, now);
   const hos = computeHOS(events, cycleType, tz, now, { historyComplete: true });
 
-  const canDrive =
-    hos.driving.applicable && hos.driving.drivingRemainingMs > 0 &&
-    hos.window14.applicable && hos.window14.remainingMs > 0 &&
-    !hos.break30.breakRequired &&
-    hos.cycle.cycleRemainingHours > 0;
-
   // Current rest block (if the driver is resting right now)
   const restBlocks = buildRestBlocks(segments);
   const lastBlock = restBlocks[restBlocks.length - 1];
@@ -133,16 +127,78 @@ export function whatCanIDo(events, cycleType, tz, now = new Date()) {
     };
   }
 
-  // Restart status (deterministic)
   const restart = hos.restart;
+
+  // --- Driving availability: exact reasons + eligible time ---
+  // Build a prioritized list of blockers. Each carries the specific reason and,
+  // where determinable, the time the blocker clears (eligibleAt).
+  const driveRemainingMs = hos.driving.applicable ? Math.max(0, hos.driving.drivingRemainingMs) : 0;
+  const windowRemainingMs = hos.window14.applicable ? Math.max(0, hos.window14.remainingMs) : 0;
+  const cycleRemainingHours = hos.cycle ? Math.max(0, hos.cycle.cycleRemainingHours) : 0;
+  const cycleRemainingMs = cycleRemainingHours * H;
+
+  const blockers = [];
+  if (hos.break30.breakRequired) {
+    blockers.push({
+      rule: '30-minute break',
+      message: 'A 30-minute qualifying break is required before driving more than 8 hours.',
+      eligibleAt: null,
+    });
+  }
+  if (!hos.driving.applicable || driveRemainingMs <= 0) {
+    blockers.push({
+      rule: '11-hour driving limit',
+      message: 'You have used all 11 hours of driving time. A 10-hour rest resets the drive clock.',
+      eligibleAt: tenHourCompletesAt,
+    });
+  }
+  if (!hos.window14.applicable || windowRemainingMs <= 0) {
+    blockers.push({
+      rule: '14-hour window',
+      message: 'Your 14-hour duty window is closed. A 10-hour rest reopens it.',
+      eligibleAt: tenHourCompletesAt,
+    });
+  }
+  if (cycleRemainingHours <= 0) {
+    blockers.push({
+      rule: `${hos.cycle?.cycleLimit || 70}-hour cycle`,
+      message: `You have used all ${hos.cycle?.cycleLimit || 70} cycle hours. A 34-hour restart is required.`,
+      eligibleAt: thirtyFourCompletesAt || (restart.inProgress ? restart.estimatedCompletion : null),
+    });
+  }
+
+  const canDrive = blockers.length === 0;
+
+  // The earliest time driving becomes legal again (earliest blocker eligibleAt).
+  const eligibleAts = blockers.map(b => b.eligibleAt).filter(Boolean);
+  const driveEligibleAt = eligibleAts.length
+    ? new Date(Math.min(...eligibleAts.map(d => new Date(d).getTime())))
+    : (canDrive ? new Date(now.getTime()) : null);
+
+  // USABLE vs REMAINING distinction:
+  //  remainingDriveMs = the raw 11-hour driving clock (what the rule allows in total).
+  //  usableDriveMs    = what you can actually use NOW, bounded by the 14-hour
+  //                     window (the tighter limit always governs), and 0 if a
+  //                     blocker (break/cycle/rest-not-done) prevents driving now.
+  let usableDriveMs = 0;
+  if (canDrive) {
+    usableDriveMs = Math.min(driveRemainingMs, windowRemainingMs);
+  } else if (!hos.break30.breakRequired && driveRemainingMs > 0 && windowRemainingMs > 0 && cycleRemainingHours > 0) {
+    // Not blocked by HOS clocks or break — but resting now: usable after rest.
+    usableDriveMs = 0;
+  }
 
   return {
     canDrive,
-    driveRemainingMs: hos.driving.drivingRemainingMs,
-    windowRemainingMs: hos.window14.remainingMs,
+    driveBlockers: blockers,
+    driveEligibleAt,
+    driveRemainingMs,
+    usableDriveMs,
+    windowRemainingMs,
     breakRequired: hos.break30.breakRequired,
     breakSatisfied: hos.break30.satisfied,
-    cycleRemainingHours: hos.cycle.cycleRemainingHours,
+    cycleRemainingHours,
+    cycleRemainingMs,
     cycleReturningTomorrow: hos.cycle.returningTomorrowHours,
     tenHourCompletesAt,
     thirtyFourCompletesAt,

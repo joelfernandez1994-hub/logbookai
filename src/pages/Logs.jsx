@@ -3,13 +3,15 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import { useDriverData } from '@/hooks/useDriverData';
 import { getDailyGrid, computeCycle, dateKeyInTz, fmtHours } from '@/lib/hosEngine';
 import RodsGraphEditor from '@/components/rodsEditor/RodsGraphEditor';
-import { getCertifications, updateEvent, deleteEvent, createHistoricalEvent } from '@/lib/driverData';
+import { getCertifications } from '@/lib/driverData';
 import { base44 } from '@/api/base44Client';
+import { insertEvent, editEvent, deleteEventById, clearDayEvents } from '@/lib/timelineWriter';
+import { validateTimeline } from '@/lib/timelineEngine';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { ChevronLeft, ChevronRight, BadgeCheck, AlertTriangle, Pencil, Trash2, Plus, Bot } from 'lucide-react';
+import { ChevronLeft, ChevronRight, BadgeCheck, AlertTriangle, Pencil, Trash2, Plus, Bot, Eraser, MapPin, Loader2 } from 'lucide-react';
 import { validateProposal, hasBlocking } from '@/lib/proposalValidation';
 import { useEffect } from 'react';
 import DailyMilesCard from '@/components/DailyMilesCard';
@@ -28,6 +30,10 @@ export default function Logs() {
   const [editing, setEditing] = useState(null);
   const [adding, setAdding] = useState(false);
   const [prefill, setPrefill] = useState(null);
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState('');
+  const [confirmClear, setConfirmClear] = useState(false);
+  const [clearing, setClearing] = useState(false);
 
   const tz = carrier?.home_terminal_timezone || 'America/Chicago';
   const cycleType = carrier?.hos_cycle || '70_8';
@@ -81,26 +87,54 @@ export default function Logs() {
     await loadCerts();
   };
 
-  const saveEdit = async (data) => {
-    if (isCertified && editing) {
-      await base44.entities.EventVersion.create({
-        original_event_id: editing.id,
-        version_number: 1,
-        snapshot: { ...editing },
-        edited_by: profile?.legal_name,
-        action: 'edited',
-      });
-      if (cert) await base44.entities.Certification.update(cert.id, { is_superseded: true });
+  // Both Add and Edit funnel through this single handler. The canonical writer
+  // computes ops (split/truncate/dedupe), applies them, preserves an audit
+  // version snapshot if the day was certified, and invalidates the certification.
+  const saveEvent = async (data) => {
+    setSaving(true); setSaveError('');
+    try {
+      let res;
+      if (editing) {
+        res = await editEvent(events, editing.id, data, {
+          editedBy: profile?.legal_name, reason: 'Manual edit', carrierName: carrier?.carrier_name,
+        });
+      } else {
+        res = await insertEvent(events, {
+          ...data,
+          log_date: new Date(data.start_timestamp).toISOString().slice(0, 10),
+          is_ongoing: false,
+          method_of_creation: 'Manual',
+        }, { editedBy: profile?.legal_name, reason: 'Manual add', carrierName: carrier?.carrier_name });
+      }
+      if (res?.error) { setSaveError(res.error); return; }
+      setEditing(null); setAdding(false); setPrefill(null);
+      if (location.search) navigate('/logs', { replace: true });
+      await reload(); await loadCerts();
+    } catch (e) {
+      setSaveError(e?.message || 'Failed to save event. Please try again.');
+    } finally {
+      setSaving(false);
     }
-    await updateEvent(editing.id, data);
-    setEditing(null);
-    reload();
-    loadCerts();
   };
 
   const removeEvent = async (id) => {
-    await deleteEvent(id);
-    reload();
+    try {
+      await deleteEventById(events, id, { editedBy: profile?.legal_name, reason: 'Manual delete' });
+      await reload(); await loadCerts();
+    } catch (e) { /* error shown via reload state */ }
+  };
+
+  const doClearDay = async () => {
+    setClearing(true);
+    try {
+      await clearDayEvents(events, dateStr, tz, { editedBy: profile?.legal_name, reason: 'Clear day log' });
+      setConfirmClear(false);
+      await reload(); await loadCerts();
+    } catch (e) {
+      setSaveError(e?.message || 'Failed to clear day. Please try again.');
+    } finally {
+      setClearing(false);
+    }
   };
 
   return (
@@ -177,17 +211,36 @@ export default function Logs() {
         </div>
       </div>
 
-      <Button className="w-full mb-6" onClick={certify} disabled={isCertified}>
+      <Button className="w-full mb-2" onClick={certify} disabled={isCertified}>
         {isCertified ? 'Certified ✓' : 'Certify Log'}
       </Button>
+      <Button variant="outline" className="w-full mb-2 text-error border-error/40 hover:bg-error-surface" disabled={clearing} onClick={() => setConfirmClear(true)}>
+        <Eraser className="w-4 h-4 mr-2" /> {clearing ? 'Clearing…' : 'Clear Day Log'}
+      </Button>
 
-      <EventEditor open={!!editing || adding} event={editing} prefill={prefill} onClose={() => { setEditing(null); setAdding(false); setPrefill(null); if (location.search) navigate('/logs', { replace: true }); }}
-        onSave={saveEdit} tz={tz} carrier={carrier} equipment={equipment} isCertified={isCertified} />
+      <EventEditor open={!!editing || adding} event={editing} prefill={prefill} saving={saving} saveError={saveError}
+        onClose={() => { setEditing(null); setAdding(false); setPrefill(null); setSaveError(''); if (location.search) navigate('/logs', { replace: true }); }}
+        onSave={saveEvent} tz={tz} carrier={carrier} equipment={equipment} isCertified={isCertified} />
+
+      <Dialog open={confirmClear} onOpenChange={(o) => !clearing && setConfirmClear(o)}>
+        <DialogContent className="max-w-md">
+          <DialogHeader><DialogTitle className="flex items-center gap-2"><AlertTriangle className="w-5 h-5 text-error" /> Clear Day Log?</DialogTitle></DialogHeader>
+          <div className="text-sm text-muted-foreground space-y-2">
+            <p>This permanently deletes <b>all duty-status events on {selectedDate.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', timeZone: tz })}</b> and invalidates that day's certification.</p>
+            <p>Events that cross midnight into an adjacent day are split — the adjacent day's records are preserved. Mileage, totals, the graph, and HOS/cycle recalculation update automatically.</p>
+            <p className="text-error font-medium">This cannot be undone.</p>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setConfirmClear(false)} disabled={clearing}>Cancel</Button>
+            <Button variant="destructive" onClick={doClearDay} disabled={clearing}>{clearing ? 'Clearing…' : 'Yes, clear this day'}</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </PullToRefresh>
   );
 }
 
-function EventEditor({ open, event, prefill, onClose, onSave, tz, carrier, equipment, isCertified }) {
+function EventEditor({ open, event, prefill, onClose, onSave, tz, carrier, equipment, isCertified, saving, saveError }) {
   const pfStart = prefill?.start_timestamp ? new Date(prefill.start_timestamp).toISOString().slice(0, 16) : '';
   const pfEnd = prefill?.end_timestamp ? new Date(prefill.end_timestamp).toISOString().slice(0, 16) : '';
   const [status, setStatus] = useState(event?.duty_status || 'DRIVING');
@@ -196,32 +249,64 @@ function EventEditor({ open, event, prefill, onClose, onSave, tz, carrier, equip
   const [city, setCity] = useState(event?.city || '');
   const [stateVal, setStateVal] = useState(event?.state || '');
   const [remark, setRemark] = useState(event?.remark || '');
+  const [locating, setLocating] = useState(false);
+  const [locNote, setLocNote] = useState('');
+  const [localError, setLocalError] = useState('');
 
   useEffect(() => {
     setStatus(event?.duty_status || 'DRIVING');
     setStart(event ? new Date(event.start_timestamp).toISOString().slice(0, 16) : (prefill?.start_timestamp ? new Date(prefill.start_timestamp).toISOString().slice(0, 16) : ''));
     setEnd(event?.end_timestamp ? new Date(event.end_timestamp).toISOString().slice(0, 16) : (prefill?.end_timestamp ? new Date(prefill.end_timestamp).toISOString().slice(0, 16) : ''));
     setCity(event?.city || ''); setStateVal(event?.state || ''); setRemark(event?.remark || '');
+    setLocalError(''); setLocNote('');
   }, [event, open, prefill]);
 
+  // Reuse the exact GPS + reverse-geocode service from Change Duty Status.
+  // Standardizes to City, ST for display/storage.
+  const useMyLocation = () => {
+    if (!navigator.geolocation) { setLocalError('Location not available on this device.'); return; }
+    setLocating(true); setLocalError('');
+    navigator.geolocation.getCurrentPosition(async (pos) => {
+      try {
+        const res = await base44.functions.invoke('reverseGeocode', { latitude: pos.coords.latitude, longitude: pos.coords.longitude });
+        if (res.data?.city) setCity(res.data.city);
+        if (res.data?.state) {
+          // Normalize state to 2-letter uppercase; standardize City, ST.
+          const st = String(res.data.state).trim();
+          setStateVal(st.length > 2 ? st.slice(0, 2).toUpperCase() : st.toUpperCase());
+        }
+        setLocNote(`Located as ${res.data?.city || city}, ${res.data?.state || stateVal}. Please confirm or edit.`);
+      } catch (e) {
+        setLocalError('Could not determine your location. Enter city and state manually.');
+      }
+      setLocating(false);
+    }, () => { setLocalError('Location permission denied. Enter city and state manually.'); setLocating(false); },
+      { enableHighAccuracy: true, timeout: 10000 });
+  };
+
   const save = () => {
+    setLocalError('');
+    if (!start) { setLocalError('Start time is required.'); return; }
+    const startMs = new Date(start).getTime();
+    const endMs = end ? new Date(end).getTime() : null;
+    if (endMs != null && endMs <= startMs) { setLocalError('End time must be after the start time.'); return; }
     const data = {
       duty_status: status,
       start_timestamp: new Date(start).toISOString(),
-      end_timestamp: end ? new Date(end).toISOString() : null,
-      city, state: stateVal, remark,
+      end_timestamp: endMs != null ? new Date(end).toISOString() : null,
+      city: city.trim(), state: stateVal.trim().toUpperCase(), remark,
     };
     if (event) onSave(data);
     else onSave({ ...data, log_date: new Date(start).toISOString().slice(0, 10), is_ongoing: false, is_current_version: true, method_of_creation: 'Manual', carrier_name: carrier?.carrier_name });
   };
 
   return (
-    <Dialog open={open} onOpenChange={onClose}>
+    <Dialog open={open} onOpenChange={(o) => { if (!saving) onClose(); }}>
       <DialogContent className="max-w-md">
         <DialogHeader><DialogTitle>{event ? 'Edit Event' : 'Add Event'}</DialogTitle></DialogHeader>
         {isCertified && event && (
           <div className="rounded-md bg-warning-surface border border-warning/50 p-2 text-xs text-warning-surface-foreground">
-            This log is certified. Editing will preserve the previous version and require re-certification.
+            This log is certified. Editing will preserve the previous version in audit history and mark this day as needing re-certification.
           </div>
         )}
         <div className="space-y-3">
@@ -241,11 +326,20 @@ function EventEditor({ open, event, prefill, onClose, onSave, tz, carrier, equip
             <div><Label className="text-xs">City</Label><Input value={city} onChange={(e) => setCity(e.target.value)} /></div>
             <div><Label className="text-xs">State</Label><Input value={stateVal} onChange={(e) => setStateVal(e.target.value.toUpperCase())} maxLength={2} /></div>
           </div>
+          <Button variant="outline" size="sm" className="w-full" onClick={useMyLocation} disabled={locating}>
+            {locating ? <><Loader2 className="w-4 h-4 mr-1 animate-spin" /> Locating…</> : <><MapPin className="w-4 h-4 mr-1" /> Use My Current Location</>}
+          </Button>
+          {locNote && !localError && <p className="text-xs text-warning">{locNote}</p>}
           <div><Label className="text-xs">Remark</Label><Input value={remark} onChange={(e) => setRemark(e.target.value)} /></div>
         </div>
+        {(localError || saveError) && (
+          <div className="rounded-md bg-error-surface border border-error/50 p-2 text-xs text-error-surface-foreground flex gap-1">
+            <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" /> <div>{localError || saveError}</div>
+          </div>
+        )}
         <DialogFooter>
-          <Button variant="outline" onClick={onClose}>Cancel</Button>
-          <Button onClick={save}>Save</Button>
+          <Button variant="outline" onClick={onClose} disabled={saving}>Cancel</Button>
+          <Button onClick={save} disabled={saving}>{saving ? 'Saving…' : 'Save'}</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

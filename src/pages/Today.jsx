@@ -5,11 +5,11 @@ import { computeHOS, fmtDur, fmtClock, dateKeyInTz, hasSufficientCycleHistory } 
 import LogGraph from '@/components/LogGraph';
 import ClockCard from '@/components/ClockCard';
 import StatusChangeSheet from '@/components/StatusChangeSheet';
-import { changeStatus, createHistoricalEvent } from '@/lib/driverData';
+import { changeStatus, insertEvent } from '@/lib/timelineWriter';
 import { getDvirs } from '@/lib/dvirData';
 import { Button } from '@/components/ui/button';
 import PreTripDialog from '@/components/PreTripDialog';
-import { Truck, Clock, Coffee, RotateCcw, AlertTriangle, MapPin, Bot, FileCheck, ClipboardList, ClipboardCheck, Gauge, Moon, HelpCircle, MicVocal } from 'lucide-react';
+import { Truck, Clock, Coffee, RotateCcw, AlertTriangle, MapPin, Bot, FileCheck, ClipboardList, ClipboardCheck, Gauge, Moon, HelpCircle, MicVocal, ShieldCheck } from 'lucide-react';
 import DailyMilesCard from '@/components/DailyMilesCard';
 import TimelineGapNotice from '@/components/TimelineGapNotice';
 import PullToRefresh from '@/components/PullToRefresh';
@@ -89,7 +89,7 @@ export default function Today() {
       city: details.city, state: details.state, remark: details.remark,
       tractor_number: details.tractor_number, trailer_numbers: details.trailer_numbers,
       carrier_name: carrier?.carrier_name,
-    });
+    }, events);
     setStatusOpen(false);
     setPretripOpen(false);
     await reload();
@@ -105,7 +105,7 @@ export default function Today() {
       return;
     }
     const start = new Date(start_timestamp);
-    await createHistoricalEvent({
+    await insertEvent(events, {
       log_date: todayKey,
       start_timestamp: start.toISOString(),
       end_timestamp: new Date(start.getTime() + duration_min * 60000).toISOString(),
@@ -113,7 +113,8 @@ export default function Today() {
       remark: 'Pre-Trip Inspection',
       city: city || pendingStatus?.city || '', state: state || pendingStatus?.state || '',
       method_of_creation: 'Manual',
-    });
+      is_ongoing: false,
+    }, { carrierName: carrier?.carrier_name, reason: 'Pre-trip inspection' });
     setPretripOpen(false);
     if (pendingStatus) await applyChange(pendingStatus);
     setPendingStatus(null);
@@ -239,8 +240,8 @@ export default function Today() {
         <Button variant="outline" className="h-14 text-base" onClick={() => navigate('/log-assistant')}>
           <Bot className="w-5 h-5 mr-2" /> Add / Tell LogbookAI
         </Button>
-        <Button variant="outline" className="h-14 text-base" onClick={() => navigate('/log-assistant?tab=makeLegal')}>
-          <FileCheck className="w-5 h-5 mr-2" /> HOS Check
+        <Button variant="outline" className="h-14 text-base" onClick={() => navigate('/compliance')}>
+          <ShieldCheck className="w-5 h-5 mr-2" /> HOS Check
         </Button>
       </div>
       <Button variant="outline" className="w-full h-12 text-base mb-3" onClick={() => navigate('/log-assistant?tab=whatCanIDo')}>

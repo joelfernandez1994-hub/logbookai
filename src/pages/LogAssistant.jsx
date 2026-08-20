@@ -1,10 +1,11 @@
 import { useState, useMemo, useEffect } from 'react';
 import { useDriverData } from '@/hooks/useDriverData';
 import { base44 } from '@/api/base44Client';
-import { getAppSettings, getAIUsage, createHistoricalEvent, updateEvent } from '@/lib/driverData';
+import { getAppSettings, getAIUsage } from '@/lib/driverData';
 import { computeHOS, fmtDur } from '@/lib/hosEngine';
-import { whatCanIDo, computeProposedHOS, buildCorrectionVersion } from '@/lib/logAssistant';
+import { whatCanIDo, computeProposedHOS } from '@/lib/logAssistant';
 import { addRouteWarning, fetchRoute, DEFAULT_SPEED_PROFILE } from '@/lib/proposalValidation';
+import { insertEventsBatch, editEvent } from '@/lib/timelineWriter';
 import AssistantInput from '@/components/logAssistant/AssistantInput';
 import ProposalReview from '@/components/logAssistant/ProposalReview';
 import WhatCanIDoPanel from '@/components/logAssistant/WhatCanIDoPanel';
@@ -90,29 +91,32 @@ export default function LogAssistant() {
     setBusy(false);
   };
 
-  // --- TELL: apply proposed events ---
+  // --- TELL: apply proposed events (canonical batch insert) ---
   const applyProposal = async (proposedEvents) => {
     if (!proposedEvents?.length) { reload(); return; }
-    const firstStart = new Date(proposedEvents[0].start_timestamp).toISOString();
-    const ongoing = events.find(e => e.is_ongoing);
-    if (ongoing) await base44.entities.DutyStatusEvent.update(ongoing.id, { end_timestamp: firstStart, is_ongoing: false });
-    for (let i = 0; i < proposedEvents.length; i++) {
-      const p = proposedEvents[i];
+    const shaped = proposedEvents.map((p, i) => {
       const isLast = i === proposedEvents.length - 1;
-      await createHistoricalEvent({
+      return {
         log_date: (p.date || new Date(p.start_timestamp).toISOString().slice(0, 10)),
         start_timestamp: p.start_timestamp,
-        end_timestamp: p.end_timestamp || (isLast ? null : p.end_timestamp),
+        end_timestamp: p.end_timestamp || (isLast && !p.end_timestamp ? null : p.end_timestamp),
         duty_status: p.duty_status,
         city: p.city || '', state: p.state || '',
         remark: p.remark || p.activity_type || '',
         tractor_number: p.tractor_number || '', trailer_numbers: p.trailer_numbers || '',
-        carrier_name: carrier?.carrier_name,
         method_of_creation: p.source === 'voice' ? 'Voice AI' : 'Typed AI',
         is_ongoing: isLast && !p.end_timestamp,
+      };
+    });
+    try {
+      await insertEventsBatch(events, shaped, {
+        carrierName: carrier?.carrier_name,
+        methodOfCreation: 'Typed AI',
+        editedBy: profile?.legal_name,
+        reason: 'AI Apply',
       });
-    }
-    setProposal(null); reload();
+      setProposal(null); reload();
+    } catch (e) { setError(e?.message || 'Failed to apply proposed events.'); }
   };
 
   const resolveClarification = (idx, answer) => {
@@ -166,21 +170,18 @@ export default function LogAssistant() {
     if (!c || c.event_index == null || c.event_index < 0 || !c.proposed_event) return;
     const target = events[c.event_index];
     if (!target) return;
-    // preserve version + supersede certification (same audit logic as Logs edit)
-    const cert = await base44.entities.Certification.filter({ log_date: target.log_date });
-    const active = (cert || []).find(x => !x.is_superseded);
-    await base44.entities.EventVersion.create(buildCorrectionVersion(target, c.description, profile?.legal_name));
-    if (active) await base44.entities.Certification.update(active.id, { is_superseded: true });
-    await updateEvent(target.id, {
-      duty_status: c.proposed_event.duty_status,
-      start_timestamp: c.proposed_event.start_timestamp || target.start_timestamp,
-      end_timestamp: c.proposed_event.end_timestamp || target.end_timestamp,
-      city: c.proposed_event.city ?? target.city, state: c.proposed_event.state ?? target.state,
-      remark: c.proposed_event.remark || target.remark,
-      method_of_creation: 'Correction',
-    });
-    setPastResult(p => ({ ...p, factual_corrections: p.factual_corrections.filter((_, i) => i !== idx) }));
-    reload();
+    try {
+      await editEvent(events, target.id, {
+        duty_status: c.proposed_event.duty_status,
+        start_timestamp: c.proposed_event.start_timestamp || target.start_timestamp,
+        end_timestamp: c.proposed_event.end_timestamp || target.end_timestamp,
+        city: c.proposed_event.city ?? target.city, state: c.proposed_event.state ?? target.state,
+        remark: c.proposed_event.remark || target.remark,
+        method_of_creation: 'Correction',
+      }, { carrierName: carrier?.carrier_name, editedBy: profile?.legal_name, reason: c.description || 'AI correction' });
+      setPastResult(p => ({ ...p, factual_corrections: p.factual_corrections.filter((_, i) => i !== idx) }));
+      reload();
+    } catch (e) { setError(e?.message || 'Failed to apply correction.'); }
   };
 
   // --- HOS CHECK: FUTURE ---
