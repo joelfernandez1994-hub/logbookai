@@ -9,7 +9,7 @@ import { changeStatus, insertEvent } from '@/lib/timelineWriter';
 import { getDvirs } from '@/lib/dvirData';
 import { Button } from '@/components/ui/button';
 import PreTripDialog from '@/components/PreTripDialog';
-import { Truck, Clock, Coffee, RotateCcw, AlertTriangle, MapPin, Bot, FileCheck, ClipboardList, ClipboardCheck, Gauge, Moon, HelpCircle, MicVocal, ShieldCheck } from 'lucide-react';
+import { Truck, Clock, Coffee, RotateCcw, AlertTriangle, MapPin, Bot, ClipboardList, ClipboardCheck, Gauge, Moon, HelpCircle, ShieldCheck } from 'lucide-react';
 import DailyMilesCard from '@/components/DailyMilesCard';
 import TimelineGapNotice from '@/components/TimelineGapNotice';
 import PullToRefresh from '@/components/PullToRefresh';
@@ -237,39 +237,37 @@ export default function Today() {
         </div>
       )}
 
-      <div className="rounded-xl border border-border bg-card p-3 mb-3">
+      <div className="rounded-xl border border-border bg-card p-3 mb-4">
         <div className="text-sm font-semibold mb-2 text-card-foreground">Today's 24-Hour Log</div>
         <LogGraph events={events} dateStr={todayKey} timezone={tz} />
       </div>
 
-      <Button className="w-full h-16 text-base mb-3" onClick={() => navigate('/voice-log')}>
-        <MicVocal className="w-5 h-5 mr-2" /> Voice Log
+      {/* Primary action */}
+      <Button className="w-full h-14 text-base mb-3" onClick={() => setStatusOpen(true)}>
+        Change Status
       </Button>
 
+      {/* Secondary actions */}
       <div className="grid grid-cols-2 gap-2 mb-3">
-        <Button variant="outline" className="h-14 text-base" onClick={() => navigate('/log-assistant')}>
-          <Bot className="w-5 h-5 mr-2" /> Add / Tell LogbookAI
+        <Button variant="outline" className="h-12 text-sm" onClick={() => navigate('/log-assistant')}>
+          <Bot className="w-4 h-4 mr-2" /> Ask LogbookAI
         </Button>
-        <Button variant="outline" className="h-14 text-base" onClick={() => navigate('/compliance')}>
-          <ShieldCheck className="w-5 h-5 mr-2" /> HOS Check
+        <Button variant="outline" className="h-12 text-sm" onClick={() => navigate('/compliance')}>
+          <ShieldCheck className="w-4 h-4 mr-2" /> HOS / Compliance
         </Button>
       </div>
-      <Button variant="outline" className="w-full h-12 text-base mb-3" onClick={() => navigate('/log-assistant?tab=whatCanIDo')}>
-        <HelpCircle className="w-5 h-5 mr-2" /> What Can I Do?
+      <Button variant="outline" className="w-full h-12 text-sm mb-4" onClick={() => navigate('/logs')}>
+        <ClipboardList className="w-4 h-4 mr-2" /> View Full Log
       </Button>
 
-      <div className="grid grid-cols-2 gap-2 mb-6">
-        <Button className="h-14 text-base" onClick={() => setStatusOpen(true)}>Change Status</Button>
-        <Button variant="outline" className="h-14 text-base" onClick={() => navigate('/assistant')}>
-          <Bot className="w-5 h-5 mr-2" /> AI Assistant
-        </Button>
-        <Button variant="outline" className="h-14 text-base" onClick={() => navigate('/compliance')}>
-          <FileCheck className="w-5 h-5 mr-2" /> Compliance Check
-        </Button>
-        <Button variant="outline" className="h-14 text-base" onClick={() => navigate('/logs')}>
-          <ClipboardList className="w-5 h-5 mr-2" /> View Full Log
-        </Button>
-      </div>
+      {/* Help link */}
+      <button
+        type="button"
+        onClick={() => navigate('/log-assistant?tab=whatCanIDo')}
+        className="w-full flex items-center justify-center gap-1.5 text-xs text-muted-foreground mb-8 py-1"
+      >
+        <HelpCircle className="w-3.5 h-3.5" /> What can LogbookAI do?
+      </button>
 
       <StatusChangeSheet open={statusOpen} onOpenChange={setStatusOpen} onApply={handleChangeStatus}
         defaultEquipment={{ tractor: equipment?.[0]?.unit_number, trailer: equipment?.find(e => e.type === 'trailer')?.unit_number }} />
