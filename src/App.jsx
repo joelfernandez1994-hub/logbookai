@@ -81,7 +81,7 @@ const AuthenticatedApp = () => {
           <Route path="/documents" element={<Documents />} />
           <Route path="/engine-tests" element={<EngineTests />} />
           <Route path="/vehicle-inspection" element={<VehicleInspection />} />
-          <Route path="/log-assistant" element={<LogAssistant key="current-log-assistant" />} />
+          <Route path="/log-assistant" element={<LogAssistant key="current-log-assistant-v2" />} />
         </Route>
       </Route>
       <Route path="*" element={<PageNotFound />} />

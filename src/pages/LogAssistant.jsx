@@ -330,7 +330,7 @@ export default function LogAssistant() {
   const canApply = showProposal && shouldOfferApply(proposal);
 
   return (
-    <div data-client-version="log-assistant-current-2026-08-20" className="px-4 pt-6 pb-6 max-w-2xl mx-auto">
+    <div data-client-version="log-assistant-current-2026-08-20-v2" className="px-4 pt-6 pb-6 max-w-2xl mx-auto">
       <Header title="Ask LogbookAI" />
       <p className="text-xs text-muted-foreground mb-3">LogbookAI checks the information you provide against the configured FMCSA HOS rules. LogbookAI is not an ELD. The driver remains responsible for the accuracy, completeness, and certification of the record. {remaining} of {usage.allowance} AI requests remaining this month.</p>
 
@@ -355,6 +355,7 @@ export default function LogAssistant() {
           {busy && <div className="text-sm text-muted-foreground text-center py-4"><Bot className="w-4 h-4 inline animate-pulse mr-1" /> Interpreting…</div>}
           {showProposal && !isQuestion && canApply && (
             <ProposalReview
+              key="current-proposal-review-v2"
               existing={events}
               proposed={proposal.proposed_events}
               interpretation={proposal.interpretation}

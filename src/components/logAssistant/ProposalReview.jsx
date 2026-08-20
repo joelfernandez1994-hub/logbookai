@@ -80,7 +80,7 @@ export default function ProposalReview({ existing, proposed, cycleType, tz, onAp
   const breakWarning = warnings.find(w => w.type === 'break30');
 
   return (
-    <div className="rounded-xl border border-border bg-card p-3 mb-3">
+    <div data-client-version="proposal-review-current-2026-08-20-v2" className="rounded-xl border border-border bg-card p-3 mb-3">
       <div className="flex items-center justify-between mb-2">
         <div className="text-sm font-semibold text-card-foreground">PROPOSED CHANGES — review before saving</div>
         <div className="text-xs text-muted-foreground">Not yet logged</div>
@@ -145,7 +145,18 @@ export default function ProposalReview({ existing, proposed, cycleType, tz, onAp
 
       <div className="space-y-1 mb-2">
         {events.map((e, i) => (
-          <div key={i} className="rounded-lg border border-border p-2 text-xs">
+          <div
+            key={i}
+            data-testid="proposal-event"
+            data-start-timestamp={e.start_timestamp || ''}
+            data-end-timestamp={e.end_timestamp || ''}
+            data-duty-status={e.duty_status || ''}
+            data-city={e.city || ''}
+            data-state={e.state || ''}
+            data-activity={e.activity_type || ''}
+            data-remark={e.remark || ''}
+            className="rounded-lg border border-border p-2 text-xs"
+          >
             {editable ? (
               <div className="space-y-1">
                 <div className="grid grid-cols-2 gap-1">
