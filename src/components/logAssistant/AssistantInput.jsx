@@ -46,10 +46,10 @@ export default function AssistantInput({ onSend, disabled }) {
           onKeyDown={(e) => e.key === 'Enter' && send()}
           disabled={disabled}
         />
-        <Button variant="outline" onClick={listening ? stopVoice : startVoice} disabled={disabled}>
+        <Button aria-label={listening ? 'Stop voice input' : 'Start voice input'} variant="outline" onClick={listening ? stopVoice : startVoice} disabled={disabled}>
           {listening ? <Square className="w-4 h-4 text-error animate-pulse" /> : <Mic className="w-4 h-4" />}
         </Button>
-        <Button onClick={send} disabled={disabled || !input}>
+        <Button aria-label="Send request" onClick={send} disabled={disabled || !input}>
           <Send className="w-4 h-4" />
         </Button>
       </div>

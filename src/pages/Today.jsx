@@ -165,18 +165,18 @@ export default function Today() {
       <DailyMilesCard events={events} dateStr={todayKey} tz={tz} speedProfile={speedProfile} />
 
       <div className="grid grid-cols-2 gap-2 mb-3">
-        <ClockCard label="Driving Remaining" value={fmtDur(hos.driving.drivingRemainingMs)}
-          sublabel={hos.driving.expiresAt ? `expires ${fmtClock(hos.driving.expiresAt, tz)}` : '11-hr limit'}
-          status={clockStatus(hos.driving.drivingRemainingMs)} icon={Truck} />
-        <ClockCard label="14-Hour Window" value={fmtDur(hos.window14.remainingMs)}
-          sublabel={hos.window14.windowStart ? `since ${fmtClock(hos.window14.windowStart, tz)}` : ''}
-          status={clockStatus(hos.window14.remainingMs)} icon={Clock} />
-        <ClockCard label="30-Min Break" value={hos.break30.satisfied ? 'Satisfied' : `${fmtDur(hos.break30.remainingBeforeBreakMs)} left`}
-          sublabel={hos.break30.breakRequired ? 'Break required now' : '8-hr driving rule'}
-          status={hos.break30.breakRequired ? 'critical' : 'normal'} icon={Coffee} />
-        <ClockCard label={`Cycle ${hos.cycle.cycleLimit}/${hos.cycle.cycleDays}`} value={`${hos.cycle.cycleRemainingHours.toFixed(1)} hr left`}
-          sublabel={`${hos.cycle.cycleUsedHours.toFixed(1)} used · ${hos.cycle.returningTomorrowHours.toFixed(1)} back tomorrow`}
-          status={clockStatus(hos.cycle.cycleRemainingHours * 3600000)} icon={Gauge} />
+        <ClockCard label="Driving Remaining" value={timelineValidation.valid ? fmtDur(hos.driving.drivingRemainingMs) : '--'}
+          sublabel={timelineValidation.valid ? (hos.driving.expiresAt ? `expires ${fmtClock(hos.driving.expiresAt, tz)}` : '11-hr limit') : 'Unavailable until timeline is valid'}
+          status={timelineValidation.valid ? clockStatus(hos.driving.drivingRemainingMs) : 'disabled'} icon={Truck} />
+        <ClockCard label="14-Hour Window" value={timelineValidation.valid ? fmtDur(hos.window14.remainingMs) : '--'}
+          sublabel={timelineValidation.valid ? (hos.window14.windowStart ? `since ${fmtClock(hos.window14.windowStart, tz)}` : '') : 'Unavailable until timeline is valid'}
+          status={timelineValidation.valid ? clockStatus(hos.window14.remainingMs) : 'disabled'} icon={Clock} />
+        <ClockCard label="30-Min Break" value={timelineValidation.valid ? (hos.break30.satisfied ? 'Satisfied' : `${fmtDur(hos.break30.remainingBeforeBreakMs)} left`) : '--'}
+          sublabel={timelineValidation.valid ? (hos.break30.breakRequired ? 'Break required now' : '8-hr driving rule') : 'Unavailable until timeline is valid'}
+          status={timelineValidation.valid ? (hos.break30.breakRequired ? 'critical' : 'normal') : 'disabled'} icon={Coffee} />
+        <ClockCard label={`Cycle ${hos.cycle.cycleLimit}/${hos.cycle.cycleDays}`} value={timelineValidation.valid ? `${hos.cycle.cycleRemainingHours.toFixed(1)} hr left` : '--'}
+          sublabel={timelineValidation.valid ? `${hos.cycle.cycleUsedHours.toFixed(1)} used · ${hos.cycle.returningTomorrowHours.toFixed(1)} back tomorrow` : 'Unavailable until timeline is valid'}
+          status={timelineValidation.valid ? clockStatus(hos.cycle.cycleRemainingHours * 3600000) : 'disabled'} icon={Gauge} />
       </div>
 
       {restartProgress && (

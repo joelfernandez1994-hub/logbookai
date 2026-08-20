@@ -4,6 +4,7 @@ export default function ClockCard({ label, value, sublabel, status = 'normal', i
     warning: 'border-warning/50 bg-warning-surface text-warning-surface-foreground',
     critical: 'border-error/50 bg-error-surface text-error-surface-foreground',
     good: 'border-success/40 bg-success-surface text-success-surface-foreground',
+    disabled: 'border-border bg-muted text-muted-foreground',
   }[status];
   return (
     <div className={`rounded-xl border p-3 ${tone}`}>

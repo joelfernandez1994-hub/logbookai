@@ -1,4 +1,5 @@
 import { base44 } from '@/api/base44Client';
+import { getTimelineEvents } from '@/lib/timelineData';
 
 export async function getDriverProfile() {
   const list = await base44.entities.DriverProfile.list('-created_date', 1);
@@ -15,9 +16,7 @@ export async function getEquipment() {
 }
 
 export async function getEvents(daysBack = 9) {
-  const since = new Date(Date.now() - (daysBack + 1) * 24 * 3600000);
-  const all = await base44.entities.DutyStatusEvent.filter({}, '-start_timestamp', 3000);
-  return (all || []).filter(e => new Date(e.start_timestamp) >= since);
+  return getTimelineEvents(daysBack);
 }
 
 export async function getAllEvents() {

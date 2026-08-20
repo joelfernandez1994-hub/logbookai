@@ -193,11 +193,11 @@ export default function ProposalReview({ existing, proposed, cycleType, tz, onAp
       </div>
 
       <div className="flex flex-wrap gap-2">
-        <Button className="flex-1" disabled={blocking} onClick={() => (isReplaceDay ? onApplyReplace?.(events) : onApply(events))}>
+        <Button data-testid="apply-proposal" className="flex-1" disabled={blocking} onClick={() => (isReplaceDay ? onApplyReplace?.(events) : onApply(events))}>
           <Check className="w-4 h-4 mr-1" /> {isReplaceDay ? 'Replace Day & Apply' : 'Confirm & Apply'}
         </Button>
         <Button variant="outline" onClick={() => setEditable(v => !v)}><Pencil className="w-4 h-4 mr-1" /> Edit Proposal</Button>
-        <Button variant="ghost" onClick={onCancel}><X className="w-4 h-4" /></Button>
+        <Button data-testid="cancel-proposal" aria-label="Cancel proposal" variant="ghost" onClick={onCancel}><X className="w-4 h-4" /></Button>
       </div>
       {blocking && <div className="text-[11px] text-error mt-2">{isReplaceDay ? 'Replace Day & Apply' : 'Confirm & Apply'} is locked until the blocking issue is resolved or the proposal is edited.</div>}
       <div className="text-[11px] text-muted-foreground mt-1">Validation + HOS values are computed by LogbookAI's deterministic engine. Nothing is written to your log until you confirm.</div>

@@ -1,7 +1,8 @@
 import { useState, useEffect, useCallback } from 'react';
 import {
-  getDriverProfile, getCarrierProfile, getEquipment, getEvents,
+  getDriverProfile, getCarrierProfile, getEquipment,
 } from '@/lib/driverData';
+import { getTimelineEvents } from '@/lib/timelineData';
 
 export function useDriverData(daysBack = 9) {
   const [profile, setProfile] = useState(null);
@@ -15,7 +16,7 @@ export function useDriverData(daysBack = 9) {
     try {
       setLoading(true);
       const [p, c, eq, ev] = await Promise.all([
-        getDriverProfile(), getCarrierProfile(), getEquipment(), getEvents(daysBack),
+        getDriverProfile(), getCarrierProfile(), getEquipment(), getTimelineEvents(daysBack),
       ]);
       setProfile(p);
       setCarrier(c);
