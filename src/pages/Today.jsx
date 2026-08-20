@@ -9,7 +9,7 @@ import { changeStatus, createHistoricalEvent } from '@/lib/driverData';
 import { getDvirs } from '@/lib/dvirData';
 import { Button } from '@/components/ui/button';
 import PreTripDialog from '@/components/PreTripDialog';
-import { Truck, Clock, Coffee, RotateCcw, AlertTriangle, MapPin, Bot, FileCheck, ClipboardList, ClipboardCheck, Gauge, Moon, HelpCircle } from 'lucide-react';
+import { Truck, Clock, Coffee, RotateCcw, AlertTriangle, MapPin, Bot, FileCheck, ClipboardList, ClipboardCheck, Gauge, Moon, HelpCircle, MicVocal } from 'lucide-react';
 import DailyMilesCard from '@/components/DailyMilesCard';
 import TimelineGapNotice from '@/components/TimelineGapNotice';
 import PullToRefresh from '@/components/PullToRefresh';
@@ -231,8 +231,12 @@ export default function Today() {
         <LogGraph events={events} dateStr={todayKey} timezone={tz} />
       </div>
 
+      <Button className="w-full h-16 text-base mb-3" onClick={() => navigate('/voice-log')}>
+        <MicVocal className="w-5 h-5 mr-2" /> Voice Log
+      </Button>
+
       <div className="grid grid-cols-2 gap-2 mb-3">
-        <Button className="h-14 text-base" onClick={() => navigate('/log-assistant')}>
+        <Button variant="outline" className="h-14 text-base" onClick={() => navigate('/log-assistant')}>
           <Bot className="w-5 h-5 mr-2" /> Add / Tell LogbookAI
         </Button>
         <Button variant="outline" className="h-14 text-base" onClick={() => navigate('/log-assistant?tab=makeLegal')}>

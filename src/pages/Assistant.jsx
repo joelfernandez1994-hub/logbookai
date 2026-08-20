@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { useDriverData } from '@/hooks/useDriverData';
 import { base44 } from '@/api/base44Client';
 import { getAppSettings, getAIUsage, changeStatus, createHistoricalEvent } from '@/lib/driverData';
@@ -10,6 +11,8 @@ import Header from '@/components/Header';
 const STATUS_LABELS = { OFF_DUTY: 'Off DUTY', SLEEPER_BERTH: 'Sleeper', DRIVING: 'Driving', ON_DUTY: 'On Duty' };
 
 export default function Assistant() {
+  const navigate = useNavigate();
+  const location = useLocation();
   const { profile, carrier, events, reload } = useDriverData(9);
   const [input, setInput] = useState('');
   const [transcript, setTranscript] = useState('');
@@ -26,6 +29,12 @@ export default function Assistant() {
     setUsage({ used, allowance: profile?.ai_allowance_override ?? settings.default_ai_allowance ?? 20 });
   };
   useEffect(() => { loadUsage(); }, []);
+  // Auto-send when arriving from Voice Log fallback (?voice=…)
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    const v = params.get('voice');
+    if (v && !input && !result) { setInput(v); setTranscript('voice'); send(v); }
+  }, [location.search]);
 
   const startVoice = () => {
     const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
@@ -93,8 +102,9 @@ export default function Assistant() {
   return (
     <div className="px-4 pt-6 pb-6">
       <Header title="LogbookAI Assistant" />
-      <div className="text-xs text-muted-foreground mb-3">
-        AI Assistant — {usage.allowance - usage.used} of {usage.allowance} free requests remaining this month
+      <div className="rounded-lg border border-border bg-accent px-3 py-2 mb-3 text-xs text-accent-foreground">
+        <span className="font-semibold">LogbookAI AI</span> — {Math.max(0, usage.allowance - usage.used)} AI requests remaining this month
+        <div className="text-muted-foreground mt-0.5">Questions and complex requests use AI. Basic <button className="underline" onClick={() => navigate('/voice-log')}>Voice Log</button> commands do not.</div>
       </div>
 
       {/* Input */}

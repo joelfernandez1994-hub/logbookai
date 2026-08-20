@@ -90,7 +90,9 @@ function drawDay(doc, driver, carrier, events, dateStr, timezone, certification,
   y += hdrH + 2.5;
 
   // --- 24-hour graph (main focus) ---
-  const labelW = 26, totalsW = 18;
+  // Fixed sufficient label column so "ON DUTY — NOT DRIVING" never overlaps the
+  // plotted graph; the graph begins AFTER the label area.
+  const labelW = 40, totalsW = 16;
   const graphLeft = M + labelW;
   const graphW = PW - labelW - totalsW;
   const axisH = 5.5;
@@ -113,15 +115,14 @@ function drawDay(doc, driver, carrier, events, dateStr, timezone, certification,
   }
 
   // rows: label + light fill segments + totals
-  doc.setFontSize(7.5);
   STATUS_ROWS.forEach((s, i) => {
     const ry = graphTop + i * rowH;
     doc.setLineWidth(0.2);
     doc.rect(M, ry, labelW, rowH);           // label cell
-    doc.rect(graphLeft, ry, graphW, rowH);    // graph cell
+    doc.rect(graphLeft, ry, graphW, rowH);    // graph cell (graph begins AFTER label area)
     doc.rect(M + labelW + graphW, ry, totalsW, rowH); // totals cell
-    doc.setFont(undefined, 'bold');
-    doc.text(STATUS_LABELS[s], M + 1.5, ry + rowH / 2, { baseline: 'middle' });
+    doc.setFontSize(7); doc.setFont(undefined, 'bold');
+    doc.text(STATUS_LABELS[s], M + 2, ry + rowH / 2, { baseline: 'middle', maxWidth: labelW - 3 });
     doc.setFont(undefined, 'normal');
     doc.setFontSize(7);
     // light fill for segments (lightened color so the stepped line stays visible)
@@ -134,8 +135,8 @@ function drawDay(doc, driver, carrier, events, dateStr, timezone, certification,
       doc.rect(x1, ry + 1, Math.max(0.4, x2 - x1), rowH - 2, 'F');
     }
     doc.setTextColor(0);
-    doc.text(`${grid.totals[s].toFixed(2)}`, M + labelW + graphW + totalsW / 2, ry + rowH / 2, { align: 'center', baseline: 'middle' });
-    doc.setFontSize(7.5);
+    const tv = Number.isFinite(grid.totals[s]) ? grid.totals[s] : 0;
+    doc.text(`${tv.toFixed(2)}`, M + labelW + graphW + totalsW / 2, ry + rowH / 2, { align: 'center', baseline: 'middle' });
   });
   // graph outline
   doc.setLineWidth(0.3); doc.rect(graphLeft, graphTop, graphW, graphH);
@@ -157,11 +158,12 @@ function drawDay(doc, driver, carrier, events, dateStr, timezone, certification,
   });
   y = graphTop + graphH + 3;
 
-  // totals line
+  // totals line (NaN-guarded; for a complete day the four totals sum to 24h)
   doc.setFontSize(7.5); doc.setFont(undefined, 'bold');
   doc.text(`Total Hours:`, M, y + 1);
   doc.setFont(undefined, 'normal');
-  doc.text(`Off ${grid.totals.OFF_DUTY.toFixed(2)} · Sleeper ${grid.totals.SLEEPER_BERTH.toFixed(2)} · Driving ${grid.totals.DRIVING.toFixed(2)} · On Duty ${grid.totals.ON_DUTY.toFixed(2)} = ${grid.totalHours.toFixed(2)}`, M + 20, y + 1);
+  const safe = (v) => (Number.isFinite(v) ? v.toFixed(2) : '0.00');
+  doc.text(`Off ${safe(grid.totals.OFF_DUTY)} · Sleeper ${safe(grid.totals.SLEEPER_BERTH)} · Driving ${safe(grid.totals.DRIVING)} · On Duty ${safe(grid.totals.ON_DUTY)} = ${safe(grid.totalHours)}`, M + 20, y + 1);
   y += 4.5;
 
   // --- Remarks / location timeline ---
@@ -178,27 +180,9 @@ function drawDay(doc, driver, carrier, events, dateStr, timezone, certification,
     y += 3.4;
   });
 
-  // --- HOS recap (clean, separate, below the log) ---
-  let ry = Math.max(y + 2, H - 30);
-  doc.setLineWidth(0.2); doc.rect(M, ry, PW, 10);
-  doc.setFontSize(6.5); doc.setFont(undefined, 'bold');
-  doc.text('HOS RECAP (deterministic engine)', M + 1.5, ry + 3.2);
-  doc.setFont(undefined, 'normal');
-  const recap = [
-    `Driving rem: ${fmtDur(hos.driving.drivingRemainingMs)}`,
-    `14-hr window rem: ${fmtDur(hos.window14.remainingMs)}`,
-    `30-min break: ${hos.break30.satisfied ? 'satisfied' : (hos.break30.breakRequired ? 'required' : 'not yet required')}`,
-    `Cycle ${hos.cycle.cycleLimit}/${hos.cycle.cycleDays}: ${hos.cycle.cycleRemainingHours.toFixed(1)} hr`,
-    `Split sleeper: ${hos.split.status}`,
-    `34h restart: ${hos.restart.inProgress ? 'in progress' : (hos.restart.completed ? 'completed' : 'none')}`,
-  ];
-  doc.text(recap.join('   ·   '), M + 1.5, ry + 6.6, { maxWidth: PW - 3 });
-  if (cycleInfo) {
-    doc.text(`Today on-duty: ${(cycleInfo.dailyTotals[cycleInfo.dailyTotals.length - 1]?.onDutyHours || 0).toFixed(2)} · Used: ${cycleInfo.cycleUsedHours.toFixed(2)} · Available: ${cycleInfo.cycleRemainingHours.toFixed(2)} · Back tomorrow: ${cycleInfo.returningTomorrowHours.toFixed(2)}`, M + 1.5, ry + 8.8, { maxWidth: PW - 3 });
-  }
-
-  // --- Certification ---
-  let cy = ry + 12;
+  // --- Certification (HOS Recap intentionally omitted from the daily PDF;
+  // cycle/HOS calculations remain available in the app dashboard) ---
+  let cy = Math.max(y + 4, H - 18);
   doc.setLineWidth(0.2); doc.line(M, cy, W - M, cy);
   doc.setFontSize(7.5);
   doc.setFont(undefined, 'bold'); doc.text('Driver Certification:', M, cy + 4); doc.setFont(undefined, 'normal');

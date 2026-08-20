@@ -21,6 +21,7 @@ export default function LogExportSheet({ open, onClose, tz, allDates, buildDoc, 
   const [emailTo, setEmailTo] = useState('');
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState('');
+  const [previewUrl, setPreviewUrl] = useState(null);
 
   const selectedDates = useMemo(() => {
     const today = dateKeyInTz(new Date(), tz);
@@ -49,10 +50,16 @@ export default function LogExportSheet({ open, onClose, tz, allDates, buildDoc, 
   const label = preset === 'dot' ? 'DOT_Inspection_8day' : preset === 'custom' ? `${from}_to_${to}` : preset;
   const fileName = `LogbookAI_${label}.pdf`;
 
+  // In-app PDF preview (works on native iOS where window.open(blob:) fails).
+  // Renders the exact generated PDF in a full-screen iframe overlay.
   const doPreview = () => {
-    const doc = buildDoc(selectedDates, options);
-    const url = doc.output('bloburl');
-    window.open(url, '_blank');
+    try {
+      const doc = buildDoc(selectedDates, options);
+      const url = doc.output('bloburl');
+      setPreviewUrl(typeof url === 'string' ? url : String(url));
+    } catch (e) {
+      setStatus('Preview failed to build.');
+    }
   };
   const doDownload = () => {
     const doc = buildDoc(selectedDates, options);
@@ -85,6 +92,24 @@ export default function LogExportSheet({ open, onClose, tz, allDates, buildDoc, 
   };
 
   if (!open) return null;
+
+  // Full-screen PDF preview overlay (native-friendly: no window.open popup)
+  if (previewUrl) {
+    return (
+      <div className="fixed inset-0 bg-black/90 z-50 flex flex-col">
+        <div className="flex items-center justify-between px-4 py-3 safe-top">
+          <div className="font-bold text-primary-foreground">PDF Preview</div>
+          <button onClick={() => setPreviewUrl(null)} className="inline-flex items-center justify-center min-h-[44px] min-w-[44px] text-primary-foreground"><X className="w-5 h-5" /></button>
+        </div>
+        <iframe src={previewUrl} title="LogbookAI PDF Preview" className="flex-1 w-full bg-white" />
+        <div className="flex gap-2 p-3 safe-bottom">
+          <Button className="flex-1" onClick={doDownload}><FileDown className="w-4 h-4 mr-1" /> Download</Button>
+          <Button variant="outline" className="flex-1" onClick={doShare} disabled={busy}><Share2 className="w-4 h-4 mr-1" /> Share</Button>
+          <Button variant="ghost" onClick={() => setPreviewUrl(null)}><X className="w-4 h-4 mr-1" /> Close</Button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="fixed inset-0 bg-black/60 flex items-end justify-center z-50" onClick={onClose}>

@@ -28,6 +28,7 @@ import Documents from './pages/Documents';
 import EngineTests from './pages/EngineTests';
 import VehicleInspection from './pages/VehicleInspection';
 import LogAssistant from './pages/LogAssistant';
+import VoiceLog from './pages/VoiceLog';
 
 const AuthenticatedApp = () => {
   const { isLoadingAuth, isLoadingPublicSettings, authError, navigateToLogin } = useAuth();
@@ -84,6 +85,7 @@ const AuthenticatedApp = () => {
           <Route path="/engine-tests" element={<EngineTests />} />
           <Route path="/vehicle-inspection" element={<VehicleInspection />} />
           <Route path="/log-assistant" element={<LogAssistant />} />
+          <Route path="/voice-log" element={<VoiceLog />} />
         </Route>
       </Route>
       <Route path="*" element={<PageNotFound />} />

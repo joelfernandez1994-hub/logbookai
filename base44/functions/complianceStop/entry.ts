@@ -1,12 +1,11 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.40';
+import { geocode, drivingRoute, reverseGeocode, pointAtMiles, haversineMi } from '../../shared/routing.ts';
 
-// complianceStop — suggests a real, truck-accessible stopping point located
-// at (or just before) the driver's remaining compliant driving distance along
-// the route to destination. Uses the routing/web-context LLM (same provider as
-// tripEstimate). Returns { stop_city, stop_state, miles_from_origin,
-// miles_remaining, note }. Deterministic HOS math lives in the client; this
-// only resolves a geographic stop consistent with the route.
-export default async function (req) {
+// complianceStop — suggests a REAL, verified stopping point located at (or
+// just before) the driver's remaining compliant driving distance along the
+// actual road route. Resolves a real city/town via reverse geocoding; if that
+// fails, returns a mileage RANGE only — never a fabricated business or exit.
+export default async function(req) {
   try {
     const base44 = createClientFromRequest(req);
     const user = await base44.auth.me();
@@ -20,32 +19,48 @@ export default async function (req) {
       return Response.json({ error: 'origin, destination, and a positive max_drive_miles are required' }, { status: 400 });
     }
 
-    const targetMiles = Math.round(maxDriveMiles);
+    const o = await geocode(origin);
+    const d = await geocode(destination);
+    if (!o || !d) return Response.json({ error: 'Could not locate one of the cities on the map.' }, { status: 404 });
+    const route = await drivingRoute(o, d);
+    if (!route || !route.geometry?.length) return Response.json({ error: 'Road route not available right now.' }, { status: 502 });
 
-    const result = await base44.asServiceRole.integrations.Core.InvokeLLM({
-      prompt:
-        'You are a truck route compliance planner. A commercial driver can legally drive at most ' +
-        targetMiles + ' more miles before reaching their Hours-of-Service limit while driving from ' +
-        origin + ' toward ' + destination + '. ' +
-        'Identify ONE real, truck-accessible stopping point (a real city or town, or a known truck-stop area) located on the most direct truck route, at approximately ' +
-        targetMiles + ' miles from the origin — and NOT exceeding that distance. ' +
-        'Then return the approximate miles from the origin to that stop and the approximate miles remaining from that stop to the destination. ' +
-        'Both mileages must be consistent with the total route distance. Return ONLY the JSON object.',
-      add_context_from_internet: true,
-      response_json_schema: {
-        type: 'object',
-        properties: {
-          stop_city: { type: 'string' },
-          stop_state: { type: 'string' },
-          miles_from_origin: { type: 'number' },
-          miles_remaining: { type: 'number' },
-          note: { type: 'string' }
-        }
-      },
-      model: 'gemini_3_flash'
+    const totalMiles = route.miles;
+    const targetMiles = Math.min(maxDriveMiles, totalMiles);
+    const pt = pointAtMiles(route.geometry, targetMiles);
+
+    if (!pt) {
+      return Response.json({
+        stop_city: '', stop_state: '',
+        miles_from_origin: Math.round(totalMiles),
+        miles_remaining: 0,
+        verified: false,
+        note: `Suggested stopping range: the full route is about ${Math.round(totalMiles)} miles; you can reach the destination within your current driving availability.`,
+      });
+    }
+
+    const place = await reverseGeocode(pt.point[1], pt.point[0]);
+    const milesFromOrigin = Math.round(pt.milesFromOrigin);
+    const milesRemaining = Math.max(0, Math.round(totalMiles - pt.milesFromOrigin));
+
+    if (place && place.city) {
+      return Response.json({
+        stop_city: place.city,
+        stop_state: place.state,
+        miles_from_origin: milesFromOrigin,
+        miles_remaining: milesRemaining,
+        verified: true,
+        note: 'Verified location via OpenStreetMap. Confirm it is truck-accessible before stopping.',
+      });
+    }
+    // Reverse geocode failed — give a range, never a fabricated name.
+    return Response.json({
+      stop_city: '', stop_state: '',
+      miles_from_origin: milesFromOrigin,
+      miles_remaining: milesRemaining,
+      verified: false,
+      note: `Suggested stopping range: approximately ${Math.max(0, milesFromOrigin - 25)}–${milesFromOrigin + 25} route miles from origin.`,
     });
-
-    return Response.json(result);
   } catch (error) {
     return Response.json({ error: error.message }, { status: 500 });
   }

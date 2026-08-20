@@ -1,5 +1,8 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.40';
+import { geocode, drivingRoute } from '../../shared/routing.ts';
 
+// tripEstimate — REAL ROAD ROUTING (OSRM + OpenStreetMap). Returns real road
+// distance and travel time. Does NOT use generative AI to invent mileage.
 export default async function(req) {
   try {
     const base44 = createClientFromRequest(req);
@@ -11,26 +14,23 @@ export default async function(req) {
     const destination = (body.destination || '').trim();
     if (!origin || !destination) return Response.json({ error: 'Origin and destination required' }, { status: 400 });
 
-    const result = await base44.asServiceRole.integrations.Core.InvokeLLM({
-      prompt:
-        'You are a truck route estimator. Estimate the driving distance in miles and realistic driving time in hours for a commercial truck traveling from ' +
-        origin + ' to ' + destination + '. ' +
-        'Use truck-appropriate roads when possible; if only ordinary road distance is available, label it as an estimate that does not account for commercial vehicle restrictions. ' +
-        'Assume an average speed of roughly 50 mph for a loaded truck. Return ONLY the JSON object.',
-      add_context_from_internet: true,
-      response_json_schema: {
-        type: 'object',
-        properties: {
-          miles: { type: 'number' },
-          hours: { type: 'number' },
-          notes: { type: 'string' },
-          is_truck_route: { type: 'boolean' }
-        }
-      },
-      model: 'gemini_3_flash'
-    });
+    const o = await geocode(origin);
+    const d = await geocode(destination);
+    if (!o || !d) {
+      return Response.json({ error: 'Could not locate one of the cities on the map. Check the city and state.' }, { status: 404 });
+    }
+    const route = await drivingRoute(o, d);
+    if (!route || route.miles == null) {
+      return Response.json({ error: 'Road route not available right now. Try again in a moment.' }, { status: 502 });
+    }
 
-    return Response.json(result);
+    return Response.json({
+      miles: Math.round(route.miles),
+      hours: Math.round(route.hours * 100) / 100,
+      notes: 'Real road route via OpenStreetMap/OSRM (driving profile). Not truck-restricted; verify commercial-vehicle restrictions independently.',
+      is_truck_route: false,
+      provider: 'OSRM',
+    });
   } catch (error) {
     return Response.json({ error: error.message }, { status: 500 });
   }
