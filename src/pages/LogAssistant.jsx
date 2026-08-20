@@ -2,17 +2,19 @@ import { useState, useMemo, useEffect } from 'react';
 import { useDriverData } from '@/hooks/useDriverData';
 import { base44 } from '@/api/base44Client';
 import { getAppSettings, getAIUsage } from '@/lib/driverData';
-import { computeHOS, fmtDur } from '@/lib/hosEngine';
+import { computeHOS, fmtDur, startOfDayInTz, dateKeyInTz } from '@/lib/hosEngine';
 import { whatCanIDo, computeProposedHOS } from '@/lib/logAssistant';
 import { addRouteWarning, fetchRoute, DEFAULT_SPEED_PROFILE } from '@/lib/proposalValidation';
-import { insertEventsBatch, editEvent } from '@/lib/timelineWriter';
+import { insertEventsBatch, editEvent, replaceRangeEvents } from '@/lib/timelineWriter';
+import { parseVoiceCommand } from '@/lib/voiceParser';
+import { validateInterpretResult, isQuestionIntent, shouldOfferApply, replaceDayRange } from '@/lib/aiLayer';
 import AssistantInput from '@/components/logAssistant/AssistantInput';
 import ProposalReview from '@/components/logAssistant/ProposalReview';
 import WhatCanIDoPanel from '@/components/logAssistant/WhatCanIDoPanel';
 import MakeItLegal from '@/components/logAssistant/MakeItLegal';
 import Header from '@/components/Header';
 import { Button } from '@/components/ui/button';
-import { Bot, Gavel, HelpCircle, AlertTriangle, Mic } from 'lucide-react';
+import { Bot, Gavel, HelpCircle, AlertTriangle } from 'lucide-react';
 
 const TABS = [
   { id: 'tell', label: 'Tell LogbookAI', icon: Bot },
@@ -27,7 +29,7 @@ export default function LogAssistant() {
   const [mlMode, setMlMode] = useState('past'); // past | future
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
-  const [proposal, setProposal] = useState(null); // interpret result
+  const [proposal, setProposal] = useState(null); // interpret result (normalized)
   const [pastResult, setPastResult] = useState(null);
   const [futureResult, setFutureResult] = useState(null);
   const [futureInput, setFutureInput] = useState('');
@@ -65,11 +67,52 @@ export default function LogAssistant() {
 
   const resetResults = () => { setProposal(null); setPastResult(null); setFutureResult(null); setError(''); setRouteWarning(null); };
 
+  // ---------------------------------------------------------------------------
+  // TELL tab: deterministic voice/text command parser runs FIRST (no quota).
+  // If it confidently handles the command, we propose deterministically and
+  // never call the backend. Otherwise we fall back to the OpenAI-backed function.
+  // Returns true on success (so AssistantInput clears the input), false on
+  // failure (input is preserved for retry).
+  // ---------------------------------------------------------------------------
+  const handleTell = async (text, type) => {
+    setError('');
+    const det = parseVoiceCommand(text, { now: new Date(), timezone: tz });
+    if (det.handled) {
+      const detEvents = (det.events || []).map((e) => ({
+        ...e,
+        date: e.start_timestamp ? e.start_timestamp.slice(0, 10) : '',
+        source: type === 'voice' ? 'voice' : 'manual',
+        confidence: 'high',
+        ambiguous_fields: [e._ambiguous?.time && 'start_timestamp', e._ambiguous?.location && 'state'].filter(Boolean),
+      }));
+      setProposal({
+        intent: det.edit ? 'edit_events' : 'add_events',
+        target_date: detEvents[0]?.date || dateKeyInTz(new Date(), tz),
+        requires_clarification: (det.clarifications || []).length > 0,
+        clarification_question: det.clarifications?.[0]?.question || '',
+        interpretation: 'I understood:',
+        proposed_events: detEvents,
+        clarifications: det.clarifications || [],
+        refuses_fabrication: false,
+        _deterministic: true,
+      });
+      return true;
+    }
+    return callAssistant('interpret', text, { source: type });
+  };
+
+  // ---------------------------------------------------------------------------
+  // OpenAI-backed call. Returns true on success (clear input), false on
+  // failure (preserve input). On unavailability the driver's request is NOT
+  // applied and the typed text is kept for retry.
+  // ---------------------------------------------------------------------------
   const callAssistant = async (mode, input, extra = {}) => {
     setBusy(true); setError('');
+    let ok = false;
     try {
       const res = await base44.functions.invoke('manualLogAssistant', {
         mode, input,
+        source: extra.source || 'typed',
         events: events.map(simplifyEvent),
         documents: extra.documents || [],
         currentLocation: extra.currentLocation || '',
@@ -80,43 +123,73 @@ export default function LogAssistant() {
       });
       if (res.status === 429 || res.data?.limit) setError(res.data?.error || 'AI limit reached.');
       else if (res.data?.disabled) setError(res.data?.error || 'AI disabled.');
+      else if (res.data?.unavailable) setError(res.data?.error || 'LogbookAI is temporarily unavailable. Your request has not been applied.');
       else if (res.data?.error) setError(res.data.error);
       else {
-        if (mode === 'interpret') setProposal(res.data);
-        else if (mode === 'make_legal_past') setPastResult(res.data);
+        if (mode === 'interpret') {
+          const { valid, errors, normalized } = validateInterpretResult(res.data);
+          if (!valid && errors.length) {
+            // Defensive: still show what we got, but surface the validation issue.
+            setError('LogbookAI returned an unexpected response. Please rephrase and try again.');
+          }
+          setProposal(normalized || res.data);
+        } else if (mode === 'make_legal_past') setPastResult(res.data);
         else if (mode === 'make_legal_future') setFutureResult(res.data);
+        ok = true;
       }
       const used = await getAIUsage(); setUsage(u => ({ ...u, used }));
-    } catch (e) { setError(e.response?.data?.error || e.message); }
+    } catch (e) {
+      setError('LogbookAI is temporarily unavailable. Your request has not been applied.');
+    }
     setBusy(false);
+    return ok;
   };
+
+  // Shape a proposed event for the canonical writer.
+  const shapeEvent = (p, isLast) => ({
+    log_date: (p.date || (p.start_timestamp ? p.start_timestamp.slice(0, 10) : dateKeyInTz(new Date(), tz))),
+    start_timestamp: p.start_timestamp,
+    end_timestamp: p.end_timestamp || (isLast && !p.end_timestamp ? null : p.end_timestamp),
+    duty_status: p.duty_status,
+    city: p.city || '', state: p.state || '',
+    remark: p.remark || p.activity_type || '',
+    tractor_number: p.tractor_number || '', trailer_numbers: p.trailer_numbers || '',
+    method_of_creation: p.source === 'voice' ? 'Voice AI' : 'Typed AI',
+    is_ongoing: isLast && !p.end_timestamp,
+  });
 
   // --- TELL: apply proposed events (canonical batch insert) ---
   const applyProposal = async (proposedEvents) => {
-    if (!proposedEvents?.length) { reload(); return; }
-    const shaped = proposedEvents.map((p, i) => {
-      const isLast = i === proposedEvents.length - 1;
-      return {
-        log_date: (p.date || new Date(p.start_timestamp).toISOString().slice(0, 10)),
-        start_timestamp: p.start_timestamp,
-        end_timestamp: p.end_timestamp || (isLast && !p.end_timestamp ? null : p.end_timestamp),
-        duty_status: p.duty_status,
-        city: p.city || '', state: p.state || '',
-        remark: p.remark || p.activity_type || '',
-        tractor_number: p.tractor_number || '', trailer_numbers: p.trailer_numbers || '',
-        method_of_creation: p.source === 'voice' ? 'Voice AI' : 'Typed AI',
-        is_ongoing: isLast && !p.end_timestamp,
-      };
-    });
+    if (!proposedEvents?.length) { setProposal(null); reload(); return; }
+    const shaped = proposedEvents.map((p, i) => shapeEvent(p, i === proposedEvents.length - 1));
     try {
-      await insertEventsBatch(events, shaped, {
+      const res = await insertEventsBatch(events, shaped, {
         carrierName: carrier?.carrier_name,
         methodOfCreation: 'Typed AI',
         editedBy: profile?.legal_name,
         reason: 'AI Apply',
       });
+      if (res?.error) { setError(res.error); return; }
       setProposal(null); reload();
     } catch (e) { setError(e?.message || 'Failed to apply proposed events.'); }
+  };
+
+  // --- TELL: replace-day (redo an entire day) routes through the canonical
+  // replace-range writer — it REPLACES the period, never stacks a second
+  // timeline. Requires the driver's explicit Apply (the labeled button). ---
+  const applyReplaceDay = async (proposedEvents) => {
+    if (!proposedEvents?.length) { setError('Nothing to replace the day with.'); return; }
+    const { dayStart, dayEnd } = replaceDayRange(proposal?.target_date || proposedEvents[0]?.start_timestamp?.slice(0, 10), tz);
+    const shaped = proposedEvents.map((p) => shapeEvent(p, false));
+    try {
+      await replaceRangeEvents(events, dayStart, dayEnd, shaped, {
+        carrierName: carrier?.carrier_name,
+        methodOfCreation: 'Typed AI',
+        editedBy: profile?.legal_name,
+        reason: 'AI Replace Day',
+      });
+      setProposal(null); reload();
+    } catch (e) { setError(e?.message || 'Failed to replace the day.'); }
   };
 
   const resolveClarification = (idx, answer) => {
@@ -203,11 +276,14 @@ export default function LogAssistant() {
   if (loading) return <div className="flex items-center justify-center h-screen"><div className="w-8 h-8 border-4 border-muted border-t-foreground rounded-full animate-spin" /></div>;
 
   const remaining = usage.allowance - usage.used;
+  const showProposal = proposal && !busy;
+  const isQuestion = showProposal && isQuestionIntent(proposal.intent);
+  const canApply = showProposal && shouldOfferApply(proposal);
 
   return (
     <div className="px-4 pt-6 pb-6 max-w-2xl mx-auto">
-      <Header title="Manual Log Assistant" />
-      <p className="text-xs text-muted-foreground mb-3">LogbookAI checks the information you provide against the configured FMCSA HOS rules. LogbookAI is not an ELD. The driver remains responsible for the accuracy, completeness, and certification of the record. {remaining} of {usage.allowance} AI requests remaining.</p>
+      <Header title="Ask LogbookAI" />
+      <p className="text-xs text-muted-foreground mb-3">LogbookAI checks the information you provide against the configured FMCSA HOS rules. LogbookAI is not an ELD. The driver remains responsible for the accuracy, completeness, and certification of the record. {remaining} of {usage.allowance} AI requests remaining this month.</p>
 
       <div className="grid grid-cols-3 gap-2 mb-3">
         {TABS.map(t => {
@@ -225,24 +301,46 @@ export default function LogAssistant() {
 
       {tab === 'tell' && (
         <>
-          <AssistantInput onSend={(text, type) => callAssistant('interpret', text, {})} disabled={busy || remaining <= 0} />
+          {/* Deterministic basic commands bypass the AI quota; complex requests fall back to OpenAI. */}
+          <AssistantInput onSend={handleTell} disabled={busy} />
           {busy && <div className="text-sm text-muted-foreground text-center py-4"><Bot className="w-4 h-4 inline animate-pulse mr-1" /> Interpreting…</div>}
-          {proposal && !busy && (
+          {showProposal && !isQuestion && canApply && (
             <ProposalReview
               existing={events}
               proposed={proposal.proposed_events}
               interpretation={proposal.interpretation}
               clarifications={proposal.clarifications}
+              intent={proposal.intent}
+              targetDate={proposal.target_date}
               cycleType={cycleType} tz={tz}
               onApply={applyProposal}
+              onApplyReplace={applyReplaceDay}
               onCancel={() => setProposal(null)}
               onResolveClarification={resolveClarification}
               routeWarning={routeWarning}
             />
           )}
-          {proposal?.refuses_fabrication && (
-            <div className="rounded-xl border border-error/40 bg-error-surface p-3 text-error-surface-foreground text-sm mb-3">
-              <AlertTriangle className="w-4 h-4 inline mr-1" /> LogbookAI will not fabricate or hide events to make a log appear compliant. Review what actually happened.
+          {showProposal && !isQuestion && !canApply && (
+            <div className="rounded-xl border border-border bg-card p-3 mb-3">
+              {proposal.interpretation && <div className="text-sm text-muted-foreground mb-2">{proposal.interpretation}</div>}
+              {proposal.requires_clarification && (
+                <div className="rounded-lg border border-warning/50 bg-warning-surface p-2 mb-2 text-xs text-warning-surface-foreground">
+                  <span className="font-medium">Please confirm: </span>{proposal.clarification_question}
+                </div>
+              )}
+              {proposal.refuses_fabrication && (
+                <div className="rounded-xl border border-error/40 bg-error-surface p-3 text-error-surface-foreground text-sm mb-3">
+                  <AlertTriangle className="w-4 h-4 inline mr-1" /> LogbookAI will not fabricate or hide events to make a log appear compliant. Review what actually happened.
+                </div>
+              )}
+              <Button variant="outline" onClick={() => setProposal(null)}>Dismiss</Button>
+            </div>
+          )}
+          {showProposal && isQuestion && (
+            <div className="rounded-xl border border-border bg-card p-3 mb-3">
+              {proposal.interpretation && <div className="text-sm text-card-foreground mb-3">{proposal.interpretation}</div>}
+              <WhatCanIDoPanel info={whatInfo} tz={tz} />
+              <Button variant="outline" className="w-full mt-2" onClick={() => setProposal(null)}>Dismiss</Button>
             </div>
           )}
         </>

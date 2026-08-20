@@ -26,11 +26,14 @@ export default function AssistantInput({ onSend, disabled }) {
 
   const stopVoice = () => { try { recRef.current?.stop(); } catch {} setListening(false); };
 
-  const send = () => {
+  // Await onSend and clear the input only on success. On failure the typed
+  // request is preserved so the driver can edit/retry instead of retyping.
+  const send = async () => {
     const text = (input || '').trim();
     if (!text) return;
-    onSend(text, transcript ? 'voice' : 'text');
-    setInput(''); setTranscript('');
+    let ok = true;
+    try { ok = await onSend(text, transcript ? 'voice' : 'text'); } catch { ok = false; }
+    if (ok !== false) { setInput(''); setTranscript(''); }
   };
 
   return (

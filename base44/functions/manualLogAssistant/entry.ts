@@ -1,18 +1,28 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.40';
+import { secrets } from 'base44:runtime';
 
 // ============================================================================
-// LogbookAI Manual Log Assistant — AI interpretation layer.
+// LogbookAI Manual Log Assistant — OpenAI-backed interpretation layer.
 // ----------------------------------------------------------------------------
 // This function ONLY interprets natural language and reasons about factual
 // corrections / future plans. It NEVER calculates authoritative HOS clocks —
 // the client-side deterministic engine does that and passes a computed summary
-// in as context. AI output is always a PROPOSAL for driver review.
+// in as context. AI output is always a PROPOSAL for driver review. OpenAI
+// never writes to the database; only the canonical timelineWriter does.
 //
 // Modes:
-//   interpret          — driver describes the day → proposed structured events
+//   interpret          — driver describes the day → structured intent + events
 //   make_legal_past    — find genuine factual errors/omissions in actual RODS
 //   make_legal_future  — build an HOS-compliant future plan (not actual events)
+//
+// Quota: only a SUCCESSFUL OpenAI call increments the monthly AIUsageLog.
+// Deterministic actions never reach this function. If OpenAI is unavailable,
+// no usage is consumed and the client keeps the driver's typed request.
 // ============================================================================
+
+const OPENAI_MODEL = 'gpt-4o-mini';
+const OPENAI_URL = 'https://api.openai.com/v1/chat/completions';
+const UNAVAILABLE_MSG = 'LogbookAI is temporarily unavailable. Your request has not been applied.';
 
 function eventSummary(events) {
   return (events || []).slice(-60).map(e =>
@@ -26,34 +36,115 @@ function docSummary(docs) {
   ).join('\n');
 }
 
-function buildInterpretPrompt(input, ctx) {
+// ---------------------------------------------------------------------------
+// Structured-output schema for the interpret mode (OpenAI strict json_schema).
+// ---------------------------------------------------------------------------
+const INTERPRET_SCHEMA = {
+  type: 'object',
+  additionalProperties: false,
+  properties: {
+    intent: { type: 'string', enum: ['add_events', 'edit_events', 'replace_day', 'question', 'hos_question', 'clarification'] },
+    target_date: { type: 'string' },
+    requires_clarification: { type: 'boolean' },
+    clarification_question: { type: 'string' },
+    summary: { type: 'string' },
+    refuses_fabrication: { type: 'boolean' },
+    pretrip_ask: { type: 'boolean' },
+    proposed_events: {
+      type: 'array',
+      items: {
+        type: 'object',
+        additionalProperties: false,
+        properties: {
+          start_time: { type: 'string' },
+          end_time: { type: ['string', 'null'] },
+          status: { type: 'string', enum: ['OFF_DUTY', 'SLEEPER', 'SLEEPER_BERTH', 'DRIVING', 'ON_DUTY'] },
+          city: { type: 'string' },
+          state: { type: 'string' },
+          activity: { type: 'string' },
+          remark: { type: 'string' },
+          ambiguous_fields: { type: 'array', items: { type: 'string' } },
+        },
+        required: ['start_time', 'end_time', 'status', 'city', 'state', 'activity', 'remark', 'ambiguous_fields'],
+      },
+    },
+    clarifications: {
+      type: 'array',
+      items: {
+        type: 'object',
+        additionalProperties: false,
+        properties: {
+          type: { type: 'string' },
+          question: { type: 'string' },
+          field: { type: 'string' },
+          options: { type: 'array', items: { type: 'string' } },
+        },
+        required: ['type', 'question', 'field', 'options'],
+      },
+    },
+    location_confirmations: {
+      type: 'array',
+      items: {
+        type: 'object',
+        additionalProperties: false,
+        properties: { original: { type: 'string' }, interpreted: { type: 'string' } },
+        required: ['original', 'interpreted'],
+      },
+    },
+  },
+  required: ['intent', 'target_date', 'requires_clarification', 'clarification_question', 'summary', 'refuses_fabrication', 'pretrip_ask', 'proposed_events', 'clarifications', 'location_confirmations'],
+};
+
+function buildInterpretSystem() {
   return `You are LogbookAI, an AI assistant that helps a commercial driver build a MANUAL Record of Duty Status (RODS). LogbookAI is NOT an ELD. The driver provides the facts; you organize them into proposed structured duty-status events. The driver reviews and confirms before anything is saved.
 
 ABSOLUTE SAFETY RULES:
 - NEVER fabricate events that did not occur (sleeper, off-duty, fuel, breaks, pre-trips, inspections, locations, driving).
 - NEVER convert Driving to another status merely to eliminate an HOS violation.
 - NEVER invent a pre-trip. If the driver describes driving but did not mention a pre-trip, set pretrip_ask=true and ask — do NOT add a pre-trip event.
-- For approximate times ("around 3"), propose a best-guess time and mark the field in ambiguous_fields so the driver can review it.
-- For uncertain voice city/state, add a location_confirmations entry asking the driver to confirm.
-- You do NOT calculate HOS. A deterministic HOS summary is provided for context only.
+- You do NOT calculate HOS. A deterministic HOS summary is provided for context only. Your job is to interpret what the driver said, not to compute clock math.
 
-DRIVER: ${ctx.userName}
+INTENT (choose exactly one):
+- "add_events": the driver is describing new activity to log (the normal case).
+- "edit_events": the driver wants to change specific existing events. Use the RECENT ACTUAL EVENTS to identify the target by time; if you cannot tell which event, set requires_clarification=true.
+- "replace_day": the driver wants to redo an entire day/trip ("redo my day", "start my log over for August 20"). Provide the full replacement event set for that day.
+- "question": a non-HOS question about their log.
+- "hos_question": an HOS question ("how many hours do I have", "can I drive", "do I have a violation"). Do NOT propose events; answer in summary using the deterministic HOS context provided.
+- "clarification": you need information before you can propose anything. Set requires_clarification=true and put the question in clarification_question with proposed_events=[].
+
+REFERENCE RESOLUTION:
+- Resolve "earlier", "yesterday", "today", "my fuel stop", "my pre-trip", "the 4 PM stop", etc. using the RECENT ACTUAL EVENTS and the provided TODAY/NOW. target_date is the calendar date (YYYY-MM-DD) the described activity falls on.
+- If a referenced event is ambiguous or cannot be safely identified, set requires_clarification=true and ask in clarification_question.
+
+NO INVENTED EXACT TIMES:
+- For an approximate time ("around 3", "about 11"), if an exact timestamp is required to alter the legal record, set requires_clarification=true and ask the driver to confirm the exact time in clarification_question. You may ALSO propose a best-guess event with "start_timestamp" listed in ambiguous_fields, but never present a guessed time as certain.
+
+MULTI-STEP:
+- Order proposed_events chronologically. Events must NOT overlap — the end_time of one event equals the start_time of the next when they are sequential. end_time is null only for an event still ongoing.
+- If fuel/arrival/stop time is unknown and required, set requires_clarification=true and ask.
+
+OUTPUT:
+- start_time and end_time are ISO 8601 strings in UTC (e.g. "2026-08-20T11:30:00Z"). Convert the driver's local clock times using the home terminal timezone provided.
+- status is one of OFF_DUTY, SLEEPER (or SLEEPER_BERTH), DRIVING, ON_DUTY.
+- activity is a short label (Pre-Trip, Fuel, Loading, Unloading, Drop/Hook, Break, Sleeper, Driving, Equipment Change). remark is free text (e.g. "Dropped 123, hooked 456").
+- ambiguous_fields lists field names you guessed (e.g. ["start_timestamp","state"]).
+- If a request would hide a violation by falsifying records, set refuses_fabrication=true with proposed_events=[] and explain in summary.`;
+}
+
+function buildInterpretUser(input, ctx) {
+  return `DRIVER: ${ctx.userName}
 CARRIER: ${ctx.carrierName} | Cycle ${ctx.cycle} | Home terminal TZ: ${ctx.timezone}
-TODAY (local): ${ctx.todayLocal} | NOW (ISO): ${ctx.nowIso}
+TODAY (local): ${ctx.todayLocal} | NOW (ISO UTC): ${ctx.nowIso}
 CURRENT LOCATION: ${ctx.currentLocation || '(unknown)'}
 CURRENT EQUIPMENT: tractor ${ctx.tractor || '(none)'} / trailer ${ctx.trailer || '(none)'}
 
 DETERMINISTIC HOS CONTEXT (authoritative — do not recompute):
 ${ctx.hosSummary}
 
-RECENT ACTUAL EVENTS:
+RECENT ACTUAL EVENTS (use these to resolve references like "earlier", "my fuel stop", "the 4 PM stop"):
 ${eventSummary(ctx.events) || '(none)'}
 
-DRIVER SAID: "${input}"
-
-Interpret the driver's description into PROPOSED structured events for review. Each event: date (YYYY-MM-DD), start_timestamp (ISO), end_timestamp (ISO or null if still ongoing), duty_status (OFF_DUTY|SLEEPER_BERTH|DRIVING|ON_DUTY), city, state, activity_type (e.g. Pre-Trip, Fuel, Loading, Unloading, Drop/Hook, Break, Sleeper, Driving), remark, tractor_number, trailer_numbers (comma string), confidence (high|medium|low), ambiguous_fields (array of field names that are guesses), source (typed|voice).
-If the driver describes an equipment change (drop/hook, trailer swap, bobtail), produce an ON_DUTY event with activity_type "Equipment Change" and put before/after trailers in remark (e.g. "Dropped 123, hooked 456").
-If a request would hide a violation by falsifying records, set refuses_fabrication=true and explain in interpretation with proposed_events=[].`;
+DRIVER SAID: "${input}"`;
 }
 
 function buildPastPrompt(input, ctx) {
@@ -66,8 +157,16 @@ ABSOLUTE RULES:
 - If no factual correction can resolve a violation, say so explicitly (violations_remain).
 - Every suggested correction must include a question_for_driver that the driver must confirm before it is applied.
 
+Respond ONLY as a JSON object with this shape:
+{
+  "analysis": string,
+  "factual_corrections": [{ "description": string, "evidence": string, "before_event": string, "after_event": string, "resolves_violation": boolean, "question_for_driver": string, "event_index": number, "proposed_event": { "start_timestamp": string, "end_timestamp": string, "duty_status": string, "city": string, "state": string, "remark": string, "activity_type": string } }],
+  "violations_remain": [{ "rule": string, "message": string }],
+  "refuses_fabrication": boolean
+}
+
 DRIVER: ${ctx.userName} | Cycle ${ctx.cycle} | TZ ${ctx.timezone}
-NOW (ISO): ${ctx.nowIso}
+NOW (ISO UTC): ${ctx.nowIso}
 
 DETERMINISTIC HOS CONTEXT (authoritative):
 ${ctx.hosSummary}
@@ -78,9 +177,7 @@ ${eventSummary(ctx.events) || '(none)'}
 SUPPORTING DOCUMENTS / RECEIPTS (factual evidence):
 ${docSummary(ctx.documents) || '(none)'}
 
-DRIVER SAID: "${input}"
-
-Identify possible logging errors. For each, output a factual_correction with: description, evidence (which document/statement supports it), before_event (the current event summary), after_event (proposed corrected event summary), resolves_violation (boolean), question_for_driver (must be answered yes before applying), event_index (which actual event it relates to, 0-based, or -1 if a missing event). If the violation cannot be resolved factually, list it in violations_remain. Set refuses_fabrication=true if the request asked you to hide a violation.`;
+DRIVER SAID: "${input}"`;
 }
 
 function buildFuturePrompt(input, ctx) {
@@ -93,94 +190,65 @@ ABSOLUTE RULES:
 - If the requested arrival cannot be achieved legally, set feasibility="not_feasible" and provide the earliest reasonable compliant ETA.
 - Never suggest speeding or falsifying records.
 
+Respond ONLY as a JSON object with this shape:
+{
+  "plan": [{ "sequence": number, "type": "drive|onduty|break|sleeper|offduty|fuel", "start_offset_min": number, "duration_min": number, "duty_status": "OFF_DUTY|SLEEPER_BERTH|DRIVING|ON_DUTY", "label": string, "city": string, "state": string }],
+  "feasibility": "feasible|not_feasible",
+  "departure_time": string (ISO),
+  "earliest_eta": string (ISO),
+  "notes": string,
+  "refuses_fabrication": boolean
+}
+
 DRIVER: ${ctx.userName} | Cycle ${ctx.cycle} | TZ ${ctx.timezone}
-NOW (ISO): ${ctx.nowIso}
+NOW (ISO UTC): ${ctx.nowIso}
 CURRENT LOCATION: ${ctx.currentLocation || '(unknown)'}
 
 DETERMINISTIC HOS CONTEXT (authoritative current clocks):
 ${ctx.hosSummary}
 
-ROUTE (if provided): ${ctx.route || '(none)'}
 ORIGIN: ${ctx.origin || ctx.currentLocation || '(unknown)'}
 DESTINATION: ${ctx.destination || '(unknown)'}
 REQUESTED ARRIVAL: ${ctx.requestedArrival || '(not specified)'}
 
-DRIVER SAID: "${input}"
-
-Produce an HOS-compliant plan as ordered steps. Each step: sequence, type (drive|onduty|break|sleeper|offduty|fuel), start_offset_min (minutes from now), duration_min, duty_status (OFF_DUTY|SLEEPER_BERTH|DRIVING|ON_DUTY), label, city, state. Provide feasibility, departure_time (ISO), earliest_eta (ISO), and notes. Set refuses_fabrication=true if asked to falsify.`;
+DRIVER SAID: "${input}"`;
 }
 
-const SCHEMAS = {
-  interpret: {
-    type: 'object',
-    properties: {
-      interpretation: { type: 'string' },
-      proposed_events: {
-        type: 'array',
-        items: {
-          type: 'object',
-          properties: {
-            date: { type: 'string' }, start_timestamp: { type: 'string' }, end_timestamp: { type: 'string' },
-            duty_status: { type: 'string' }, city: { type: 'string' }, state: { type: 'string' },
-            activity_type: { type: 'string' }, remark: { type: 'string' },
-            tractor_number: { type: 'string' }, trailer_numbers: { type: 'string' },
-            confidence: { type: 'string' }, ambiguous_fields: { type: 'array', items: { type: 'string' } },
-            source: { type: 'string' },
-          },
-        },
-      },
-      clarifications: {
-        type: 'array',
-        items: { type: 'object', properties: { type: { type: 'string' }, question: { type: 'string' }, field: { type: 'string' }, options: { type: 'array', items: { type: 'string' } } } },
-      },
-      pretrip_ask: { type: 'boolean' },
-      location_confirmations: { type: 'array', items: { type: 'object', properties: { original: { type: 'string' }, interpreted: { type: 'string' } } } },
-      refuses_fabrication: { type: 'boolean' },
-    },
-  },
-  make_legal_past: {
-    type: 'object',
-    properties: {
-      analysis: { type: 'string' },
-      factual_corrections: {
-        type: 'array',
-        items: {
-          type: 'object',
-          properties: {
-            description: { type: 'string' }, evidence: { type: 'string' },
-            before_event: { type: 'string' }, after_event: { type: 'string' },
-            resolves_violation: { type: 'boolean' }, question_for_driver: { type: 'string' },
-            event_index: { type: 'number' },
-            proposed_event: { type: 'object', properties: {
-              start_timestamp: { type: 'string' }, end_timestamp: { type: 'string' }, duty_status: { type: 'string' },
-              city: { type: 'string' }, state: { type: 'string' }, remark: { type: 'string' }, activity_type: { type: 'string' },
-            } },
-          },
-        },
-      },
-      violations_remain: { type: 'array', items: { type: 'object', properties: { rule: { type: 'string' }, message: { type: 'string' } } } },
-      refuses_fabrication: { type: 'boolean' },
-    },
-  },
-  make_legal_future: {
-    type: 'object',
-    properties: {
-      plan: {
-        type: 'array',
-        items: {
-          type: 'object',
-          properties: {
-            sequence: { type: 'number' }, type: { type: 'string' }, start_offset_min: { type: 'number' },
-            duration_min: { type: 'number' }, duty_status: { type: 'string' }, label: { type: 'string' },
-            city: { type: 'string' }, state: { type: 'string' },
-          },
-        },
-      },
-      feasibility: { type: 'string' }, departure_time: { type: 'string' }, earliest_eta: { type: 'string' },
-      notes: { type: 'string' }, refuses_fabrication: { type: 'boolean' },
-    },
-  },
-};
+function normalizeStatus(s) {
+  return s === 'SLEEPER' ? 'SLEEPER_BERTH' : s;
+}
+
+function mapInterpret(parsed, source) {
+  const proposed_events = (parsed.proposed_events || []).map((p) => {
+    const start = p.start_time || '';
+    const end = p.end_time || null;
+    return {
+      date: start ? start.slice(0, 10) : '',
+      start_timestamp: start,
+      end_timestamp: end,
+      duty_status: normalizeStatus(p.status),
+      city: p.city || '',
+      state: p.state || '',
+      activity_type: p.activity || '',
+      remark: p.remark || p.activity || '',
+      ambiguous_fields: p.ambiguous_fields || [],
+      source,
+    };
+  });
+  return {
+    intent: parsed.intent || 'add_events',
+    target_date: parsed.target_date || '',
+    requires_clarification: !!parsed.requires_clarification,
+    clarification_question: parsed.clarification_question || '',
+    interpretation: parsed.summary || '',
+    summary: parsed.summary || '',
+    proposed_events,
+    clarifications: parsed.clarifications || [],
+    location_confirmations: parsed.location_confirmations || [],
+    pretrip_ask: !!parsed.pretrip_ask,
+    refuses_fabrication: !!parsed.refuses_fabrication,
+  };
+}
 
 export default async function(req) {
   try {
@@ -192,6 +260,7 @@ export default async function(req) {
     const mode = body.mode || 'interpret';
     const input = (body.input || '').trim();
     if (!input) return Response.json({ error: 'Empty input' }, { status: 400 });
+    const source = body.source === 'voice' ? 'voice' : 'typed';
 
     // --- AI usage enforcement (backend) ---
     const settingsList = await base44.entities.AppSettings.filter({ settings_key: 'global' });
@@ -229,23 +298,69 @@ export default async function(req) {
       events: body.events || [],
       documents: body.documents || [],
       hosSummary: body.hosSummary || '(not provided)',
-      route: body.route || '',
       origin: body.origin || '',
       destination: body.destination || '',
       requestedArrival: body.requestedArrival || '',
     };
 
-    const prompt =
-      mode === 'make_legal_past' ? buildPastPrompt(input, ctx) :
-      mode === 'make_legal_future' ? buildFuturePrompt(input, ctx) :
-      buildInterpretPrompt(input, ctx);
+    let messages, responseFormat, maxTokens;
+    if (mode === 'make_legal_past') {
+      messages = [
+        { role: 'system', content: 'You are LogbookAI. Respond ONLY with a single JSON object, no prose.' },
+        { role: 'user', content: buildPastPrompt(input, ctx) },
+      ];
+      responseFormat = { type: 'json_object' };
+      maxTokens = 2000;
+    } else if (mode === 'make_legal_future') {
+      messages = [
+        { role: 'system', content: 'You are LogbookAI. Respond ONLY with a single JSON object, no prose.' },
+        { role: 'user', content: buildFuturePrompt(input, ctx) },
+      ];
+      responseFormat = { type: 'json_object' };
+      maxTokens = 2000;
+    } else {
+      messages = [
+        { role: 'system', content: buildInterpretSystem() },
+        { role: 'user', content: buildInterpretUser(input, ctx) },
+      ];
+      responseFormat = { type: 'json_schema', json_schema: { name: 'logbook_interpret', strict: true, schema: INTERPRET_SCHEMA } };
+      maxTokens = 1600;
+    }
 
-    const result = await base44.asServiceRole.integrations.Core.InvokeLLM({
-      prompt,
-      response_json_schema: SCHEMAS[mode] || SCHEMAS.interpret,
-      model: 'automatic',
+    const apiKey = secrets.get('OPENAI_API_KEY');
+    if (!apiKey) {
+      return Response.json({ error: UNAVAILABLE_MSG, unavailable: true }, { status: 503 });
+    }
+
+    const oaResp = await fetch(OPENAI_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
+      body: JSON.stringify({
+        model: OPENAI_MODEL,
+        messages,
+        response_format: responseFormat,
+        temperature: 0.2,
+        max_tokens: maxTokens,
+      }),
     });
+    if (!oaResp.ok) {
+      const dbg = await oaResp.text().catch(() => '');
+      console.log('OPENAI_HTTP', oaResp.status, String(dbg).slice(0, 500));
+      return Response.json({ error: UNAVAILABLE_MSG, unavailable: true }, { status: 503 });
+    }
+    const oaData = await oaResp.json();
+    const content = oaData?.choices?.[0]?.message?.content;
+    if (!content) {
+      return Response.json({ error: UNAVAILABLE_MSG, unavailable: true }, { status: 503 });
+    }
+    let parsed;
+    try {
+      parsed = JSON.parse(content);
+    } catch {
+      return Response.json({ error: UNAVAILABLE_MSG, unavailable: true }, { status: 503 });
+    }
 
+    // Only a successful interpretation consumes a request.
     const newCount = used + 1;
     if (usage) {
       await base44.entities.AIUsageLog.update(usage.id, { count: newCount, last_used_at: new Date().toISOString() });
@@ -253,8 +368,9 @@ export default async function(req) {
       await base44.entities.AIUsageLog.create({ month, count: 1, last_used_at: new Date().toISOString() });
     }
 
+    const result = mode === 'interpret' ? mapInterpret(parsed, source) : parsed;
     return Response.json({ ...result, mode, used: newCount, allowance });
   } catch (error) {
-    return Response.json({ error: error.message }, { status: 500 });
+    return Response.json({ error: error.message || UNAVAILABLE_MSG, unavailable: true }, { status: 500 });
   }
 }

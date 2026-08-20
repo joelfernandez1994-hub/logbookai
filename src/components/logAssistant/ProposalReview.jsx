@@ -11,7 +11,8 @@ import PreTripDialog from '@/components/PreTripDialog';
 const STATUS_LABELS = { OFF_DUTY: 'Off Duty', SLEEPER_BERTH: 'Sleeper', DRIVING: 'Driving', ON_DUTY: 'On Duty' };
 const STATUSES = ['OFF_DUTY', 'SLEEPER_BERTH', 'DRIVING', 'ON_DUTY'];
 
-export default function ProposalReview({ existing, proposed, cycleType, tz, onApply, onCancel, interpretation, clarifications, onResolveClarification, routeWarning }) {
+export default function ProposalReview({ existing, proposed, cycleType, tz, onApply, onApplyReplace, onCancel, interpretation, clarifications, onResolveClarification, routeWarning, intent, targetDate }) {
+  const isReplaceDay = intent === 'replace_day';
   const [editable, setEditable] = useState(false);
   const [events, setEvents] = useState(proposed);
   const [pretripOpen, setPretripOpen] = useState(false);
@@ -71,10 +72,16 @@ export default function ProposalReview({ existing, proposed, cycleType, tz, onAp
   return (
     <div className="rounded-xl border border-border bg-card p-3 mb-3">
       <div className="flex items-center justify-between mb-2">
-        <div className="text-sm font-semibold text-card-foreground">PROPOSED LOG — review before saving</div>
+        <div className="text-sm font-semibold text-card-foreground">PROPOSED CHANGES — review before saving</div>
         <div className="text-xs text-muted-foreground">Not yet logged</div>
       </div>
       {interpretation && <div className="text-sm text-muted-foreground mb-2">{interpretation}</div>}
+      {isReplaceDay && (
+        <div className="rounded-lg border border-error/40 bg-error-surface p-2 mb-2 text-xs text-error-surface-foreground flex gap-1.5">
+          <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
+          <div>This will <span className="font-semibold">replace the existing log timeline for {targetDate || 'that day'}</span>. Everything currently logged for that day is removed and replaced with the events below. This cannot be undone.</div>
+        </div>
+      )}
 
       {clarifications?.length > 0 && (
         <div className="rounded-lg border border-warning/50 bg-warning-surface p-2 mb-2 space-y-1">
@@ -186,11 +193,13 @@ export default function ProposalReview({ existing, proposed, cycleType, tz, onAp
       </div>
 
       <div className="flex flex-wrap gap-2">
-        <Button className="flex-1" disabled={blocking} onClick={() => onApply(events)}><Check className="w-4 h-4 mr-1" /> Confirm & Apply</Button>
+        <Button className="flex-1" disabled={blocking} onClick={() => (isReplaceDay ? onApplyReplace?.(events) : onApply(events))}>
+          <Check className="w-4 h-4 mr-1" /> {isReplaceDay ? 'Replace Day & Apply' : 'Confirm & Apply'}
+        </Button>
         <Button variant="outline" onClick={() => setEditable(v => !v)}><Pencil className="w-4 h-4 mr-1" /> Edit Proposal</Button>
         <Button variant="ghost" onClick={onCancel}><X className="w-4 h-4" /></Button>
       </div>
-      {blocking && <div className="text-[11px] text-error mt-2">Confirm & Apply is locked until the blocking issue is resolved or the proposal is edited.</div>}
+      {blocking && <div className="text-[11px] text-error mt-2">{isReplaceDay ? 'Replace Day & Apply' : 'Confirm & Apply'} is locked until the blocking issue is resolved or the proposal is edited.</div>}
       <div className="text-[11px] text-muted-foreground mt-1">Validation + HOS values are computed by LogbookAI's deterministic engine. Nothing is written to your log until you confirm.</div>
 
       <PreTripDialog open={pretripOpen} onOpenChange={setPretripOpen}
