@@ -73,7 +73,7 @@ const AuthenticatedApp = () => {
         <Route path="/onboarding" element={<Onboarding />} />
         <Route element={<Layout />}>
           <Route path="/" element={<Today />} />
-          <Route path="/logs" element={<Logs />} />
+          <Route path="/logs" element={<Logs key="canonical-timeline-v3" />} />
           <Route path="/trip" element={<Trip />} />
           <Route path="/inspection" element={<Inspection />} />
           <Route path="/more" element={<More />} />

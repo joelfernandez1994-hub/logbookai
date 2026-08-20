@@ -139,8 +139,8 @@ export default function Logs() {
   };
 
   return (
-    <PullToRefresh onRefresh={reload} className="px-4 pt-6">
-      <h1 className="text-xl font-bold mb-3 text-foreground">Daily Logs</h1>
+    <PullToRefresh onRefresh={reload} className="px-4 pt-6" data-client-version="logs-canonical-timeline-v3">
+      <h1 data-client-version="logs-canonical-timeline-v3" className="text-xl font-bold mb-3 text-foreground">Daily Logs</h1>
 
       <div className="flex gap-2 overflow-x-auto no-scrollbar pb-2 mb-3">
         {dayKeys.map((dk) => {
