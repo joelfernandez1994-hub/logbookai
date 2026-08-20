@@ -165,7 +165,10 @@ describe('Manual Log Assistant — deterministic safety', () => {
 
   // 11. Deterministic clock questions do not require an AI request.
   it('whatCanIDo driveRemainingMs matches the deterministic engine', () => {
-    const events = [ev(5, 4, 'SLEEPER_BERTH'), ev(4, 1, 'DRIVING'), ev(1, 0, 'ON_DUTY', { is_ongoing: true, end_timestamp: null })];
+    // Include a 10h off-duty reset so the engine has a governing reference
+    // (without one, driving.applicable is false and whatCanIDo reports 0 — a
+    // different, rest-required case). Here the 11h/14h clocks are anchored.
+    const events = [ev(15, 5, 'OFF_DUTY'), ev(5, 4, 'SLEEPER_BERTH'), ev(4, 1, 'DRIVING'), ev(1, 0, 'ON_DUTY', { is_ongoing: true, end_timestamp: null })];
     const info = whatCanIDo(events, CYCLE, TZ, NOW);
     const hos = computeHOS(events, CYCLE, TZ, NOW, { historyComplete: true });
     expect(info.driveRemainingMs).toBe(hos.driving.drivingRemainingMs);

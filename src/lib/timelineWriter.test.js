@@ -185,11 +185,14 @@ describe('clearDayEvents (Clear Day Log)', () => {
     // 'a' and 'b' (fully inside day 20) are deleted.
     expect(calls.delete).toContain('a');
     expect(calls.delete).toContain('b');
-    // The cross-midnight sleeper is truncated to end at day20 midnight; a new sleeper [day21 00:00, 04:00] is created.
+    // The cross-midnight sleeper STARTS on the cleared day (20:00 ET) and ends
+    // on the next day (04:00 ET). Clearing day 20 removes its day-20 portion by
+    // moving its start to day-21 midnight (re); the day-21 portion
+    // [00:00, 04:00] ET is preserved in place — no duplicate is created.
     const xUpd = calls.update.find(u => u.id === 'x');
     expect(xUpd).toBeTruthy();
-    expect(new Date(xUpd.data.end_timestamp).toISOString()).toBe(iso(0, DAY2)); // day20 end == day21 start
-    expect(calls.create.some(c => c.duty_status === 'SLEEPER_BERTH' && c.start_timestamp === iso(0, DAY2))).toBe(true);
+    expect(xUpd.data.start_timestamp).toBe(iso(0, DAY2)); // re = day21 00:00 ET
+    expect(calls.create.some(c => c.duty_status === 'SLEEPER_BERTH')).toBe(false);
   });
 
   it('invalidates the certification for the cleared day', async () => {
