@@ -1,11 +1,15 @@
 import { useState, useEffect } from 'react';
+import { Link } from 'react-router-dom';
 import { useDriverData } from '@/hooks/useDriverData';
 import { computeHOS, fmtDur, dateKeyInTz } from '@/lib/hosEngine';
+import { truckEtaHours, speedProfileLabel } from '@/lib/proposalValidation';
+import { limitingClock, maxDriveMiles, buildComplianceEdits } from '@/lib/complianceStop';
 import { base44 } from '@/api/base44Client';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Map, Clock, Check, X, Plus } from 'lucide-react';
+import { Switch } from '@/components/ui/switch';
+import { Map, Clock, Check, X, Plus, MapPin, AlertTriangle, Sparkles, Moon, RefreshCw } from 'lucide-react';
 
 export default function Trip() {
   const { profile, carrier, events, loading, reload } = useDriverData(9);
@@ -20,8 +24,20 @@ export default function Trip() {
 
   const tz = carrier?.home_terminal_timezone || 'America/Chicago';
   const cycleType = carrier?.hos_cycle || '70_8';
+  const speedProfile = profile?.trip_planning_speed_profile || 'conservative';
   const now = new Date();
   const hos = computeHOS(events, cycleType, tz, now, { historyComplete: profile?.entered_prior_history });
+
+  // Auto compliance assist — on by default; suggestions are generated
+  // automatically but never applied without the driver's approval.
+  const [autoAssist, setAutoAssist] = useState(() => localStorage.getItem('logbook_auto_compliance') !== 'false');
+  useEffect(() => { localStorage.setItem('logbook_auto_compliance', autoAssist ? 'true' : 'false'); }, [autoAssist]);
+
+  const [stopSugg, setStopSugg] = useState(null);
+  const [stopLoading, setStopLoading] = useState(false);
+  const [stopError, setStopError] = useState(null);
+  const [edits, setEdits] = useState(null);
+  const [applied, setApplied] = useState(false);
 
   const loadTrips = async () => {
     const t = await base44.entities.Trip.list('-created_date', 20);
@@ -31,6 +47,7 @@ export default function Trip() {
 
   const estimateRoute = async () => {
     setEstimating(true);
+    setStopSugg(null); setEdits(null); setApplied(false); setStopError(null);
     try {
       const res = await base44.functions.invoke('tripEstimate', {
         origin: `${pickup.city}, ${pickup.state}`,
@@ -45,7 +62,9 @@ export default function Trip() {
 
   const checkFeasibility = () => {
     if (!estimate) return null;
-    const neededHours = estimate.hours;
+    // Driving hours must match the distance of miles — use the realistic truck
+    // ETA for the driver's planning speed profile, not the base routing ETA.
+    const neededHours = truckEtaHours(estimate, speedProfile) ?? estimate.hours;
     const drivingRemaining = hos.driving.drivingRemainingMs / 3600000;
     const windowRemaining = hos.window14.remainingMs / 3600000;
     const cycleRemaining = hos.cycle.cycleRemainingHours;
@@ -53,6 +72,44 @@ export default function Trip() {
     return { neededHours, drivingRemaining, windowRemaining, cycleRemaining, achievable };
   };
   const feasibility = checkFeasibility();
+
+  const fetchComplianceStop = async () => {
+    if (!estimate || !pickup.city || !delivery.city) return;
+    setStopLoading(true); setStopError(null);
+    try {
+      const maxMiles = maxDriveMiles(hos, speedProfile);
+      const res = await base44.functions.invoke('complianceStop', {
+        origin: `${pickup.city}, ${pickup.state}`,
+        destination: `${delivery.city}, ${delivery.state}`,
+        max_drive_miles: maxMiles,
+      });
+      const s = res?.data || res;
+      if (!s || s.error) { setStopError(s?.error || 'No stop found'); setStopSugg(null); setEdits(null); }
+      else {
+        setStopSugg(s);
+        setEdits(buildComplianceEdits({
+          origin: `${pickup.city}, ${pickup.state}`,
+          destination: `${delivery.city}, ${delivery.state}`,
+          stop: s, hos, profileId: speedProfile, cycleType,
+        }));
+      }
+    } catch (e) { setStopError(e.message); }
+    setStopLoading(false);
+  };
+
+  // Auto-run when the trip is not achievable and auto-assist is on.
+  useEffect(() => {
+    if (autoAssist && estimate && feasibility && !feasibility.achievable && !stopSugg && !stopLoading && !stopError) {
+      fetchComplianceStop();
+    }
+    if (feasibility?.achievable) { setStopSugg(null); setEdits(null); setApplied(false); setStopError(null); }
+  }, [estimate, feasibility?.achievable, autoAssist]);
+
+  const applyEdits = () => {
+    if (!edits) return;
+    setStops(prev => [...prev, { type: 'rest', city: edits.stopEvent.city, note: edits.stopEvent.note }]);
+    setApplied(true);
+  };
 
   const saveTrip = async () => {
     await base44.entities.Trip.create({
@@ -75,6 +132,18 @@ export default function Trip() {
     <div className="px-4 pt-6">
       <h1 className="text-xl font-bold mb-3">Trip Planner</h1>
       <p className="text-xs text-slate-500 mb-4">Planned activity. Stops here are NOT official RODS until you confirm them when they occur.</p>
+
+      {/* Auto compliance assist setting */}
+      <div className="rounded-xl border border-slate-200 bg-white p-3 mb-4 flex items-center justify-between">
+        <div className="flex items-start gap-2">
+          <Sparkles className="w-4 h-4 text-emerald-600 mt-0.5" />
+          <div>
+            <div className="text-sm font-medium">Auto Compliance Assist</div>
+            <div className="text-[11px] text-slate-500">When a trip isn't achievable, automatically suggest a compliant stop & trip edits. Nothing is applied without your approval.</div>
+          </div>
+        </div>
+        <Switch checked={autoAssist} onCheckedChange={setAutoAssist} />
+      </div>
 
       {/* Current HOS snapshot */}
       <div className="grid grid-cols-2 gap-2 mb-4">
@@ -139,6 +208,62 @@ export default function Trip() {
         </div>
       )}
       {estimate?.error && <div className="text-xs text-red-600 mb-3">Route estimate unavailable: {estimate.error}</div>}
+
+      {/* Compliance stop suggestion + proposed edits (auto when assist is on) */}
+      {estimate && !estimate.error && feasibility && !feasibility.achievable && autoAssist && (
+        <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 mb-4">
+          <div className="flex items-center gap-2 font-semibold text-sm text-amber-800 mb-2">
+            <MapPin className="w-4 h-4" /> Compliance Stop Suggestion
+          </div>
+          <div className="text-xs text-amber-800 mb-2">
+            Limiting clock: <span className="font-medium">{limitingClock(hos).limiter.label}</span> · planning profile {speedProfileLabel(speedProfile)} · max drivable ~{Math.round(maxDriveMiles(hos, speedProfile))} mi.
+          </div>
+
+          {stopLoading && <div className="text-xs text-slate-600 flex items-center gap-2"><RefreshCw className="w-3.5 h-3.5 animate-spin" /> Finding a compliant stop along your route...</div>}
+          {stopError && <div className="text-xs text-red-600 mb-1">Couldn't resolve a stop: {stopError}. <button className="underline" onClick={fetchComplianceStop}>Retry</button></div>}
+
+          {stopSugg && edits && (
+            <div className="mt-2 space-y-2">
+              <div className="rounded-lg border border-amber-200 bg-white p-3">
+                <div className="text-sm font-medium">{stopSugg.stop_city}, {stopSugg.stop_state}</div>
+                <div className="text-xs text-slate-600">~{Math.round(stopSugg.miles_from_origin)} mi from origin · ~{Math.round(stopSugg.miles_remaining)} mi to destination · {edits.restHours}h rest</div>
+                {stopSugg.note && <div className="text-[11px] text-slate-500 mt-1">{stopSugg.note}</div>}
+              </div>
+
+              <div className="text-xs text-slate-700 space-y-1">
+                {edits.notes.map((n, i) => <div key={i} className="border-l-2 border-amber-300 pl-2">{n}</div>)}
+              </div>
+
+              <div className={`rounded-lg p-2 text-xs ${edits.overallOk ? 'bg-emerald-50 border border-emerald-200 text-emerald-800' : 'bg-red-50 border border-red-200 text-red-800'}`}>
+                {edits.overallOk
+                  ? <><Check className="w-3.5 h-3.5 inline mr-1" />With this stop the trip becomes compliant.</>
+                  : <><AlertTriangle className="w-3.5 h-3.5 inline mr-1" />Hours still won't cover the full route after this stop.</>}
+              </div>
+
+              {edits.needsCycleFix && (
+                <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-xs text-red-800">
+                  <div className="font-medium flex items-center gap-1"><AlertTriangle className="w-3.5 h-3.5" /> Request: review previous trips</div>
+                  <div className="mt-1">Your cycle is the bottleneck and a {edits.restHours}h rest won't recover it. Check that prior days' driving entries are accurate; if a previous driving entry was over-stated, correct it to recover cycle hours. Corrections require your approval before they're applied.</div>
+                  <Link to="/log-assistant" className="inline-block mt-2 underline font-medium">Go to Manual Log Assistant →</Link>
+                </div>
+              )}
+
+              {applied
+                ? <div className="text-xs text-emerald-700 font-medium flex items-center gap-1"><Check className="w-3.5 h-3.5" /> Rest stop added to your plan below.</div>
+                : <Button size="sm" className="w-full" onClick={applyEdits}><Moon className="w-3.5 h-3.5 mr-1" />Approve & Add Stop to Plan</Button>}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Manual trigger when assist is off */}
+      {estimate && !estimate.error && feasibility && !feasibility.achievable && !autoAssist && !stopSugg && (
+        <div className="rounded-xl border border-slate-200 bg-white p-3 mb-4">
+          <Button size="sm" variant="outline" className="w-full" onClick={fetchComplianceStop} disabled={stopLoading}>
+            <MapPin className="w-3.5 h-3.5 mr-1" /> {stopLoading ? 'Finding a compliant stop...' : 'Suggest a Compliance Stop'}
+          </Button>
+        </div>
+      )}
 
       {/* Planned stops */}
       <div className="rounded-xl border border-slate-200 bg-white p-3 mb-4">
