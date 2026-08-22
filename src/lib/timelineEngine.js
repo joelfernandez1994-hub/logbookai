@@ -127,9 +127,10 @@ export function findDuplicates(rawEvents) {
 // Resolve overlaps. For each consecutive pair where the previous event
 // genuinely started earlier (prev.start < next.start) and runs past the next
 // start, truncate prev.end = next.start ("previous status ends when next
-// begins"). Same-start different-status conflicts are flagged but NOT
-// auto-resolved (we never invent which status owned that instant).
-// Returns { segments, conflicts, resolvedOverlaps, changed }.
+// begins"). Recorded ends that fall before the next event or now are preserved
+// so validation can report the unassigned elapsed gap instead of inventing a
+// continuation. Same-start different-status conflicts remain blocking.
+// Returns { segments, conflicts, resolvedOverlaps, unresolvedGaps, changed }.
 // ---------------------------------------------------------------------------
 export function resolveOverlaps(rawEvents, now = new Date()) {
   const all = sortByStart((rawEvents || []).map(e => toSegment(e, now)).filter(Boolean));
@@ -151,21 +152,24 @@ export function resolveOverlaps(rawEvents, now = new Date()) {
 
   const out = [];
   let resolvedOverlaps = 0;
-  let filledGaps = 0;
+  let unresolvedGaps = 0;
   let changed = false;
   for (let i = 0; i < segs.length; i++) {
     const cur = { ...segs[i], end: new Date(segs[i].end) };
     const next = segs[i + 1];
     if (cur.start >= now) continue; // future RODS never enter elapsed calculations
-    const naturalEnd = next && next.start < now ? next.start : now;
-    if (cur.end > naturalEnd) resolvedOverlaps++;
-    if (cur.end < naturalEnd) filledGaps++;
-    if (cur.end.getTime() !== naturalEnd.getTime()) changed = true;
-    cur.end = new Date(naturalEnd);
-    cur.is_ongoing = !next || next.start >= now;
+    const boundary = next && next.start < now ? next.start : now;
+    if (cur.end > boundary) {
+      cur.end = new Date(boundary);
+      resolvedOverlaps++;
+      changed = true;
+    } else if (cur.end < boundary) {
+      unresolvedGaps++;
+    }
+    cur.is_ongoing = !!cur.is_ongoing && boundary.getTime() === now.getTime() && cur.end.getTime() === now.getTime();
     if (cur.end > cur.start) out.push(cur);
   }
-  return { segments: out, conflicts, resolvedOverlaps, filledGaps, changed };
+  return { segments: out, conflicts, resolvedOverlaps, unresolvedGaps, filledGaps: 0, changed };
 }
 
 // ---------------------------------------------------------------------------
@@ -182,7 +186,8 @@ export function normalizeTimeline(rawEvents, now = new Date()) {
     duplicates,
     conflicts: res.conflicts,
     resolvedOverlaps: res.resolvedOverlaps,
-    filledGaps: res.filledGaps,
+    unresolvedGaps: res.unresolvedGaps,
+    filledGaps: 0,
     changed: res.changed || res.conflicts.length > 0 || duplicates.length > 0,
   };
 }
@@ -445,7 +450,8 @@ export function repairTimeline(rawEvents, now = new Date()) {
     repaired,
     removedDuplicates: duplicates.reduce((n, g) => n + g.length - 1, 0),
     resolvedOverlaps: norm.resolvedOverlaps,
-    filledGaps: norm.filledGaps,
+    unresolvedGaps: norm.unresolvedGaps,
+    filledGaps: 0,
     conflicts: norm.conflicts,
   };
 }

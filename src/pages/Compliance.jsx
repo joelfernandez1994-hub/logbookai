@@ -123,7 +123,7 @@ export default function Compliance() {
 
       {/* HOS clock grid */}
       <div className="grid grid-cols-2 gap-2 mb-3">
-        <ClockCard icon={Clock} label="14-hour window" value={fmtDur(hos.window14.applicable ? hos.window14.remainingMs : 0)} />
+        <ClockCard icon={Clock} label="14-hour window" value={hos.window14.applicable ? fmtDur(hos.window14.remainingMs) : '--'} />
         <ClockCard icon={Coffee} label="30-min break" value={hos.break30.satisfied ? 'Satisfied' : (hos.break30.breakRequired ? 'Required now' : 'Not yet required')} />
         <ClockCard icon={Gauge} label={`Cycle ${hos.cycle.cycleLimit}/${hos.cycle.cycleDays}`} value={`${hos.cycle.cycleRemainingHours.toFixed(1)} hr left`} />
         <ClockCard icon={RotateCcw} label="34-hour restart" value={hos.restart.completed ? 'Completed' : (hos.restart.inProgress ? `${fmtDur(hos.restart.inProgress.remainingMs)} left` : 'Not in progress')} />
