@@ -5,6 +5,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Check } from 'lucide-react';
 import LocationInput from '@/components/LocationInput';
+import TimezoneIndicator from '@/components/TimezoneIndicator';
 import { formatHour, fmtDurationMs, formatH24 } from '@/lib/rodsEditor';
 
 const ROW_ORDER = ['OFF_DUTY', 'SLEEPER_BERTH', 'DRIVING', 'ON_DUTY'];
@@ -36,6 +37,7 @@ export default function EventSheet({ open, value, isNew, dayStartMs, tz, carrier
       <DialogContent className="max-w-md max-h-[92vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>{isNew ? 'New Event' : 'Edit Event'} — {STATUS_LABELS[v.status]}</DialogTitle>
+          <TimezoneIndicator tz={tz} className="mt-0.5" />
         </DialogHeader>
 
         <div className="space-y-3">

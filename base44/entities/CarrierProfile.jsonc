@@ -14,6 +14,12 @@
     "home_terminal_address": {
       "type": "string"
     },
+    "home_terminal_city": {
+      "type": "string"
+    },
+    "home_terminal_state": {
+      "type": "string"
+    },
     "home_terminal_timezone": {
       "type": "string",
       "default": "America/Chicago"

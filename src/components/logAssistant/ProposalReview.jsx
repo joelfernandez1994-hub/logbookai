@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Check, X, Pencil, AlertTriangle, ShieldCheck, AlertCircle, Plus } from 'lucide-react';
 import PreTripDialog from '@/components/PreTripDialog';
+import TimezoneIndicator from '@/components/TimezoneIndicator';
 
 const STATUS_LABELS = { OFF_DUTY: 'Off Duty', SLEEPER_BERTH: 'Sleeper', DRIVING: 'Driving', ON_DUTY: 'On Duty' };
 const STATUSES = ['OFF_DUTY', 'SLEEPER_BERTH', 'DRIVING', 'ON_DUTY'];
@@ -94,6 +95,7 @@ export default function ProposalReview({ existing, proposed, cycleType, tz, onAp
         <div className="text-sm font-semibold text-card-foreground">PROPOSED CHANGES — review before saving</div>
         <div className="text-xs text-muted-foreground">Not yet logged</div>
       </div>
+      <TimezoneIndicator tz={tz} className="mb-2" />
       {interpretation && <div className="text-sm text-muted-foreground mb-2">{interpretation}</div>}
       {isReplaceDay && (
         <div className="rounded-lg border border-error/40 bg-error-surface p-2 mb-2 text-xs text-error-surface-foreground flex gap-1.5">

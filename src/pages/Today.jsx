@@ -12,6 +12,7 @@ import { Button } from '@/components/ui/button';
 import PreTripDialog from '@/components/PreTripDialog';
 import { Truck, Clock, Coffee, RotateCcw, AlertTriangle, MapPin, Bot, ClipboardList, ClipboardCheck, Gauge, Moon, HelpCircle, ShieldCheck } from 'lucide-react';
 import DailyMilesCard from '@/components/DailyMilesCard';
+import TimezoneIndicator from '@/components/TimezoneIndicator';
 import TimelineGapNotice from '@/components/TimelineGapNotice';
 import PullToRefresh from '@/components/PullToRefresh';
 
@@ -40,7 +41,7 @@ export default function Today() {
   const [optimisticStatus, setOptimisticStatus] = useState(null);
   const [optimisticSince, setOptimisticSince] = useState(null);
 
-  const tz = carrier?.home_terminal_timezone || profile?.home_terminal_timezone || 'America/Chicago';
+  const tz = carrier?.home_terminal_timezone || 'America/Chicago';
   const cycleType = carrier?.hos_cycle || '70_8';
   const speedProfile = profile?.trip_planning_speed_profile || 'conservative';
 
@@ -153,7 +154,7 @@ export default function Today() {
             <MapPin className="w-3.5 h-3.5" /> {current.city}{current.state ? `, ${current.state}` : ''}
           </div>
         )}
-        <div className="text-[11px] text-muted-foreground mt-1">Home terminal: {carrier?.home_terminal_timezone}</div>
+        <TimezoneIndicator tz={tz} className="mt-1" />
       </div>
 
       {!timelineValidation.valid && (
@@ -245,7 +246,7 @@ export default function Today() {
       )}
 
       <div className="rounded-xl border border-border bg-card p-3 mb-4">
-        <div className="text-sm font-semibold mb-2 text-card-foreground">Today's 24-Hour Log</div>
+        <div className="flex items-center justify-between mb-2"><div className="text-sm font-semibold text-card-foreground">Today's 24-Hour Log</div><TimezoneIndicator tz={tz} /></div>
         <LogGraph events={events} dateStr={todayKey} timezone={tz} />
       </div>
 

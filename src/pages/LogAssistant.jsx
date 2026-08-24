@@ -39,7 +39,7 @@ export default function LogAssistant() {
   const [routeWarning, setRouteWarning] = useState(null);
   const speedProfile = profile?.trip_planning_speed_profile || DEFAULT_SPEED_PROFILE;
 
-  const tz = carrier?.home_terminal_timezone || profile?.home_terminal_timezone || 'America/Chicago';
+  const tz = carrier?.home_terminal_timezone || 'America/Chicago';
   const cycleType = carrier?.hos_cycle || '70_8';
 
   useEffect(() => { (async () => {

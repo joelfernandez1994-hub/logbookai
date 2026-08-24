@@ -17,7 +17,7 @@ export default function LocationInput({ value, onChange, showGps = false, cityLa
   const { suggestions, loading } = useCityAutocomplete(city, searchEnabled);
 
   const select = (suggestion) => {
-    onChange({ city: suggestion.city, state: suggestion.state });
+    onChange({ city: suggestion.city, state: suggestion.state, timezone: suggestion.timezone || '' });
     setSearchEnabled(false); setOpen(false); setActiveIndex(-1);
   };
   const locate = async () => {

@@ -44,10 +44,22 @@ export async function saveDriverProfile(data, existing) {
 }
 
 export async function saveCarrierProfile(data, existing) {
-  if (existing && existing.id) {
-    return await base44.entities.CarrierProfile.update(existing.id, data);
+  const saved = existing && existing.id
+    ? await base44.entities.CarrierProfile.update(existing.id, data)
+    : await base44.entities.CarrierProfile.create(data);
+  // Keep DriverProfile.home_terminal_timezone in sync with the authoritative
+  // carrier zone so there's one consistent source. Display already reads the
+  // carrier zone; this just keeps the stored driver field from going stale.
+  // No event timestamps are rewritten.
+  if (data.home_terminal_timezone) {
+    try {
+      const list = await base44.entities.DriverProfile.list('-created_date', 1);
+      if (list && list[0] && list[0].home_terminal_timezone !== data.home_terminal_timezone) {
+        await base44.entities.DriverProfile.update(list[0].id, { home_terminal_timezone: data.home_terminal_timezone });
+      }
+    } catch (e) { /* best-effort */ }
   }
-  return await base44.entities.CarrierProfile.create(data);
+  return saved;
 }
 
 export async function saveEquipment(data) {

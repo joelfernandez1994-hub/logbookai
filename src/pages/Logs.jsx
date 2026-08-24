@@ -18,6 +18,8 @@ import { useEffect } from 'react';
 import DailyMilesCard from '@/components/DailyMilesCard';
 import TimelineGapNotice from '@/components/TimelineGapNotice';
 import PullToRefresh from '@/components/PullToRefresh';
+import TimezoneIndicator from '@/components/TimezoneIndicator';
+import { wallTimeToIso, isoToWallTime } from '@/lib/timezones';
 
 const STATUS_LABELS = { OFF_DUTY: 'Off Duty', SLEEPER_BERTH: 'Sleeper', DRIVING: 'Driving', ON_DUTY: 'On Duty' };
 const STATUSES = ['OFF_DUTY', 'SLEEPER_BERTH', 'DRIVING', 'ON_DUTY'];
@@ -173,6 +175,7 @@ export default function Logs() {
       <DailyMilesCard events={events} dateStr={dateStr} tz={tz} speedProfile={speedProfile} />
 
       <div className="rounded-xl border border-border bg-card p-3 mb-3">
+        <TimezoneIndicator tz={tz} className="mb-2" />
         <RodsGraphEditor events={events} dateStr={dateStr} timezone={tz} carrier={carrier} equipment={equipment} profile={profile} certifications={certifications} reload={reload} />
       </div>
 
@@ -242,11 +245,11 @@ export default function Logs() {
 }
 
 function EventEditor({ open, event, prefill, onClose, onSave, tz, carrier, equipment, isCertified, saving, saveError }) {
-  const pfStart = prefill?.start_timestamp ? new Date(prefill.start_timestamp).toISOString().slice(0, 16) : '';
-  const pfEnd = prefill?.end_timestamp ? new Date(prefill.end_timestamp).toISOString().slice(0, 16) : '';
+  const pfStart = prefill?.start_timestamp ? isoToWallTime(prefill.start_timestamp, tz) : '';
+  const pfEnd = prefill?.end_timestamp ? isoToWallTime(prefill.end_timestamp, tz) : '';
   const [status, setStatus] = useState(event?.duty_status || 'DRIVING');
-  const [start, setStart] = useState(event ? new Date(event.start_timestamp).toISOString().slice(0, 16) : pfStart);
-  const [end, setEnd] = useState(event?.end_timestamp ? new Date(event.end_timestamp).toISOString().slice(0, 16) : pfEnd);
+  const [start, setStart] = useState(event ? isoToWallTime(event.start_timestamp, tz) : pfStart);
+  const [end, setEnd] = useState(event?.end_timestamp ? isoToWallTime(event.end_timestamp, tz) : pfEnd);
   const [city, setCity] = useState(event?.city || '');
   const [stateVal, setStateVal] = useState(event?.state || '');
   const [remark, setRemark] = useState(event?.remark || '');
@@ -254,8 +257,8 @@ function EventEditor({ open, event, prefill, onClose, onSave, tz, carrier, equip
 
   useEffect(() => {
     setStatus(event?.duty_status || 'DRIVING');
-    setStart(event ? new Date(event.start_timestamp).toISOString().slice(0, 16) : (prefill?.start_timestamp ? new Date(prefill.start_timestamp).toISOString().slice(0, 16) : ''));
-    setEnd(event?.end_timestamp ? new Date(event.end_timestamp).toISOString().slice(0, 16) : (prefill?.end_timestamp ? new Date(prefill.end_timestamp).toISOString().slice(0, 16) : ''));
+    setStart(event ? isoToWallTime(event.start_timestamp, tz) : (prefill?.start_timestamp ? isoToWallTime(prefill.start_timestamp, tz) : ''));
+    setEnd(event?.end_timestamp ? isoToWallTime(event.end_timestamp, tz) : (prefill?.end_timestamp ? isoToWallTime(prefill.end_timestamp, tz) : ''));
     setCity(event?.city || ''); setStateVal(event?.state || ''); setRemark(event?.remark || '');
     setLocalError('');
   }, [event, open, prefill]);
@@ -263,23 +266,26 @@ function EventEditor({ open, event, prefill, onClose, onSave, tz, carrier, equip
   const save = () => {
     setLocalError('');
     if (!start) { setLocalError('Start time is required.'); return; }
-    const startMs = new Date(start).getTime();
-    const endMs = end ? new Date(end).getTime() : null;
+    const startIso = wallTimeToIso(start, tz);
+    const endIso = end ? wallTimeToIso(end, tz) : null;
+    const startMs = startIso ? new Date(startIso).getTime() : NaN;
+    const endMs = endIso ? new Date(endIso).getTime() : null;
     if (endMs != null && endMs <= startMs) { setLocalError('End time must be after the start time.'); return; }
     const data = {
       duty_status: status,
-      start_timestamp: new Date(start).toISOString(),
-      end_timestamp: endMs != null ? new Date(end).toISOString() : null,
+      start_timestamp: startIso,
+      end_timestamp: endIso,
       city: city.trim(), state: stateVal.trim().toUpperCase(), remark,
     };
     if (event) onSave(data);
-    else onSave({ ...data, log_date: new Date(start).toISOString().slice(0, 10), is_ongoing: false, is_current_version: true, method_of_creation: 'Manual', carrier_name: carrier?.carrier_name });
+    else onSave({ ...data, log_date: dateKeyInTz(startIso, tz), is_ongoing: false, is_current_version: true, method_of_creation: 'Manual', carrier_name: carrier?.carrier_name });
   };
 
   return (
     <Dialog open={open} onOpenChange={(o) => { if (!o && !saving) onClose(); }}>
       <DialogContent className="max-w-md">
         <DialogHeader><DialogTitle>{event ? 'Edit Event' : 'Add Event'}</DialogTitle></DialogHeader>
+        <TimezoneIndicator tz={tz} className="mb-1" />
         {isCertified && event && (
           <div className="rounded-md bg-warning-surface border border-warning/50 p-2 text-xs text-warning-surface-foreground">
             This log is certified. Editing will preserve the previous version in audit history and mark this day as needing re-certification.

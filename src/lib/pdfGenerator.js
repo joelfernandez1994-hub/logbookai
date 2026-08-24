@@ -1,5 +1,6 @@
 import { jsPDF } from 'jspdf';
 import { getDailyGrid, computeCycle, computeHOS, fmtHours, fmtDur } from './hosEngine';
+import { labelForIana } from './timezones';
 
 const STATUS_ROWS = ['OFF_DUTY', 'SLEEPER_BERTH', 'DRIVING', 'ON_DUTY'];
 const STATUS_LABELS = {
@@ -48,7 +49,7 @@ function drawDay(doc, driver, carrier, events, dateStr, timezone, certification,
   doc.text("Driver's Record of Duty Status", M, y + 4.5);
   doc.setFontSize(7); doc.setFont(undefined, 'normal');
   doc.setTextColor(110);
-  doc.text('LogbookAI · NOT an ELD · AI-assisted RODS · original layout', W - M, y + 4.5, { align: 'right' });
+  doc.text(`LogbookAI · NOT an ELD · Log timezone: ${labelForIana(timezone)}`, W - M, y + 4.5, { align: 'right' });
   doc.setTextColor(0);
   doc.setLineWidth(0.3); doc.line(M, y + 6, W - M, y + 6);
   y += 8;

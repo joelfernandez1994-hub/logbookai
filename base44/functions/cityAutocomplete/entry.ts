@@ -32,7 +32,7 @@ export default async function(req: Request): Promise<Response> {
       const key = `${city.toLowerCase()}|${state}`;
       if (!String(result.feature_code || '').startsWith('PPL') || !city.toLowerCase().startsWith(q.toLowerCase()) || !state || seen.has(key)) continue;
       seen.add(key);
-      suggestions.push({ city, state });
+      suggestions.push({ city, state, timezone: result.timezone || '' });
       if (suggestions.length === 5) break;
     }
     return Response.json({ suggestions });

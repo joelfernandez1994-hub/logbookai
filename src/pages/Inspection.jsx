@@ -8,6 +8,7 @@ import { getDvirs } from '@/lib/dvirData';
 import { generateLogsPdf } from '@/lib/pdfGenerator';
 import { Button } from '@/components/ui/button';
 import { ChevronLeft, ChevronRight, Share2, X, ShieldCheck } from 'lucide-react';
+import TimezoneIndicator from '@/components/TimezoneIndicator';
 
 const STATUS_LABELS = { OFF_DUTY: 'Off Duty', SLEEPER_BERTH: 'Sleeper', DRIVING: 'Driving', ON_DUTY: 'On Duty' };
 // Format hours as X hr YY min; NaN/undefined -> 0 hr 00 min (never expose "NaN").
@@ -80,6 +81,7 @@ export default function Inspection() {
         <div className="font-semibold">{profile?.legal_name}</div>
         <div className="text-slate-300 text-xs">{carrier?.carrier_name} · USDOT {carrier?.usdot_number}</div>
         <div className="text-slate-400 text-xs">{carrier?.home_terminal_address}</div>
+        <div className="mt-1"><TimezoneIndicator tz={tz} /></div>
       </div>
 
       {/* Day navigation */}
