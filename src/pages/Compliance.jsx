@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 import { useDriverData } from '@/hooks/useDriverData';
 import { computeHOS, runComplianceCheck, getDailyGrid, dateKeyInTz, hasSufficientCycleHistory, fmtDur, fmtClock } from '@/lib/hosEngine';
 import { whatCanIDo } from '@/lib/logAssistant';
@@ -19,7 +19,7 @@ export default function Compliance() {
   const [now, setNow] = useState(new Date());
 
   const hos = useMemo(() => computeHOS(events, cycleType, tz, now, { historyComplete: hasSufficientCycleHistory(events, cycleType, profile?.entered_prior_history, tz, now) }), [events, cycleType, tz, now, profile]);
-  const info = useMemo(() => whatCanIDo(events, cycleType, tz, now), [events, cycleType, tz, now]);
+  const info = useMemo(() => whatCanIDo(events, cycleType, tz, now, profile?.entered_prior_history), [events, cycleType, tz, now, profile?.entered_prior_history]);
 
   const runCheck = () => {
     setChecking(true);
@@ -71,12 +71,20 @@ export default function Compliance() {
       </div>
 
       {/* One-click HOS verdict: can drive now, exact blockers, eligible time */}
-      <div className={`rounded-xl border p-3 mb-3 ${info.canDrive ? 'border-success/40 bg-success-surface text-success-surface-foreground' : 'border-error/40 bg-error-surface text-error-surface-foreground'}`}>
+      <div className={`rounded-xl border p-3 mb-3 ${info.unavailable ? 'border-warning/50 bg-warning-surface text-warning-surface-foreground' : info.canDrive ? 'border-success/40 bg-success-surface text-success-surface-foreground' : 'border-error/40 bg-error-surface text-error-surface-foreground'}`}>
         <div className="flex items-center gap-2">
-          {info.canDrive ? <CheckCircle2 className="w-5 h-5" /> : <XCircle className="w-5 h-5" />}
-          <div className="font-semibold">{info.canDrive ? 'You can drive right now' : 'You cannot drive right now'}</div>
+          {info.unavailable ? <AlertTriangle className="w-5 h-5" /> : info.canDrive ? <CheckCircle2 className="w-5 h-5" /> : <XCircle className="w-5 h-5" />}
+          <div className="font-semibold">{info.unavailable ? 'HOS availability unavailable' : info.canDrive ? 'You can drive right now' : 'You cannot drive right now'}</div>
         </div>
-        {!info.canDrive && info.driveBlockers?.length > 0 && (
+        {info.unavailable && (
+          <div className="mt-2">
+            <p className="text-xs">{info.unavailableReason}</p>
+            <Button asChild variant="outline" size="sm" className="mt-2 bg-transparent">
+              <Link to="/logs">Correct timeline</Link>
+            </Button>
+          </div>
+        )}
+        {!info.unavailable && !info.canDrive && info.driveBlockers?.length > 0 && (
           <div className="mt-2 space-y-1.5 text-xs">
             {info.driveBlockers.map((b, i) => (
               <div key={i} className="flex items-start gap-1.5">
@@ -110,12 +118,12 @@ export default function Compliance() {
           <div className="text-[10px] text-muted-foreground">11-hour driving limit total</div>
         </div>
       </div>
-      {info.usableDriveMs < info.driveRemainingMs && info.usableDriveMs > 0 && (
+      {!info.unavailable && info.usableDriveMs < info.driveRemainingMs && info.usableDriveMs > 0 && (
         <div className="text-[11px] text-warning-surface-foreground bg-warning-surface rounded-md px-2 py-1 mb-3">
           Your 14-hour window limits usable driving to {fmtDur(info.usableDriveMs)} even though {fmtDur(info.driveRemainingMs)} remains on the drive clock.
         </div>
       )}
-      {info.usableDriveMs === 0 && info.driveRemainingMs > 0 && !info.canDrive && (
+      {!info.unavailable && info.usableDriveMs === 0 && info.driveRemainingMs > 0 && !info.canDrive && (
         <div className="text-[11px] text-warning-surface-foreground bg-warning-surface rounded-md px-2 py-1 mb-3">
           {fmtDur(info.driveRemainingMs)} remains on your driving clock, but you cannot legally use it until the blockers above clear.
         </div>
@@ -123,10 +131,10 @@ export default function Compliance() {
 
       {/* HOS clock grid */}
       <div className="grid grid-cols-2 gap-2 mb-3">
-        <ClockCard icon={Clock} label="14-hour window" value={hos.window14.applicable ? fmtDur(hos.window14.remainingMs) : '--'} />
-        <ClockCard icon={Coffee} label="30-min break" value={hos.break30.satisfied ? 'Satisfied' : (hos.break30.breakRequired ? 'Required now' : 'Not yet required')} />
-        <ClockCard icon={Gauge} label={`Cycle ${hos.cycle.cycleLimit}/${hos.cycle.cycleDays}`} value={`${hos.cycle.cycleRemainingHours.toFixed(1)} hr left`} />
-        <ClockCard icon={RotateCcw} label="34-hour restart" value={hos.restart.completed ? 'Completed' : (hos.restart.inProgress ? `${fmtDur(hos.restart.inProgress.remainingMs)} left` : 'Not in progress')} />
+        <ClockCard icon={Clock} label="14-hour window" value={info.windowRemainingMs == null ? '--' : fmtDur(info.windowRemainingMs)} />
+        <ClockCard icon={Coffee} label="30-min break" value={info.unavailable ? '--' : (info.breakSatisfied ? 'Satisfied' : (info.breakRequired ? 'Required now' : 'Not yet required'))} />
+        <ClockCard icon={Gauge} label={`Cycle ${hos.cycle.cycleLimit}/${hos.cycle.cycleDays}`} value={info.cycleRemainingHours == null ? '--' : `${info.cycleRemainingHours.toFixed(1)} hr left`} note={!info.unavailable && info.cycleUnverified ? info.cycleUnverifiedReason : ''} />
+        <ClockCard icon={RotateCcw} label="34-hour restart" value={info.unavailable ? '--' : (info.restartCompleted ? 'Completed' : (info.restartInProgress ? `${fmtDur(info.restartInProgress.remainingMs)} left` : 'Not in progress'))} />
       </div>
 
       {/* Split sleeper — always informational, never a warning */}
@@ -179,11 +187,12 @@ export default function Compliance() {
   );
 }
 
-function ClockCard({ icon: Icon, label, value }) {
+function ClockCard({ icon: Icon, label, value, note }) {
   return (
     <div className="rounded-xl border border-border bg-card p-3">
       <div className="flex items-center gap-1.5 text-xs text-muted-foreground"><Icon className="w-3.5 h-3.5" /> {label}</div>
       <div className="font-semibold mt-1 text-card-foreground">{value}</div>
+      {note && <div className="text-[10px] text-muted-foreground mt-1">{note}</div>}
     </div>
   );
 }
