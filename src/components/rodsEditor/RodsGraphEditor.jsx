@@ -281,6 +281,12 @@ export default function RodsGraphEditor({
         </div>
       )}
 
+      {editMode && (
+        <div className="h-28 mb-2" data-testid="graph-drag-readout-slot">
+          {bubble && <TimeBubble startHour={bubble.startHour} endHour={bubble.endHour} status={bubble.status} color={bubble.color} />}
+        </div>
+      )}
+
       {/* graph */}
       <div ref={scrollRef} className="overflow-x-auto overflow-y-hidden rounded-lg border border-border bg-graph touch-pan-x"
         style={{ touchAction: 'pan-x' }}>
@@ -373,8 +379,6 @@ export default function RodsGraphEditor({
           </div>
         ))}
       </div>
-
-      {bubble && <TimeBubble x={bubble.x} y={bubble.y} startHour={bubble.startHour} endHour={bubble.endHour} status={bubble.status} color={bubble.color} />}
 
       <EventSheet open={!!sheetValue && !proposed} value={sheetValue} isNew={sheetValue?.isNew}
         dayStartMs={dayStartMs} tz={tz} carrier={carrier} equipment={equipment}
