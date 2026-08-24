@@ -64,8 +64,32 @@ const INTERPRET_SCHEMA = {
           activity: { type: 'string' },
           remark: { type: 'string' },
           ambiguous_fields: { type: 'array', items: { type: 'string' } },
+          field_provenance: {
+            type: 'object', additionalProperties: false,
+            properties: {
+              start_time: { type: 'string', enum: ['explicit', 'inferred'] },
+              end_time: { type: 'string', enum: ['explicit', 'inferred'] },
+              status: { type: 'string', enum: ['explicit', 'inferred'] },
+              city: { type: 'string', enum: ['explicit', 'inferred'] },
+              state: { type: 'string', enum: ['explicit', 'inferred'] },
+            },
+            required: ['start_time', 'end_time', 'status', 'city', 'state'],
+          },
+          adjustments: {
+            type: 'array',
+            items: {
+              type: 'object', additionalProperties: false,
+              properties: {
+                field: { type: 'string', enum: ['start_time', 'end_time', 'status', 'city', 'state'] },
+                original_stated_value: { type: 'string' },
+                adjusted_value: { type: 'string' },
+                reason: { type: 'string' },
+              },
+              required: ['field', 'original_stated_value', 'adjusted_value', 'reason'],
+            },
+          },
         },
-        required: ['start_time', 'end_time', 'status', 'city', 'state', 'activity', 'remark', 'ambiguous_fields'],
+        required: ['start_time', 'end_time', 'status', 'city', 'state', 'activity', 'remark', 'ambiguous_fields', 'field_provenance', 'adjustments'],
       },
     },
     clarifications: {
@@ -119,11 +143,18 @@ REFERENCE RESOLUTION:
 NO INVENTED EXACT TIMES:
 - For an approximate time ("around 3", "about 11"), if an exact timestamp is required to alter the legal record, set requires_clarification=true and ask the driver to confirm the exact time in clarification_question. You may ALSO propose a best-guess event with "start_timestamp" listed in ambiguous_fields, but never present a guessed time as certain.
 
+EXPLICIT FACTS, PROVENANCE, AND ADJUSTMENTS:
+- Explicit times, duty statuses, cities, and states stated by the driver are facts. Preserve them exactly and mark their field_provenance as "explicit". Mark only genuinely unstated values as "inferred".
+- Never drop an explicit state transition. "Started driving" and "continued driving" each produce a DRIVING segment.
+- If two explicit facts create a small continuity conflict, use the full sequence, stated durations, realistic route/truck travel information when available, and the deterministic HOS context to identify the smallest realistic adjustment. Put every changed explicit field in adjustments with its original_stated_value, adjusted_value, and a plain-language reason.
+- HOS and route context may identify conflicts and support a realistic adjustment, but HOS must NEVER be used as a reason to rewrite facts merely to make a log compliant or remove a violation. Preserve the facts and let the deterministic compliance review show the violation.
+- Never silently change a major explicit fact. If no single reasonable adjustment exists, materially different timelines are possible, or the choice would materially change HOS compliance, set requires_clarification=true, ask one specific question, and return proposed_events=[].
+
 MULTI-STEP:
-- Preserve every explicit state transition in chronological order. "started driving" and "continued driving" MUST each produce a DRIVING segment; never collapse or omit Driving between On Duty activities.
-- Events must NOT overlap and must form one continuous state machine: each event's end_time equals the next event's start_time.
+- Preserve every explicit state transition in chronological order; never collapse or omit Driving between On Duty activities.
+- Events should form a continuous state machine without overlap, but continuity never overrides explicit facts. Use a visible adjustment as described above or ask for clarification.
 - Fuel occurs after the Driving segment that reached the fuel stop; unloading occurs after the Driving segment that reached the destination.
-- A complete reconstruction of an entire day (from midnight or "off duty until" through "rest of the day") uses intent="replace_day", starts at local 00:00, and ends at local 00:00 the following day. Do not leave the final event ongoing for a completed past day.
+- A complete reconstruction of an entire day (from midnight or "off duty until" through "rest of the day") uses intent="replace_day". A final open-ended status remains end_time=null and carries forward until the next actual status change; never create an artificial midnight end.
 - Infer an omitted state from an unambiguous route context (Houston, TX → San Antonio → Laredo means San Antonio, TX and Laredo, TX). Ask only when genuinely ambiguous.
 - If fuel/arrival/stop time is unknown and required, set requires_clarification=true and ask.
 
@@ -246,7 +277,32 @@ function localWallTimeToIso(value, timezone) {
   return new Date(instant).toISOString();
 }
 
-function mapInterpret(parsed, source, timezone) {
+function normalizeClockFact(hour, minute, meridiem) {
+  let h = Number(hour);
+  if (meridiem) {
+    const pm = /^p/i.test(meridiem.replace(/\./g, ''));
+    h = h % 12 + (pm ? 12 : 0);
+  }
+  return `${String(h).padStart(2, '0')}:${String(Number(minute)).padStart(2, '0')}`;
+}
+
+function extractExplicitFacts(input) {
+  const text = String(input || '');
+  const times = [...text.matchAll(/\b(\d{1,2}):(\d{2})\s*(a\.?m\.?|p\.?m\.?)?\b/gi)]
+    .map(m => ({ raw: m[0], normalized: normalizeClockFact(m[1], m[2], m[3]) }));
+  const locations = [...text.matchAll(/\b([A-Z][A-Za-z.'-]*(?:\s+[A-Z][A-Za-z.'-]*){0,3}),\s*([A-Z]{2})\b/g)]
+    .map(m => ({ raw: m[0], city: m[1].trim(), state: m[2].toUpperCase() }));
+  const statusPatterns = [
+    ['SLEEPER_BERTH', /\b(?:sleeper|sleeper berth)\b/gi],
+    ['OFF_DUTY', /\boff[ -]?duty\b/gi],
+    ['ON_DUTY', /\bon[ -]?duty\b/gi],
+    ['DRIVING', /\b(?:driving|drove|drive)\b/gi],
+  ];
+  const statuses = statusPatterns.flatMap(([status, pattern]) => [...text.matchAll(pattern)].map(m => ({ raw: m[0], status })));
+  return { times, locations, statuses };
+}
+
+function mapInterpret(parsed, source, timezone, originalInput) {
   const proposed_events = (parsed.proposed_events || []).map((p) => {
     const start = localWallTimeToIso(p.start_time, timezone);
     const end = localWallTimeToIso(p.end_time, timezone);
@@ -254,12 +310,16 @@ function mapInterpret(parsed, source, timezone) {
       date: parsed.target_date || (p.start_time ? p.start_time.slice(0, 10) : ''),
       start_timestamp: start || '',
       end_timestamp: end,
+      start_time_local: p.start_time || '',
+      end_time_local: p.end_time || null,
       duty_status: normalizeStatus(p.status),
       city: p.city || '',
       state: p.state || '',
       activity_type: normalizeStatus(p.status) === 'OFF_DUTY' && /sleeper/i.test(p.activity || '') ? 'Off Duty' : (p.activity || ''),
       remark: normalizeStatus(p.status) === 'OFF_DUTY' && /sleeper/i.test(p.remark || '') ? 'Off Duty' : (p.remark || p.activity || ''),
       ambiguous_fields: p.ambiguous_fields || [],
+      field_provenance: p.field_provenance || {},
+      adjustments: p.adjustments || [],
       source,
     };
   });
@@ -273,6 +333,8 @@ function mapInterpret(parsed, source, timezone) {
     proposed_events,
     clarifications: parsed.clarifications || [],
     location_confirmations: parsed.location_confirmations || [],
+    deterministic_explicit_facts: extractExplicitFacts(originalInput),
+    original_input: originalInput,
     pretrip_ask: !!parsed.pretrip_ask,
     refuses_fabrication: !!parsed.refuses_fabrication,
   };
@@ -396,7 +458,7 @@ export default async function(req) {
       await base44.entities.AIUsageLog.create({ month, count: 1, last_used_at: new Date().toISOString() });
     }
 
-    const result = mode === 'interpret' ? mapInterpret(parsed, source, ctx.timezone) : parsed;
+    const result = mode === 'interpret' ? mapInterpret(parsed, source, ctx.timezone, input) : parsed;
     return Response.json({ ...result, mode, used: newCount, allowance });
   } catch (error) {
     return Response.json({ error: error.message || UNAVAILABLE_MSG, unavailable: true }, { status: 500 });

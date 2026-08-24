@@ -12,7 +12,7 @@ import PreTripDialog from '@/components/PreTripDialog';
 const STATUS_LABELS = { OFF_DUTY: 'Off Duty', SLEEPER_BERTH: 'Sleeper', DRIVING: 'Driving', ON_DUTY: 'On Duty' };
 const STATUSES = ['OFF_DUTY', 'SLEEPER_BERTH', 'DRIVING', 'ON_DUTY'];
 
-export default function ProposalReview({ existing, proposed, cycleType, tz, onApply, onApplyReplace, onCancel, interpretation, clarifications, onResolveClarification, routeWarning, intent, targetDate }) {
+export default function ProposalReview({ existing, proposed, cycleType, tz, onApply, onApplyReplace, onCancel, interpretation, clarifications, onResolveClarification, routeWarning, intent, targetDate, explicitGuard }) {
   const isReplaceDay = intent === 'replace_day';
   const validationExisting = useMemo(() => {
     if (!isReplaceDay || !targetDate) return existing;
@@ -37,8 +37,8 @@ export default function ProposalReview({ existing, proposed, cycleType, tz, onAp
 
   // MANDATORY validation pipeline (deterministic). routeWarning supplied async by parent.
   const validation = useMemo(
-    () => validateProposal(validationExisting, events, { cycleType, tz, now: evalNow }),
-    [validationExisting, events, cycleType, tz, evalNow]
+    () => validateProposal(validationExisting, events, { cycleType, tz, now: evalNow, explicitGuard }),
+    [validationExisting, events, cycleType, tz, evalNow, explicitGuard]
   );
   const warnings = useMemo(() => {
     const ws = [...validation.warnings];
@@ -58,7 +58,7 @@ export default function ProposalReview({ existing, proposed, cycleType, tz, onAp
   const SevIcon = severity === 'green' ? ShieldCheck : severity === 'amber' ? AlertCircle : AlertTriangle;
 
   const proposedDate = events[0]?.start_timestamp ? dateKeyInTz(new Date(events[0].start_timestamp), tz) : dateKeyInTz(new Date(), tz);
-  const proposalTotals = useMemo(() => computeProposalTotals(events, proposedDate, tz), [events, proposedDate, tz]);
+  const proposalTotals = useMemo(() => computeProposalTotals(events, proposedDate, tz, evalNow), [events, proposedDate, tz, evalNow]);
   const dailyMileage = useMemo(() => events.reduce((sum, event) => sum + (event.duty_status === 'DRIVING' && Number.isFinite(Number(event.mileage)) ? Number(event.mileage) : 0), 0), [events]);
   const hasEstimatedMileage = events.some(event => event.duty_status === 'DRIVING' && event.mileage_source === 'estimate');
 
@@ -204,6 +204,12 @@ export default function ProposalReview({ existing, proposed, cycleType, tz, onAp
                     <div className="text-card-foreground mt-1">{Number(e.mileage).toFixed(1)} mi <span className="text-muted-foreground">({e.mileage_source === 'route' ? 'road route' : e.mileage_source === 'manual' ? 'driver edited' : 'estimated fallback'})</span></div>
                   )}
                   {e.confidence && e.confidence !== 'high' && <div className="text-warning">Confidence: {e.confidence}</div>}
+                  {e.adjustments?.map((adjustment, adjustmentIndex) => (
+                    <div key={adjustmentIndex} className="mt-1 rounded border border-warning/50 bg-warning-surface px-2 py-1 text-[11px] text-warning-surface-foreground">
+                      <span className="font-semibold">{adjustment.field.replace('_', ' ')} adjusted:</span> {adjustment.original_stated_value} → {adjustment.adjusted_value}
+                      {adjustment.reason ? ` — ${adjustment.reason}` : ''}
+                    </div>
+                  ))}
                 </div>
               </div>
             )}

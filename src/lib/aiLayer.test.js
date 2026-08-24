@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { planReplaceRange, planInsert } from './timelineEngine';
 import {
-  validateInterpretResult, isQuestionIntent, shouldOfferApply, replaceDayRange, normalizeStatus,
+  validateInterpretResult, detectExplicitFactAlterations, isQuestionIntent, shouldOfferApply, replaceDayRange, normalizeStatus,
 } from './aiLayer';
 import { parseVoiceCommand } from './voiceParser';
 
@@ -46,6 +46,49 @@ describe('aiLayer.validateInterpretResult', () => {
     });
     expect(normalized.requires_clarification).toBe(true);
     expect(normalized.clarification_question).toBe('Did you mean 11:00 AM?');
+  });
+});
+
+describe('explicit fact guard', () => {
+  const facts = {
+    times: [{ raw: '6:15 AM', normalized: '06:15' }],
+    locations: [{ raw: 'Miami, FL', city: 'Miami', state: 'FL' }],
+    statuses: [{ raw: 'driving', status: 'DRIVING' }],
+  };
+  const baseEvent = {
+    start_timestamp: '2026-08-20T10:15:00Z', start_time_local: '2026-08-20T06:15:00',
+    duty_status: 'DRIVING', city: 'Miami', state: 'FL',
+    field_provenance: { start_time: 'explicit', end_time: 'inferred', status: 'explicit', city: 'explicit', state: 'explicit' },
+    adjustments: [],
+  };
+
+  it('passes an exactly preserved explicit time, location, and status', () => {
+    expect(detectExplicitFactAlterations([baseEvent], facts).blocking).toBe(false);
+  });
+
+  it('allows a visibly marked explicit-time adjustment', () => {
+    const event = { ...baseEvent, start_time_local: '2026-08-20T06:30:00', adjustments: [{ field: 'start_time', original_stated_value: '6:15 AM', adjusted_value: '2026-08-20T06:30:00', reason: 'Resolved a 15-minute overlap.' }] };
+    const guard = detectExplicitFactAlterations([event], facts);
+    expect(guard.blocking).toBe(false);
+    expect(guard.visibleAdjustments[0].original_stated_value).toBe('6:15 AM');
+    expect(shouldOfferApply({ intent: 'add_events', proposed_events: [event], explicit_guard: guard })).toBe(true);
+  });
+
+  it('blocks a silently changed or inferred explicit time', () => {
+    const event = { ...baseEvent, start_time_local: '2026-08-20T06:30:00', field_provenance: { ...baseEvent.field_provenance, start_time: 'inferred' } };
+    const guard = detectExplicitFactAlterations([event], facts);
+    expect(guard.blocking).toBe(true);
+    expect(shouldOfferApply({ intent: 'add_events', proposed_events: [event], explicit_guard: guard })).toBe(false);
+  });
+
+  it('blocks a dropped explicit event/status', () => {
+    const guard = detectExplicitFactAlterations([], facts);
+    expect(guard.blocking).toBe(true);
+    expect(guard.droppedExplicitEvents.some(issue => issue.type === 'status')).toBe(true);
+  });
+
+  it('withholds Apply while clarification is required', () => {
+    expect(shouldOfferApply({ intent: 'clarification', requires_clarification: true, proposed_events: [] })).toBe(false);
   });
 });
 

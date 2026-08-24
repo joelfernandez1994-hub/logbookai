@@ -29,8 +29,87 @@ export function isQuestionIntent(intent) {
 export function shouldOfferApply(proposal) {
   if (!proposal) return false;
   if (isQuestionIntent(proposal.intent)) return false;
-  if (proposal.refuses_fabrication) return false;
+  if (proposal.refuses_fabrication || proposal.requires_clarification) return false;
+  if (proposal.explicit_guard?.blocking) return false;
   return Array.isArray(proposal.proposed_events) && proposal.proposed_events.length > 0;
+}
+
+const GUARDED_FIELDS = ['start_time', 'end_time', 'status', 'city', 'state'];
+
+function clockFromLocal(value) {
+  const match = String(value || '').match(/T(\d{2}):(\d{2})/);
+  return match ? `${match[1]}:${match[2]}` : '';
+}
+
+function adjustmentMatches(event, field, expected) {
+  return (event.adjustments || []).some(a => a.field === field && String(a.original_stated_value || '').toLowerCase().includes(String(expected || '').toLowerCase()));
+}
+
+export function detectExplicitFactAlterations(events = [], deterministicFacts = {}) {
+  const alteredExplicitFacts = [];
+  const droppedExplicitEvents = [];
+  const visibleAdjustments = [];
+
+  events.forEach((event, eventIndex) => {
+    const provenance = event.field_provenance || {};
+    const current = {
+      start_time: event.start_time_local || event.start_timestamp,
+      end_time: event.end_time_local || event.end_timestamp,
+      status: event.duty_status,
+      city: event.city,
+      state: event.state,
+    };
+    for (const adjustment of (event.adjustments || [])) {
+      visibleAdjustments.push({ ...adjustment, eventIndex });
+      if (!GUARDED_FIELDS.includes(adjustment.field) || !adjustment.original_stated_value || !adjustment.adjusted_value) {
+        alteredExplicitFacts.push({ eventIndex, field: adjustment.field || 'unknown', reason: 'Incomplete visible adjustment marker.' });
+      }
+    }
+    for (const field of GUARDED_FIELDS) {
+      if (provenance[field] !== 'explicit') continue;
+      const markers = (event.adjustments || []).filter(a => a.field === field);
+      if (markers.length && !markers.some(a => String(a.adjusted_value) === String(current[field]))) {
+        alteredExplicitFacts.push({ eventIndex, field, reason: 'The adjustment marker does not match the proposed value.' });
+      }
+    }
+  });
+
+  for (const fact of (deterministicFacts.times || [])) {
+    const preserved = events.some(event => {
+      const startMatch = clockFromLocal(event.start_time_local || event.start_timestamp) === fact.normalized;
+      const endMatch = clockFromLocal(event.end_time_local || event.end_timestamp) === fact.normalized;
+      return (startMatch && event.field_provenance?.start_time === 'explicit')
+        || (endMatch && event.field_provenance?.end_time === 'explicit')
+        || adjustmentMatches(event, 'start_time', fact.raw)
+        || adjustmentMatches(event, 'end_time', fact.raw);
+    });
+    if (!preserved) droppedExplicitEvents.push({ type: 'time', value: fact.raw, reason: 'Explicit clock time was dropped, changed silently, or tagged inferred.' });
+  }
+  for (const fact of (deterministicFacts.locations || [])) {
+    const preserved = events.some(event => {
+      const same = String(event.city || '').trim().toLowerCase() === String(fact.city).trim().toLowerCase()
+        && String(event.state || '').trim().toUpperCase() === String(fact.state).trim().toUpperCase();
+      return (same && event.field_provenance?.city === 'explicit' && event.field_provenance?.state === 'explicit')
+        || (adjustmentMatches(event, 'city', fact.city) && adjustmentMatches(event, 'state', fact.state));
+    });
+    if (!preserved) droppedExplicitEvents.push({ type: 'location', value: fact.raw, reason: 'Explicit location was dropped, changed silently, or tagged inferred.' });
+  }
+  const availableStatuses = events.map((event, eventIndex) => ({ event, eventIndex, used: false }));
+  for (const fact of (deterministicFacts.statuses || [])) {
+    const match = availableStatuses.find(item => !item.used && (
+      (item.event.duty_status === fact.status && item.event.field_provenance?.status === 'explicit')
+      || adjustmentMatches(item.event, 'status', fact.raw)
+    ));
+    if (match) match.used = true;
+    else droppedExplicitEvents.push({ type: 'status', value: fact.raw, reason: 'Explicit duty status was dropped, changed silently, or tagged inferred.' });
+  }
+
+  return {
+    blocking: alteredExplicitFacts.length > 0 || droppedExplicitEvents.length > 0,
+    alteredExplicitFacts,
+    droppedExplicitEvents,
+    visibleAdjustments,
+  };
 }
 
 // The day range [dayStart, dayEnd) a replace_day proposal replaces.
@@ -63,16 +142,21 @@ export function validateInterpretResult(data) {
       date: p.date || data.target_date || (start ? start.slice(0, 10) : ''),
       start_timestamp: start,
       end_timestamp: end || null,
+      start_time_local: p.start_time_local || p.start_time || '',
+      end_time_local: p.end_time_local != null ? p.end_time_local : (p.end_time != null ? p.end_time : null),
       duty_status: status,
       city: p.city || '',
       state: p.state || '',
       activity_type: p.activity_type || p.activity || '',
       remark: p.remark || p.activity_type || p.activity || '',
       ambiguous_fields: p.ambiguous_fields || [],
+      field_provenance: p.field_provenance || {},
+      adjustments: Array.isArray(p.adjustments) ? p.adjustments : [],
       source: p.source || 'typed',
     };
   });
 
+  const explicitGuard = detectExplicitFactAlterations(normalizedEvents, data.deterministic_explicit_facts || {});
   const normalized = {
     intent,
     target_date: data.target_date || '',
@@ -83,6 +167,9 @@ export function validateInterpretResult(data) {
     proposed_events: normalizedEvents,
     clarifications: Array.isArray(data.clarifications) ? data.clarifications : [],
     location_confirmations: Array.isArray(data.location_confirmations) ? data.location_confirmations : [],
+    deterministic_explicit_facts: data.deterministic_explicit_facts || {},
+    original_input: data.original_input || '',
+    explicit_guard: explicitGuard,
     pretrip_ask: !!data.pretrip_ask,
     refuses_fabrication: !!data.refuses_fabrication,
   };

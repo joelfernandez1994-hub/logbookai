@@ -281,6 +281,21 @@ export function validateProposal(existing, proposed, opts = {}) {
   const merged = mergeProposedEvents(existing, proposed, t);
 
   const warnings = [];
+  const explicitGuard = opts.explicitGuard || null;
+  if (explicitGuard?.blocking) {
+    warnings.push({
+      type: 'explicit_fact_guard', severity: 'blocking', title: 'EXPLICIT DRIVER FACT CHANGED OR MISSING',
+      message: [...(explicitGuard.alteredExplicitFacts || []), ...(explicitGuard.droppedExplicitEvents || [])]
+        .map(issue => issue.reason || `${issue.field || issue.type}: ${issue.value || 'review required'}`).join(' '),
+    });
+  }
+  for (const adjustment of (explicitGuard?.visibleAdjustments || [])) {
+    warnings.push({
+      type: 'explicit_adjustment', severity: 'review', title: 'DRIVER FACT ADJUSTED — REVIEW',
+      message: `${adjustment.field}: adjusted from ${adjustment.original_stated_value} to ${adjustment.adjusted_value}. ${adjustment.reason || ''}`.trim(),
+      eventIndex: adjustment.eventIndex,
+    });
+  }
   warnings.push(...findOverlaps(merged, t));
   warnings.push(...findLocationConflicts(merged, t));
 
@@ -331,14 +346,17 @@ export async function validateProposalWithRoute(existing, proposed, opts = {}) {
   return base;
 }
 
-export function computeProposalTotals(proposedEvents, dateStr, timezone) {
+export function computeProposalTotals(proposedEvents, dateStr, timezone, evaluationBoundary = new Date()) {
   const dayStart = startOfDayInTz(new Date(`${dateStr}T12:00:00Z`), timezone);
   const dayEnd = new Date(dayStart.getTime() + 24 * H);
+  const evaluationEnd = evaluationBoundary instanceof Date ? evaluationBoundary : new Date(evaluationBoundary);
   const totalsMs = { OFF_DUTY: 0, SLEEPER_BERTH: 0, DRIVING: 0, ON_DUTY: 0 };
   for (const event of (proposedEvents || [])) {
-    if (!Object.prototype.hasOwnProperty.call(totalsMs, event.duty_status) || !event.start_timestamp || !event.end_timestamp) continue;
+    if (!Object.prototype.hasOwnProperty.call(totalsMs, event.duty_status) || !event.start_timestamp) continue;
     const start = new Date(event.start_timestamp);
-    const end = new Date(event.end_timestamp);
+    const isRestOfDay = /rest of (?:the )?day/i.test(`${event.activity_type || ''} ${event.remark || ''}`);
+    const openEnd = isRestOfDay ? dayEnd : (evaluationEnd < dayEnd ? evaluationEnd : dayEnd);
+    const end = event.end_timestamp ? new Date(event.end_timestamp) : openEnd;
     const clippedStart = start < dayStart ? dayStart : start;
     const clippedEnd = end > dayEnd ? dayEnd : end;
     if (clippedEnd > clippedStart) totalsMs[event.duty_status] += clippedEnd - clippedStart;

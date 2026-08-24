@@ -35,6 +35,21 @@ describe('proposal-only totals', () => {
     expect(dailyTotals(proposal, DAY, TZ, now).totalHours).toBeCloseTo(12, 4);
     expect(computeProposalTotals(proposal, DAY, TZ).totalHours).toBe(24);
   });
+
+  it('clips an open rest-of-day event for totals without persisting an artificial end', () => {
+    const open = [...proposal.slice(0, -1), { ...proposal.at(-1), end_timestamp: null, activity_type: 'Rest of day', remark: 'Off duty rest of day', is_ongoing: true }];
+    const totals = computeProposalTotals(open, DAY, TZ, new Date(`${DAY}T20:00:00-04:00`));
+    expect(open.at(-1).end_timestamp).toBeNull();
+    expect(totals.SLEEPER_BERTH).toBe(12.25);
+    expect(totals.totalHours).toBe(24);
+  });
+
+  it('clips a generic open event to the evaluation boundary', () => {
+    const open = [event('OFF_DUTY', 0, 8, 'Miami'), { ...event('DRIVING', 8, 9, 'Miami'), end_timestamp: null, is_ongoing: true }];
+    const totals = computeProposalTotals(open, DAY, TZ, new Date(`${DAY}T12:00:00-04:00`));
+    expect(totals.DRIVING).toBe(4);
+    expect(totals.totalHours).toBe(12);
+  });
 });
 
 describe('proposal routes and mileage', () => {

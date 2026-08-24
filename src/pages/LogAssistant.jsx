@@ -375,6 +375,7 @@ export default function LogAssistant() {
               onCancel={() => setProposal(null)}
               onResolveClarification={resolveClarification}
               routeWarning={routeWarning}
+              explicitGuard={proposal.explicit_guard}
             />
           )}
           {showProposal && !isQuestion && !canApply && (
