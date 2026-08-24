@@ -19,6 +19,7 @@ import {
   dateKeyInTz,
 } from './hosEngine';
 import { mergeProposedEvents, collectViolations, distanceReasonableness } from './logAssistant';
+import { startOfDayInTz } from './timelineEngine';
 
 const H = 3600000;
 const MIN = 60000;
@@ -122,9 +123,17 @@ export function findOverlaps(merged, now = new Date()) {
 // Uses known city-center coordinates; flags impossible jumps (e.g. Albany, NY
 // → Miami, FL in 4 hours). Does NOT auto-fabricate movement between locations.
 // ---------------------------------------------------------------------------
-function sameLocation(aCity, aState, bCity, bState) {
-  return (aCity || '').toLowerCase().replace(/\s/g, '') === (bCity || '').toLowerCase().replace(/\s/g, '')
-    && (aState || '').toLowerCase() === (bState || '').toLowerCase();
+export function normalizeLocationPart(value) {
+  return String(value || '').trim().replace(/\s+/g, ' ').toLowerCase();
+}
+
+export function sameLocation(aCity, aState, bCity, bState) {
+  return normalizeLocationPart(aCity) === normalizeLocationPart(bCity)
+    && normalizeLocationPart(aState) === normalizeLocationPart(bState);
+}
+
+export function formatLocation(city, state) {
+  return [String(city || '').trim(), String(state || '').trim().toUpperCase()].filter(Boolean).join(', ');
 }
 
 export function locationTimeConflict(prevEvent, event, now = new Date()) {
@@ -311,59 +320,117 @@ export function validateProposal(existing, proposed, opts = {}) {
   return { merged, warnings, violations, hos, break: br, pretrip, evalNow, isFuture: future };
 }
 
-// Add an async route-reasonableness warning for the longest proposed driving
-// segment that spans substantially different cities. Does NOT mutate history.
+// Add async route-reasonableness results for every proposed driving segment.
+// Does NOT mutate history.
 export async function validateProposalWithRoute(existing, proposed, opts = {}) {
   const base = validateProposal(existing, proposed, opts);
   const { routingProvider = fetchRoute, speedProfile = DEFAULT_SPEED_PROFILE, now = new Date() } = opts;
   const t = now instanceof Date ? now : new Date(now);
-  const future = base.isFuture;
-  const routeWarn = await addRouteWarning(proposed, { routingProvider, speedProfile, now: t, isFuture: future });
+  const routeWarn = await addRouteWarning(proposed, { routingProvider, speedProfile, now: t, isFuture: base.isFuture });
   if (routeWarn) base.warnings.push(routeWarn);
   return base;
 }
 
-// Identify the longest proposed Driving segment and check its requested driving
-// time against a real road route between its endpoints.
-export async function addRouteWarning(proposed, { routingProvider = fetchRoute, speedProfile = DEFAULT_SPEED_PROFILE, now = new Date(), isFuture = true } = {}) {
-  const drives = (proposed || []).filter(p => p.duty_status === 'DRIVING' && p.start_timestamp && p.city);
-  if (!drives.length) return null;
-  // pick the drive with the most distinct city pair (origin/destination) if available, else the longest
-  let pick = drives[0], pickDur = 0;
-  for (const d of drives) {
-    const e = d.end_timestamp ? new Date(d.end_timestamp) : now;
-    const dur = (e - new Date(d.start_timestamp)) / H;
-    if (dur > pickDur) { pick = d; pickDur = dur; }
+export function computeProposalTotals(proposedEvents, dateStr, timezone) {
+  const dayStart = startOfDayInTz(new Date(`${dateStr}T12:00:00Z`), timezone);
+  const dayEnd = new Date(dayStart.getTime() + 24 * H);
+  const totalsMs = { OFF_DUTY: 0, SLEEPER_BERTH: 0, DRIVING: 0, ON_DUTY: 0 };
+  for (const event of (proposedEvents || [])) {
+    if (!Object.prototype.hasOwnProperty.call(totalsMs, event.duty_status) || !event.start_timestamp || !event.end_timestamp) continue;
+    const start = new Date(event.start_timestamp);
+    const end = new Date(event.end_timestamp);
+    const clippedStart = start < dayStart ? dayStart : start;
+    const clippedEnd = end > dayEnd ? dayEnd : end;
+    if (clippedEnd > clippedStart) totalsMs[event.duty_status] += clippedEnd - clippedStart;
   }
-  // find origin from the event before this drive with a different city
-  const all = (proposed || []).filter(p => p.start_timestamp).sort((a, b) => new Date(a.start_timestamp) - new Date(b.start_timestamp));
-  const idx = all.indexOf(pick);
-  let origin = null;
-  for (let j = idx - 1; j >= 0; j--) {
-    if (all[j].city && !sameLocation(all[j].city, all[j].state, pick.city, pick.state)) { origin = `${all[j].city}, ${all[j].state}`; break; }
-    if (all[j].city) { origin = `${all[j].city}, ${all[j].state}`; break; }
+  const result = Object.fromEntries(Object.entries(totalsMs).map(([status, ms]) => [status, ms / H]));
+  return { ...result, totalHours: Object.values(totalsMs).reduce((sum, ms) => sum + ms, 0) / H };
+}
+
+function fallbackMph(profileId) {
+  const profile = SPEED_PROFILES[profileId] || SPEED_PROFILES.conservative;
+  if (profile.mph) return profile.mph;
+  return profile.id === 'provider' ? 50 : 55;
+}
+
+export function getDrivingLegs(proposed, now = new Date()) {
+  const source = proposed || [];
+  const sorted = source.filter(event => event.start_timestamp)
+    .sort((a, b) => new Date(a.start_timestamp) - new Date(b.start_timestamp));
+  return sorted.map((event, index) => {
+    if (event.duty_status !== 'DRIVING') return null;
+    const destinationEvent = sorted[index + 1];
+    const end = event.end_timestamp ? new Date(event.end_timestamp) : now;
+    return {
+      event,
+      eventIndex: source.indexOf(event),
+      origin: { city: String(event.city || '').trim(), state: String(event.state || '').trim().toUpperCase() },
+      destination: { city: String(destinationEvent?.city || '').trim(), state: String(destinationEvent?.state || '').trim().toUpperCase() },
+      drivingHours: Math.max(0, (end - new Date(event.start_timestamp)) / H),
+    };
+  }).filter(Boolean);
+}
+
+export async function inspectProposalRoutes(proposed, { routingProvider = fetchRoute, speedProfile = DEFAULT_SPEED_PROFILE, now = new Date() } = {}) {
+  const legs = getDrivingLegs(proposed, now);
+  return Promise.all(legs.map(async (leg) => {
+    const origin = formatLocation(leg.origin.city, leg.origin.state);
+    const destination = formatLocation(leg.destination.city, leg.destination.state);
+    if (!origin || !destination) return { ...leg, origin, destination, route: null, evaluation: { known: false }, error: 'Missing route endpoint' };
+    if (sameLocation(leg.origin.city, leg.origin.state, leg.destination.city, leg.destination.state)) {
+      return {
+        ...leg, origin, destination, route: { miles: 0, hours: 0 },
+        evaluation: { known: true, conflict: leg.drivingHours > 0, miles: 0, requestedDrivingHours: leg.drivingHours, note: `A ${leg.drivingHours.toFixed(1)} h driving segment cannot begin and end at the same location.` },
+      };
+    }
+    let route = null;
+    try { route = await routingProvider(origin, destination); } catch (e) { route = null; }
+    const evaluation = evaluateRouteReasonableness(route, leg.drivingHours, speedProfile);
+    if (evaluation.known && Number(route?.miles) <= 0.5 && leg.drivingHours > 0.25) {
+      evaluation.conflict = true;
+      evaluation.note = `Road route is approximately 0 mi, which is not consistent with ${leg.drivingHours.toFixed(1)} h of driving.`;
+    }
+    return { ...leg, origin, destination, route, evaluation };
+  }));
+}
+
+export async function enrichProposalMileage(proposed, opts = {}) {
+  const legs = await inspectProposalRoutes(proposed, opts);
+  const speed = fallbackMph(opts.speedProfile || DEFAULT_SPEED_PROFILE);
+  const events = (proposed || []).map(event => ({ ...event }));
+  for (const leg of legs) {
+    const routeMiles = Number(leg.route?.miles);
+    const hasRoadMiles = Number.isFinite(routeMiles) && routeMiles > 0.5;
+    events[leg.eventIndex] = {
+      ...events[leg.eventIndex],
+      mileage: hasRoadMiles ? routeMiles : leg.drivingHours * speed,
+      mileage_source: hasRoadMiles ? 'route' : 'estimate',
+      route_origin: leg.origin,
+      route_destination: leg.destination,
+    };
   }
-  if (!origin) return null;
-  const destination = `${pick.city}, ${pick.state}`;
-  if (sameLocation(origin.split(',')[0], origin.split(',')[1] || '', pick.city, pick.state)) return null;
-  let route = null;
-  try { route = await routingProvider(origin, destination); } catch (e) { route = null; }
-  if (!route || route.miles == null) return null;
-  const evalRes = evaluateRouteReasonableness(route, pickDur, speedProfile);
-  if (!evalRes.known) return null;
+  return {
+    events,
+    legs,
+    totalMiles: events.reduce((sum, event) => sum + (event.duty_status === 'DRIVING' && Number.isFinite(Number(event.mileage)) ? Number(event.mileage) : 0), 0),
+  };
+}
+
+export async function addRouteWarning(proposed, { routingProvider = fetchRoute, speedProfile = DEFAULT_SPEED_PROFILE, now = new Date(), isFuture = true, legs: providedLegs = null } = {}) {
+  const legs = providedLegs || await inspectProposalRoutes(proposed, { routingProvider, speedProfile, now });
+  if (!legs.length) return null;
+  const conflicts = legs.filter(leg => leg.evaluation?.conflict);
+  const details = legs.map(leg => `${leg.origin || 'Unknown'} → ${leg.destination || 'Unknown'}: ${leg.evaluation?.known ? leg.evaluation.note : 'Road route unavailable; mileage will be labeled as an estimate.'}`);
   return {
     type: 'route_reasonableness',
-    severity: isFuture ? 'blocking' : 'review',
-    title: isFuture ? 'ROUTE / TRAVEL-TIME CONFLICT' : 'TRAVEL-TIME CONFLICT — REVIEW REQUIRED',
-    message: `${origin} → ${destination}: ${evalRes.note}`,
+    severity: conflicts.length && isFuture ? 'blocking' : 'review',
+    title: conflicts.length ? (isFuture ? 'ROUTE / TRAVEL-TIME CONFLICT' : 'TRAVEL-TIME CONFLICT — REVIEW REQUIRED') : 'ROUTE VALIDATION',
+    message: details.join(' '),
     isFuture,
-    origin, destination,
-    miles: evalRes.miles, baseEtaHours: evalRes.baseEtaHours, truckEtaHours: evalRes.truckEtaHours,
-    requestedDrivingHours: evalRes.requestedDrivingHours,
-    planningProfile: evalRes.planningProfile,
-    note: isFuture
-      ? 'Do not compress the route into a fictitious driving period. Adjust the plan or add HOS-required stops/rest.'
-      : 'Routing is a reasonableness check only. Correct factual entry mistakes yourself — LogbookAI will not change driving times, locations, receipt timestamps, or breaks automatically.',
+    legs,
+    note: conflicts.length
+      ? (isFuture ? 'Adjust the plan or route endpoints before applying.' : 'Routing is a reasonableness check only. Review factual times and locations.')
+      : 'Every proposed driving segment was checked against its road route.',
   };
 }
 

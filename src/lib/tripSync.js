@@ -101,6 +101,21 @@ export async function saveDailyMiles(dateStr, miles, source = 'manual') {
   return await base44.entities.DailySummary.create({ log_date: dateStr, miles, miles_source: source });
 }
 
+export async function saveAutoMilesIfNotManual(dateStr, miles) {
+  const existing = await getDailyMiles(dateStr);
+  if (existing?.miles_source === 'manual') return { record: existing, skippedManual: true };
+  const record = existing?.id
+    ? await base44.entities.DailySummary.update(existing.id, { miles, miles_source: 'auto' })
+    : await base44.entities.DailySummary.create({ log_date: dateStr, miles, miles_source: 'auto' });
+  return { record, skippedManual: false };
+}
+
+export async function saveProposalMiles(dateStr, miles, mileageEdited = false) {
+  return mileageEdited
+    ? { record: await saveDailyMiles(dateStr, miles, 'manual'), skippedManual: false }
+    : saveAutoMilesIfNotManual(dateStr, miles);
+}
+
 export async function getFuelReceipts(daysBack = 30) {
   try {
     const since = new Date(Date.now() - (daysBack + 1) * 24 * H);

@@ -4,7 +4,8 @@ import { base44 } from '@/api/base44Client';
 import { getAppSettings, getAIUsage } from '@/lib/driverData';
 import { computeHOS, fmtDur, startOfDayInTz, dateKeyInTz } from '@/lib/hosEngine';
 import { whatCanIDo, computeProposedHOS, earliestLegalEta } from '@/lib/logAssistant';
-import { addRouteWarning, fetchRoute, truckEtaHours, DEFAULT_SPEED_PROFILE } from '@/lib/proposalValidation';
+import { addRouteWarning, enrichProposalMileage, fetchRoute, truckEtaHours, DEFAULT_SPEED_PROFILE } from '@/lib/proposalValidation';
+import { saveProposalMiles } from '@/lib/tripSync';
 import { insertEventsBatch, editEvent, replaceRangeEvents } from '@/lib/timelineWriter';
 import { parseVoiceCommand } from '@/lib/voiceParser';
 import { validateInterpretResult, isQuestionIntent, shouldOfferApply, replaceDayRange } from '@/lib/aiLayer';
@@ -53,17 +54,15 @@ export default function LogAssistant() {
 
   const whatInfo = useMemo(() => whatCanIDo(events, cycleType, tz, now), [events, cycleType, tz, now]);
 
-  // Async route reasonableness for the proposed driving segments (real road route).
-  useEffect(() => {
-    if (!proposal?.proposed_events) { setRouteWarning(null); return; }
-    let cancelled = false;
-    const firstStart = proposal.proposed_events[0]?.start_timestamp;
+  const prepareProposal = async (value) => {
+    if (!value?.proposed_events?.length) { setRouteWarning(null); return value; }
+    const enriched = await enrichProposalMileage(value.proposed_events, { routingProvider: fetchRoute, speedProfile, now: new Date() });
+    const firstStart = enriched.events[0]?.start_timestamp;
     const isFuture = firstStart ? new Date(firstStart) > new Date() : false;
-    addRouteWarning(proposal.proposed_events, { routingProvider: fetchRoute, speedProfile, now: new Date(), isFuture })
-      .then(w => { if (!cancelled) setRouteWarning(w); })
-      .catch(() => { if (!cancelled) setRouteWarning(null); });
-    return () => { cancelled = true; };
-  }, [proposal, speedProfile]);
+    const warning = await addRouteWarning(enriched.events, { routingProvider: fetchRoute, speedProfile, now: new Date(), isFuture, legs: enriched.legs });
+    setRouteWarning(warning);
+    return { ...value, proposed_events: enriched.events };
+  };
 
   const resetResults = () => { setProposal(null); setPastResult(null); setFutureResult(null); setError(''); setRouteWarning(null); };
 
@@ -90,7 +89,7 @@ export default function LogAssistant() {
         confidence: 'high',
         ambiguous_fields: [e._ambiguous?.time && 'start_timestamp', e._ambiguous?.location && 'state'].filter(Boolean),
       }));
-      setProposal({
+      const prepared = await prepareProposal({
         intent: det.edit ? 'edit_events' : 'add_events',
         target_date: detEvents[0]?.date || dateKeyInTz(new Date(), tz),
         requires_clarification: (det.clarifications || []).length > 0,
@@ -101,6 +100,7 @@ export default function LogAssistant() {
         refuses_fabrication: false,
         _deterministic: true,
       });
+      setProposal(prepared);
       return true;
     }
     return callAssistant('interpret', text, { source: type });
@@ -137,7 +137,7 @@ export default function LogAssistant() {
             // Defensive: still show what we got, but surface the validation issue.
             setError('LogbookAI returned an unexpected response. Please rephrase and try again.');
           }
-          setProposal(normalized || res.data);
+          setProposal(await prepareProposal(normalized || res.data));
         } else if (mode === 'make_legal_past') setPastResult(res.data);
         else if (mode === 'make_legal_future') setFutureResult(res.data);
         ok = true;
@@ -164,7 +164,7 @@ export default function LogAssistant() {
   });
 
   // --- TELL: apply proposed events (canonical batch insert) ---
-  const applyProposal = async (proposedEvents) => {
+  const applyProposal = async (proposedEvents, mileageMeta = {}) => {
     if (!proposedEvents?.length) { setProposal(null); reload(); return; }
     const shaped = proposedEvents.map((p, i) => shapeEvent(p, i === proposedEvents.length - 1));
     try {
@@ -175,6 +175,8 @@ export default function LogAssistant() {
         reason: 'AI Apply',
       });
       if (res?.error) { setError(res.error); return; }
+      const date = proposedEvents[0]?.start_timestamp ? dateKeyInTz(new Date(proposedEvents[0].start_timestamp), tz) : proposal?.target_date;
+      if (date && Number.isFinite(mileageMeta.dailyMileage)) await saveProposalMiles(date, mileageMeta.dailyMileage, mileageMeta.mileageEdited);
       setProposal(null); reload();
     } catch (e) { setError(e?.message || 'Failed to apply proposed events.'); }
   };
@@ -182,7 +184,7 @@ export default function LogAssistant() {
   // --- TELL: replace-day (redo an entire day) routes through the canonical
   // replace-range writer — it REPLACES the period, never stacks a second
   // timeline. Requires the driver's explicit Apply (the labeled button). ---
-  const applyReplaceDay = async (proposedEvents) => {
+  const applyReplaceDay = async (proposedEvents, mileageMeta = {}) => {
     if (!proposedEvents?.length) { setError('Nothing to replace the day with.'); return; }
     const { dayStart, dayEnd } = replaceDayRange(proposal?.target_date || proposedEvents[0]?.start_timestamp?.slice(0, 10), tz);
     const shaped = proposedEvents.map((p) => shapeEvent(p, false));
@@ -193,6 +195,8 @@ export default function LogAssistant() {
         editedBy: profile?.legal_name,
         reason: 'AI Replace Day',
       });
+      const date = proposal?.target_date || dateKeyInTz(new Date(proposedEvents[0].start_timestamp), tz);
+      if (date && Number.isFinite(mileageMeta.dailyMileage)) await saveProposalMiles(date, mileageMeta.dailyMileage, mileageMeta.mileageEdited);
       setProposal(null); reload();
     } catch (e) { setError(e?.message || 'Failed to replace the day.'); }
   };

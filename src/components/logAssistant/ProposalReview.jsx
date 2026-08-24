@@ -1,5 +1,5 @@
 import { useMemo, useState, useEffect } from 'react';
-import { validateProposal, hasBlocking, recommendBreakInsertion, buildPreTripEvent } from '@/lib/proposalValidation';
+import { validateProposal, hasBlocking, recommendBreakInsertion, buildPreTripEvent, computeProposalTotals } from '@/lib/proposalValidation';
 import { replaceDayRange } from '@/lib/aiLayer';
 import { highestSeverity, fmtClockShort } from '@/lib/logAssistant';
 import { fmtDur, dateKeyInTz } from '@/lib/hosEngine';
@@ -25,8 +25,9 @@ export default function ProposalReview({ existing, proposed, cycleType, tz, onAp
   }, [existing, isReplaceDay, targetDate, tz]);
   const [editable, setEditable] = useState(false);
   const [events, setEvents] = useState(proposed);
+  const [mileageEdited, setMileageEdited] = useState(false);
   const [pretripOpen, setPretripOpen] = useState(false);
-  useEffect(() => { setEvents(proposed); }, [proposed]);
+  useEffect(() => { setEvents(proposed); setMileageEdited(false); }, [proposed]);
 
   const evalNow = useMemo(() => {
     let t = new Date();
@@ -57,8 +58,16 @@ export default function ProposalReview({ existing, proposed, cycleType, tz, onAp
   const SevIcon = severity === 'green' ? ShieldCheck : severity === 'amber' ? AlertCircle : AlertTriangle;
 
   const proposedDate = events[0]?.start_timestamp ? dateKeyInTz(new Date(events[0].start_timestamp), tz) : dateKeyInTz(new Date(), tz);
+  const proposalTotals = useMemo(() => computeProposalTotals(events, proposedDate, tz), [events, proposedDate, tz]);
+  const dailyMileage = useMemo(() => events.reduce((sum, event) => sum + (event.duty_status === 'DRIVING' && Number.isFinite(Number(event.mileage)) ? Number(event.mileage) : 0), 0), [events]);
+  const hasEstimatedMileage = events.some(event => event.duty_status === 'DRIVING' && event.mileage_source === 'estimate');
 
   const updateField = (i, field, val) => setEvents(prev => prev.map((e, idx) => idx === i ? { ...e, [field]: val } : e));
+  const updateMileage = (i, val) => {
+    const mileage = val === '' ? '' : Math.max(0, Number(val));
+    setMileageEdited(true);
+    setEvents(prev => prev.map((event, idx) => idx === i ? { ...event, mileage, mileage_source: 'manual' } : event));
+  };
   const updateTs = (i, field, localVal) => updateField(i, field, localVal ? new Date(localVal).toISOString() : null);
 
   const addPreTrip = ({ start_timestamp, duration_min, city, state, alreadySatisfied }) => {
@@ -140,7 +149,7 @@ export default function ProposalReview({ existing, proposed, cycleType, tz, onAp
 
       <div className="rounded-lg border border-border p-2 mb-2">
         <div className="text-xs text-muted-foreground mb-1">24-hour RODS graph (proposed)</div>
-        <LogGraph events={[...validationExisting, ...events.map(e => ({ ...e, start_timestamp: e.start_timestamp, end_timestamp: e.end_timestamp }))]} dateStr={proposedDate} timezone={tz} />
+        <LogGraph events={[...validationExisting, ...events.map(e => ({ ...e, start_timestamp: e.start_timestamp, end_timestamp: e.end_timestamp }))]} dateStr={proposedDate} timezone={tz} totalsOverride={proposalTotals} />
       </div>
 
       <div className="space-y-1 mb-2">
@@ -174,6 +183,13 @@ export default function ProposalReview({ existing, proposed, cycleType, tz, onAp
                   <Input placeholder="State" value={e.state || ''} onChange={(ev) => updateField(i, 'state', ev.target.value.toUpperCase())} maxLength={2} />
                 </div>
                 <Input placeholder="Remark" value={e.remark || ''} onChange={(ev) => updateField(i, 'remark', ev.target.value)} />
+                {e.duty_status === 'DRIVING' && (
+                  <div>
+                    <div className="text-muted-foreground mb-1">Segment miles</div>
+                    <Input aria-label={`Miles for driving segment ${i + 1}`} type="number" min="0" step="0.1" value={e.mileage ?? ''} onChange={(ev) => updateMileage(i, ev.target.value)} />
+                    <div className="text-[11px] text-muted-foreground mt-1">Editing miles marks the proposed daily mileage as manual.</div>
+                  </div>
+                )}
                 {e.ambiguous_fields?.length > 0 && <div className="text-warning">Guessed: {e.ambiguous_fields.join(', ')} — please verify.</div>}
               </div>
             ) : (
@@ -184,12 +200,23 @@ export default function ProposalReview({ existing, proposed, cycleType, tz, onAp
                 <div className="flex-1">
                   <div className="font-semibold text-card-foreground">{STATUS_LABELS[e.duty_status] || e.duty_status}{e.activity_type ? ` · ${e.activity_type}` : ''}</div>
                   <div className="text-muted-foreground">{[e.city, e.state].filter(Boolean).join(', ')}{e.remark ? ` — ${e.remark}` : ''}</div>
+                  {e.duty_status === 'DRIVING' && Number.isFinite(Number(e.mileage)) && (
+                    <div className="text-card-foreground mt-1">{Number(e.mileage).toFixed(1)} mi <span className="text-muted-foreground">({e.mileage_source === 'route' ? 'road route' : e.mileage_source === 'manual' ? 'driver edited' : 'estimated fallback'})</span></div>
+                  )}
                   {e.confidence && e.confidence !== 'high' && <div className="text-warning">Confidence: {e.confidence}</div>}
                 </div>
               </div>
             )}
           </div>
         ))}
+      </div>
+
+      <div className="rounded-lg border border-border bg-muted/40 p-2 mb-2 flex items-center justify-between text-sm">
+        <div>
+          <div className="text-xs text-muted-foreground">Proposed daily mileage</div>
+          <div className="font-semibold text-card-foreground">{dailyMileage.toFixed(1)} mi</div>
+        </div>
+        <div className="text-xs text-muted-foreground">{mileageEdited ? 'Manual · driver edited' : hasEstimatedMileage ? 'Auto · includes labeled estimate' : 'Auto · route calculated'}</div>
       </div>
 
       <div className={`rounded-lg border p-2 mb-2 flex items-start gap-2 ${sevStyle}`}>
@@ -214,7 +241,7 @@ export default function ProposalReview({ existing, proposed, cycleType, tz, onAp
       </div>
 
       <div className="flex flex-wrap gap-2">
-        <Button data-testid="apply-proposal" className="flex-1" disabled={blocking} onClick={() => (isReplaceDay ? onApplyReplace?.(events) : onApply(events))}>
+        <Button data-testid="apply-proposal" className="flex-1" disabled={blocking} onClick={() => (isReplaceDay ? onApplyReplace?.(events, { mileageEdited, dailyMileage }) : onApply(events, { mileageEdited, dailyMileage }))}>
           <Check className="w-4 h-4 mr-1" /> {isReplaceDay ? 'Replace Day & Apply' : 'Confirm & Apply'}
         </Button>
         <Button variant="outline" onClick={() => setEditable(v => !v)}><Pencil className="w-4 h-4 mr-1" /> Edit Proposal</Button>

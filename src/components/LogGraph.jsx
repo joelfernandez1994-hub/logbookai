@@ -18,9 +18,11 @@ const STATUS_COLORS = {
 
 const ROW_ORDER = ['OFF_DUTY', 'SLEEPER_BERTH', 'DRIVING', 'ON_DUTY'];
 
-export default function LogGraph({ events, dateStr, timezone, interactive = true }) {
+export default function LogGraph({ events, dateStr, timezone, interactive = true, totalsOverride = null }) {
   const now = new Date();
   const grid = getDailyGrid(events, dateStr, timezone, now);
+  const displayedTotals = totalsOverride || grid.totals;
+  const displayedTotalHours = totalsOverride?.totalHours ?? grid.totalHours;
   const validation = validateTimeline(events, { dateStr, timezone, now });
 
   const W = 1000;
@@ -96,12 +98,12 @@ export default function LogGraph({ events, dateStr, timezone, interactive = true
         {ROW_ORDER.map((s) => (
           <div key={s} className="rounded-md border border-border py-1.5">
             <div className="font-semibold text-card-foreground">{STATUS_LABELS[s]}</div>
-            <div className="text-muted-foreground">{fmtHours(grid.totals[s])}</div>
+            <div className="text-muted-foreground">{fmtHours(displayedTotals[s])}</div>
           </div>
         ))}
       </div>
       <div className="text-center text-xs text-muted-foreground mt-1" data-testid="timeline-validation">
-        Total: {grid.totalHours.toFixed(2)} hr · {validation.valid ? 'continuous, valid' : 'correction required'}
+        Total: {displayedTotalHours.toFixed(2)} hr · {validation.valid ? 'continuous, valid' : 'correction required'}
       </div>
       <div className="mt-3 space-y-1">
         {grid.remarks.map((r, i) => (
