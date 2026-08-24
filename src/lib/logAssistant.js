@@ -12,6 +12,7 @@
 import {
   computeHOS, runComplianceCheck, normalizeEvents, buildRestBlocks,
   evaluateSplitSleeper, compute34Restart, fmtDur, dateKeyInTz,
+  hasSufficientCycleHistory,
 } from './hosEngine';
 
 const H = 3600000;
@@ -98,9 +99,37 @@ export function highestSeverity(violations) {
 // from availability that would arise IF the driver completes a qualifying
 // rest that has not yet happened.
 // ---------------------------------------------------------------------------
-export function whatCanIDo(events, cycleType, tz, now = new Date()) {
+export function whatCanIDo(events, cycleType, tz, now = new Date(), enteredPriorHistory = false) {
+  const historyComplete = hasSufficientCycleHistory(events, cycleType, enteredPriorHistory, tz, now);
   const segments = normalizeEvents(events, now);
-  const hos = computeHOS(events, cycleType, tz, now, { historyComplete: true });
+  const hos = computeHOS(events, cycleType, tz, now, { historyComplete });
+  const valid = hos.calculable && hos.validity?.valid;
+
+  if (!valid) {
+    return {
+      unavailable: true,
+      unavailableReason: 'Complete or correct your duty-status timeline before HOS availability can be determined.',
+      cycleUnverified: false,
+      canDrive: null,
+      driveBlockers: [],
+      driveEligibleAt: null,
+      driveRemainingMs: null,
+      usableDriveMs: null,
+      windowRemainingMs: null,
+      breakRequired: null,
+      breakSatisfied: null,
+      cycleRemainingHours: null,
+      cycleRemainingMs: null,
+      cycleReturningTomorrow: null,
+      tenHourCompletesAt: null,
+      thirtyFourCompletesAt: null,
+      splitAvailableNow: null,
+      splitConditional: null,
+      restartInProgress: null,
+      restartCompleted: null,
+      restingNow: null,
+    };
+  }
 
   // Current rest block (if the driver is resting right now)
   const restBlocks = buildRestBlocks(segments);
@@ -138,8 +167,12 @@ export function whatCanIDo(events, cycleType, tz, now = new Date()) {
   // where determinable, the time the blocker clears (eligibleAt).
   const driveRemainingMs = hos.driving.applicable ? Math.max(0, hos.driving.drivingRemainingMs) : 0;
   const windowRemainingMs = hos.window14.applicable ? Math.max(0, hos.window14.remainingMs) : 0;
-  const cycleRemainingHours = hos.cycle ? Math.max(0, hos.cycle.cycleRemainingHours) : 0;
-  const cycleRemainingMs = cycleRemainingHours * H;
+  const cycleUnverified = !historyComplete;
+  const cycleUnverifiedReason = cycleUnverified
+    ? `Cycle balance is not verified until enough history exists to cover your ${hos.cycle.cycleDays}-day cycle.`
+    : '';
+  const cycleRemainingHours = cycleUnverified ? null : Math.max(0, hos.cycle.cycleRemainingHours);
+  const cycleRemainingMs = cycleRemainingHours == null ? null : cycleRemainingHours * H;
 
   const blockers = [];
   if (hos.break30.breakRequired) {
@@ -163,7 +196,7 @@ export function whatCanIDo(events, cycleType, tz, now = new Date()) {
       eligibleAt: tenHourCompletesAt,
     });
   }
-  if (cycleRemainingHours <= 0) {
+  if (!cycleUnverified && cycleRemainingHours <= 0) {
     blockers.push({
       rule: `${hos.cycle?.cycleLimit || 70}-hour cycle`,
       message: `You have used all ${hos.cycle?.cycleLimit || 70} cycle hours. A 34-hour restart is required.`,
@@ -187,12 +220,16 @@ export function whatCanIDo(events, cycleType, tz, now = new Date()) {
   let usableDriveMs = 0;
   if (canDrive) {
     usableDriveMs = Math.min(driveRemainingMs, windowRemainingMs);
-  } else if (!hos.break30.breakRequired && driveRemainingMs > 0 && windowRemainingMs > 0 && cycleRemainingHours > 0) {
-    // Not blocked by HOS clocks or break — but resting now: usable after rest.
+  } else if (!hos.break30.breakRequired && driveRemainingMs > 0 && windowRemainingMs > 0 && (cycleUnverified || cycleRemainingHours > 0)) {
+    // Not blocked by known HOS clocks or break — but resting now: usable after rest.
     usableDriveMs = 0;
   }
 
   return {
+    unavailable: false,
+    unavailableReason: '',
+    cycleUnverified,
+    cycleUnverifiedReason,
     canDrive,
     driveBlockers: blockers,
     driveEligibleAt,

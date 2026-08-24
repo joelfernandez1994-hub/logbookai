@@ -52,7 +52,10 @@ export default function LogAssistant() {
   const hos = useMemo(() => computeHOS(events, cycleType, tz, now, { historyComplete: true }), [events, cycleType, tz, now]);
   const hosSummary = useMemo(() => buildHosSummary(hos), [hos]);
 
-  const whatInfo = useMemo(() => whatCanIDo(events, cycleType, tz, now), [events, cycleType, tz, now]);
+  const whatInfo = useMemo(
+    () => whatCanIDo(events, cycleType, tz, now, profile?.entered_prior_history),
+    [events, cycleType, tz, now, profile?.entered_prior_history]
+  );
 
   const prepareProposal = async (value) => {
     if (!value?.proposed_events?.length) { setRouteWarning(null); return value; }

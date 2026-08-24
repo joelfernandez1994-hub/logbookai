@@ -1,6 +1,8 @@
+import { Link } from 'react-router-dom';
 import { fmtDur } from '@/lib/hosEngine';
 import { fmtClockShort } from '@/lib/logAssistant';
-import { Truck, Clock, Coffee, Gauge, Moon, RotateCcw, CheckCircle2, XCircle, AlertTriangle } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Truck, Clock, Coffee, Gauge, CheckCircle2, XCircle, AlertTriangle } from 'lucide-react';
 
 export default function WhatCanIDoPanel({ info, tz }) {
   if (!info) return null;
@@ -9,12 +11,20 @@ export default function WhatCanIDoPanel({ info, tz }) {
   return (
     <div className="space-y-3">
       {/* Can-drive verdict with EXACT reason + eligible time */}
-      <div className={`rounded-xl border p-3 ${info.canDrive ? 'border-success/40 bg-success-surface text-success-surface-foreground' : 'border-error/40 bg-error-surface text-error-surface-foreground'}`}>
+      <div className={`rounded-xl border p-3 ${info.unavailable ? 'border-warning/50 bg-warning-surface text-warning-surface-foreground' : info.canDrive ? 'border-success/40 bg-success-surface text-success-surface-foreground' : 'border-error/40 bg-error-surface text-error-surface-foreground'}`}>
         <div className="flex items-center gap-2">
-          {info.canDrive ? <CheckCircle2 className="w-5 h-5" /> : <XCircle className="w-5 h-5" />}
-          <div className="font-semibold">{info.canDrive ? 'You can drive right now' : 'You cannot drive right now'}</div>
+          {info.unavailable ? <AlertTriangle className="w-5 h-5" /> : info.canDrive ? <CheckCircle2 className="w-5 h-5" /> : <XCircle className="w-5 h-5" />}
+          <div className="font-semibold">{info.unavailable ? 'HOS availability unavailable' : info.canDrive ? 'You can drive right now' : 'You cannot drive right now'}</div>
         </div>
-        {!info.canDrive && info.driveBlockers?.length > 0 && (
+        {info.unavailable && (
+          <div className="mt-2">
+            <p className="text-xs">{info.unavailableReason}</p>
+            <Button asChild variant="outline" size="sm" className="mt-2 bg-transparent">
+              <Link to="/logs">Correct timeline</Link>
+            </Button>
+          </div>
+        )}
+        {!info.unavailable && !info.canDrive && info.driveBlockers?.length > 0 && (
           <div className="mt-2 space-y-1.5 text-xs">
             {info.driveBlockers.map((b, i) => (
               <div key={i} className="flex items-start gap-1.5">
@@ -44,12 +54,12 @@ export default function WhatCanIDoPanel({ info, tz }) {
           <div>
             <div className="text-[11px] text-muted-foreground">Usable now</div>
             <div className={`text-lg font-bold ${info.usableDriveMs > 0 ? 'text-success' : 'text-muted-foreground'}`}>{fmtDur(info.usableDriveMs)}</div>
-            <div className="text-[10px] text-muted-foreground">what you can actually drive this shift</div>
+            <div className="text-[10px] text-muted-foreground">{info.unavailable ? 'Unavailable until timeline is valid' : 'what you can actually drive this shift'}</div>
           </div>
           <div>
             <div className="text-[11px] text-muted-foreground">Remaining on clock</div>
             <div className="text-lg font-bold text-card-foreground">{fmtDur(info.driveRemainingMs)}</div>
-            <div className="text-[10px] text-muted-foreground">11-hr driving limit total</div>
+            <div className="text-[10px] text-muted-foreground">{info.unavailable ? 'Unavailable until timeline is valid' : '11-hr driving limit total'}</div>
           </div>
         </div>
         {info.usableDriveMs < info.driveRemainingMs && info.usableDriveMs > 0 && (
@@ -65,26 +75,28 @@ export default function WhatCanIDoPanel({ info, tz }) {
       </div>
 
       <div className="grid grid-cols-2 gap-2">
-        <Card icon={Clock} label="14-hour window" value={fmtDur(info.windowRemainingMs)} />
-        <Card icon={Coffee} label="30-min break" value={info.breakSatisfied ? 'Satisfied' : (info.breakRequired ? 'Required now' : 'Not yet required')} />
-        <Card icon={Gauge} label="Cycle remaining" value={`${info.cycleRemainingHours.toFixed(1)} hr`} />
+        <Card icon={Clock} label="14-hour window" value={fmtDur(info.windowRemainingMs)} note={info.unavailable ? 'Unavailable until timeline is valid' : ''} />
+        <Card icon={Coffee} label="30-min break" value={info.unavailable ? '--' : info.breakSatisfied ? 'Satisfied' : (info.breakRequired ? 'Required now' : 'Not yet required')} note={info.unavailable ? 'Unavailable until timeline is valid' : ''} />
+        <Card icon={Gauge} label="Cycle remaining" value={info.cycleRemainingHours == null ? '--' : `${info.cycleRemainingHours.toFixed(1)} hr`} note={info.unavailable ? 'Unavailable until timeline is valid' : info.cycleUnverified ? info.cycleUnverifiedReason : ''} />
       </div>
 
       <Section title="Rest completion (from your actual records)">
-        <Row label="Full 10-hour rest completes at" value={info.tenHourCompletesAt ? fmtClockShort(info.tenHourCompletesAt, tz) : info.restingNow ? 'Already complete' : 'Not currently resting'} />
-        <Row label="34-hour restart completes at" value={info.thirtyFourCompletesAt ? fmtClockShort(info.thirtyFourCompletesAt, tz) : info.restartCompleted ? 'Already complete' : info.restartInProgress ? fmtClockShort(info.restartInProgress.estimatedCompletion, tz) : 'Not in progress'} />
+        <Row label="Full 10-hour rest completes at" value={info.unavailable ? '--' : info.tenHourCompletesAt ? fmtClockShort(info.tenHourCompletesAt, tz) : info.restingNow ? 'Already complete' : 'Not currently resting'} />
+        <Row label="34-hour restart completes at" value={info.unavailable ? '--' : info.thirtyFourCompletesAt ? fmtClockShort(info.thirtyFourCompletesAt, tz) : info.restartCompleted ? 'Already complete' : info.restartInProgress ? fmtClockShort(info.restartInProgress.estimatedCompletion, tz) : 'Not in progress'} />
       </Section>
 
       <Section title="Split sleeper (optional)">
-        {info.splitAvailableNow
-          ? <div className="text-xs text-muted-foreground">Active — your qualifying periods form a valid split, so the 11h & 14h clocks are already recalculated. This is an optional optimization; the 60/70-hour cycle is unchanged.</div>
-          : info.splitConditional
-            ? <div className="text-xs text-muted-foreground"><div className="font-medium">{info.splitConditional.label}.</div>{info.splitConditional.description}</div>
-            : <div className="text-xs text-muted-foreground">No qualifying split-sleeper periods in your current records. A split is never required — a full 10-hour rest always works.</div>}
+        {info.unavailable
+          ? <div className="text-xs font-medium text-card-foreground">--</div>
+          : info.splitAvailableNow
+            ? <div className="text-xs text-muted-foreground">Active — your qualifying periods form a valid split, so the 11h & 14h clocks are already recalculated. This is an optional optimization; the 60/70-hour cycle is unchanged.</div>
+            : info.splitConditional
+              ? <div className="text-xs text-muted-foreground"><div className="font-medium">{info.splitConditional.label}.</div>{info.splitConditional.description}</div>
+              : <div className="text-xs text-muted-foreground">No qualifying split-sleeper periods in your current records. A split is never required — a full 10-hour rest always works.</div>}
       </Section>
 
       <Section title="Cycle hours returning">
-        <Row label="Tomorrow" value={`${info.cycleReturningTomorrow.toFixed(1)} hr`} />
+        <Row label="Tomorrow" value={info.unavailable || info.cycleUnverified ? '--' : `${info.cycleReturningTomorrow.toFixed(1)} hr`} />
       </Section>
 
       <div className="text-[11px] text-muted-foreground">All values are computed deterministically from your actual log records. No AI request was used. The driver remains responsible for the accuracy of the record.</div>
@@ -92,11 +104,12 @@ export default function WhatCanIDoPanel({ info, tz }) {
   );
 }
 
-function Card({ icon: Icon, label, value }) {
+function Card({ icon: Icon, label, value, note }) {
   return (
     <div className="rounded-lg border border-border bg-card p-2">
       <div className="flex items-center gap-1 text-xs text-muted-foreground"><Icon className="w-3.5 h-3.5" /> {label}</div>
       <div className="font-semibold mt-0.5 text-card-foreground">{value}</div>
+      {note && <div className="text-[10px] text-muted-foreground mt-0.5">{note}</div>}
     </div>
   );
 }

@@ -139,6 +139,38 @@ describe('Manual Log Assistant — deterministic safety', () => {
     expect(info.tenHourCompletesAt.getTime()).toBeGreaterThan(NOW.getTime());
   });
 
+  it('returns unavailable with null clocks for an uncalculable timeline', () => {
+    const invalid = [
+      ev(6, 5, 'OFF_DUTY'),
+      ev(3, 0, 'DRIVING', { is_ongoing: true, end_timestamp: null }),
+    ];
+    const info = whatCanIDo(invalid, CYCLE, TZ, NOW, true);
+    expect(info.unavailable).toBe(true);
+    expect(info.driveRemainingMs).toBeNull();
+    expect(info.windowRemainingMs).toBeNull();
+    expect(info.cycleRemainingHours).toBeNull();
+    expect(info.driveBlockers).toEqual([]);
+  });
+
+  it('keeps valid shift clocks but marks cycle unavailable without prior history', () => {
+    const events = [ev(13, 3, 'OFF_DUTY'), ev(3, 0, 'DRIVING', { is_ongoing: true, end_timestamp: null })];
+    const info = whatCanIDo(events, CYCLE, TZ, NOW, false);
+    expect(info.unavailable).toBe(false);
+    expect(info.cycleUnverified).toBe(true);
+    expect(info.driveRemainingMs).toBeGreaterThan(0);
+    expect(info.windowRemainingMs).toBeGreaterThan(0);
+    expect(info.cycleRemainingHours).toBeNull();
+    expect(info.driveBlockers.some(b => b.rule.includes('cycle'))).toBe(false);
+  });
+
+  it('keeps real zero and reset guidance for confirmed exhaustion', () => {
+    const events = [ev(21, 11, 'OFF_DUTY'), ev(11, 0, 'DRIVING', { is_ongoing: true, end_timestamp: null })];
+    const info = whatCanIDo(events, CYCLE, TZ, NOW, true);
+    expect(info.unavailable).toBe(false);
+    expect(info.driveRemainingMs).toBe(0);
+    expect(info.driveBlockers.some(b => b.rule === '11-hour driving limit' && b.message.includes('10-hour rest'))).toBe(true);
+  });
+
   // 9. Impossible city/time combination generates a location/time conflict.
   it('flags Miami→Atlanta in 2 hours as a conflict', () => {
     const r = distanceReasonableness('Miami', 'FL', 'Atlanta', 'GA', 2 * H);
@@ -166,8 +198,9 @@ describe('Manual Log Assistant — deterministic safety', () => {
   // 11. Deterministic clock questions do not require an AI request.
   it('whatCanIDo driveRemainingMs matches the deterministic engine', () => {
     const events = [ev(5, 4, 'SLEEPER_BERTH'), ev(4, 1, 'DRIVING'), ev(1, 0, 'ON_DUTY', { is_ongoing: true, end_timestamp: null })];
-    const info = whatCanIDo(events, CYCLE, TZ, NOW);
+    const info = whatCanIDo(events, CYCLE, TZ, NOW, true);
     const hos = computeHOS(events, CYCLE, TZ, NOW, { historyComplete: true });
+    expect(info.unavailable).toBe(false);
     expect(info.driveRemainingMs).toBe(hos.driving.drivingRemainingMs);
     expect(info.windowRemainingMs).toBe(hos.window14.remainingMs);
   });
