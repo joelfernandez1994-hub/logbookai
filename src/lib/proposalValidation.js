@@ -282,6 +282,9 @@ export function validateProposal(existing, proposed, opts = {}) {
 
   const warnings = [];
   const explicitGuard = opts.explicitGuard || null;
+  // GATE 1 (structural): altered/dropped explicit driver facts remain BLOCKING —
+  // they change the legal record. Visible adjustments are review-only (never
+  // block) so the driver can confirm an inferred/adjusted proposal in one tap.
   if (explicitGuard?.blocking) {
     warnings.push({
       type: 'explicit_fact_guard', severity: 'blocking', title: 'EXPLICIT DRIVER FACT CHANGED OR MISSING',
@@ -441,13 +444,13 @@ export async function addRouteWarning(proposed, { routingProvider = fetchRoute, 
   const details = legs.map(leg => `${leg.origin || 'Unknown'} → ${leg.destination || 'Unknown'}: ${leg.evaluation?.known ? leg.evaluation.note : 'Road route unavailable; mileage will be labeled as an estimate.'}`);
   return {
     type: 'route_reasonableness',
-    severity: conflicts.length && isFuture ? 'blocking' : 'review',
-    title: conflicts.length ? (isFuture ? 'ROUTE / TRAVEL-TIME CONFLICT' : 'TRAVEL-TIME CONFLICT — REVIEW REQUIRED') : 'ROUTE VALIDATION',
+    severity: 'review',
+    title: conflicts.length ? 'ROUTE / TRAVEL-TIME CONFLICT — REVIEW' : 'ROUTE VALIDATION',
     message: details.join(' '),
     isFuture,
     legs,
     note: conflicts.length
-      ? (isFuture ? 'Adjust the plan or route endpoints before applying.' : 'Routing is a reasonableness check only. Review factual times and locations.')
+      ? 'Routing is a reasonableness check only. Review the factual times and locations, then confirm if correct. Estimated mileage is clearly labeled.'
       : 'Every proposed driving segment was checked against its road route.',
   };
 }
