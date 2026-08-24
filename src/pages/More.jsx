@@ -10,6 +10,9 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { User, Building2, Truck, Bot, FileText, Settings, LogOut, Shield, ClipboardCheck, Trash2, Sun, Moon, Monitor } from 'lucide-react';
+import LocationInput from '@/components/LocationInput';
+import TimezoneSelect from '@/components/TimezoneSelect';
+import { labelForIana } from '@/lib/timezones';
 
 const APPEARANCE_OPTIONS = [
   { v: 'system', l: 'System', icon: Monitor },
@@ -228,7 +231,27 @@ function ProfileDialog({ open, onOpenChange, profile, onSave }) {
 
 function CarrierDialog({ open, onOpenChange, carrier, onSave }) {
   const [d, setD] = useState(carrier || { hos_cycle: '70_8', home_terminal_timezone: 'America/Chicago' });
-  useEffect(() => setD(carrier || { hos_cycle: '70_8', home_terminal_timezone: 'America/Chicago' }), [carrier, open]);
+  const [tzConfirmed, setTzConfirmed] = useState(false);
+  const [pendingSuggestion, setPendingSuggestion] = useState(null);
+  useEffect(() => { setD(carrier || { hos_cycle: '70_8', home_terminal_timezone: 'America/Chicago' }); setTzConfirmed(false); setPendingSuggestion(null); }, [carrier, open]);
+
+  const onCityChange = (loc) => {
+    setD((prev) => ({
+      ...prev,
+      ...(loc.city !== undefined ? { home_terminal_city: loc.city } : {}),
+      ...(loc.state !== undefined ? { home_terminal_state: loc.state } : {}),
+    }));
+    if (loc.timezone) {
+      if (tzConfirmed) setPendingSuggestion(loc.timezone);
+      else setD((prev) => ({ ...prev, home_terminal_timezone: loc.timezone }));
+    }
+  };
+  const applySuggestion = () => {
+    if (!pendingSuggestion) return;
+    setD((prev) => ({ ...prev, home_terminal_timezone: pendingSuggestion }));
+    setPendingSuggestion(null);
+    setTzConfirmed(true);
+  };
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-md">
@@ -236,7 +259,19 @@ function CarrierDialog({ open, onOpenChange, carrier, onSave }) {
         <div className="space-y-3">
           <div><Label>Carrier Name</Label><Input value={d.carrier_name || ''} onChange={(e) => setD({ ...d, carrier_name: e.target.value })} /></div>
           <div><Label>USDOT</Label><Input value={d.usdot_number || ''} onChange={(e) => setD({ ...d, usdot_number: e.target.value })} /></div>
-          <div><Label>Home Terminal Timezone</Label><Input value={d.home_terminal_timezone || ''} onChange={(e) => setD({ ...d, home_terminal_timezone: e.target.value })} /></div>
+          <div>
+            <Label>Home Terminal City / State</Label>
+            <LocationInput value={{ city: d.home_terminal_city || '', state: d.home_terminal_state || '' }} onChange={onCityChange} />
+          </div>
+          <div>
+            <Label>Log Timezone</Label>
+            <TimezoneSelect className="w-full" value={d.home_terminal_timezone || 'America/Chicago'}
+              onChange={(v) => { setD((prev) => ({ ...prev, home_terminal_timezone: v })); setTzConfirmed(true); setPendingSuggestion(null); }} />
+            {pendingSuggestion && (
+              <button type="button" onClick={applySuggestion} className="mt-1 text-xs text-primary underline">Use suggested {labelForIana(pendingSuggestion)}?</button>
+            )}
+            <p className="text-[11px] text-muted-foreground mt-1">Suggested from your home terminal city. Changing it only affects how times are displayed — your saved log entries are not moved.</p>
+          </div>
           <div><Label>HOS Cycle</Label>
             <div className="grid grid-cols-2 gap-2">
               {[{ v: '60_7', l: '60 hr / 7 day' }, { v: '70_8', l: '70 hr / 8 day' }].map((c) => (

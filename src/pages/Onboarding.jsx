@@ -6,10 +6,9 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import SignaturePad from '@/components/SignaturePad';
-import BottomSelect from '@/components/BottomSelect';
+import LocationInput from '@/components/LocationInput';
+import TimezoneSelect from '@/components/TimezoneSelect';
 import { AlertTriangle, Check } from 'lucide-react';
-
-const TIMEZONES = ['America/New_York', 'America/Chicago', 'America/Denver', 'America/Los_Angeles', 'America/Phoenix', 'America/Anchorage', 'Pacific/Honolulu'];
 
 export default function Onboarding() {
   const { profile, carrier, equipment, reload } = useDriverData();
@@ -18,7 +17,7 @@ export default function Onboarding() {
   const [acknowledged, setAcknowledged] = useState(false);
 
   const [driver, setDriver] = useState({ legal_name: '', email: '', phone: '', home_terminal_timezone: 'America/Chicago' });
-  const [carrierData, setCarrierData] = useState({ carrier_name: '', usdot_number: '', main_office_address: '', home_terminal_address: '', home_terminal_timezone: 'America/Chicago', hos_cycle: '70_8' });
+  const [carrierData, setCarrierData] = useState({ carrier_name: '', usdot_number: '', main_office_address: '', home_terminal_address: '', home_terminal_city: '', home_terminal_state: '', home_terminal_timezone: 'America/Chicago', hos_cycle: '70_8' });
   const [tractor, setTractor] = useState({ unit_number: '' });
   const [trailer, setTrailer] = useState({ unit_number: '' });
   const [signature, setSignature] = useState('');
@@ -115,10 +114,21 @@ export default function Onboarding() {
               <div><Label>USDOT Number *</Label><Input value={carrierData.usdot_number} onChange={(e) => setCarrierData({ ...carrierData, usdot_number: e.target.value })} /></div>
               <div><Label>Main Office Address</Label><Input value={carrierData.main_office_address} onChange={(e) => setCarrierData({ ...carrierData, main_office_address: e.target.value })} /></div>
               <div><Label>Home Terminal Address</Label><Input value={carrierData.home_terminal_address} onChange={(e) => setCarrierData({ ...carrierData, home_terminal_address: e.target.value })} /></div>
-              <div><Label>Home Terminal Timezone</Label>
-                <BottomSelect className="w-full" value={carrierData.home_terminal_timezone}
-                  onChange={(v) => setCarrierData({ ...carrierData, home_terminal_timezone: v })}
-                  options={TIMEZONES.map((tz) => ({ value: tz, label: tz.replace('America/', '').replace('_', ' ') }))} />
+              <div>
+                <Label>Home Terminal City / State</Label>
+                <LocationInput value={{ city: carrierData.home_terminal_city || '', state: carrierData.home_terminal_state || '' }}
+                  onChange={(loc) => setCarrierData((prev) => ({
+                    ...prev,
+                    ...(loc.city !== undefined ? { home_terminal_city: loc.city } : {}),
+                    ...(loc.state !== undefined ? { home_terminal_state: loc.state } : {}),
+                    ...(loc.timezone ? { home_terminal_timezone: loc.timezone } : {}),
+                  }))} />
+              </div>
+              <div>
+                <Label>Log Timezone</Label>
+                <TimezoneSelect className="w-full" value={carrierData.home_terminal_timezone}
+                  onChange={(v) => setCarrierData({ ...carrierData, home_terminal_timezone: v })} />
+                <p className="text-[11px] text-muted-foreground mt-1">Suggested from your home terminal city. You can change it — log times use this timezone. Changing it later only affects how times are displayed; saved entries are not moved.</p>
               </div>
               <div><Label>HOS Cycle</Label>
                 <div className="grid grid-cols-2 gap-2">
