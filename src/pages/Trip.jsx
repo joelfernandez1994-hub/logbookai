@@ -13,6 +13,7 @@ import { base44 } from '@/api/base44Client';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import LocationInput from '@/components/LocationInput';
 import { Switch } from '@/components/ui/switch';
 import { Map, Clock, Check, X, Plus, MapPin, AlertTriangle, Sparkles, Moon, RefreshCw } from 'lucide-react';
 
@@ -227,16 +228,10 @@ export default function Trip() {
 
       <div className="rounded-xl border border-border bg-card p-4 mb-4 space-y-3">
         <div className="font-medium text-sm text-card-foreground">Pickup</div>
-        <div className="grid grid-cols-2 gap-2">
-          <Input placeholder="City" value={pickup.city} onChange={(e) => { setPickupTouched(true); setPickup({ ...pickup, city: e.target.value }); }} />
-          <Input placeholder="ST" maxLength={2} value={pickup.state} onChange={(e) => { setPickupTouched(true); setPickup({ ...pickup, state: e.target.value.toUpperCase() }); }} />
-        </div>
+        <LocationInput value={pickup} onChange={(patch) => { setPickupTouched(true); setPickup((current) => ({ ...current, ...patch })); }} />
         <Input type="datetime-local" value={pickupTime} onChange={(e) => setPickupTime(e.target.value)} />
         <div className="font-medium text-sm pt-2 text-card-foreground">Delivery</div>
-        <div className="grid grid-cols-2 gap-2">
-          <Input placeholder="City" value={delivery.city} onChange={(e) => setDelivery({ ...delivery, city: e.target.value })} />
-          <Input placeholder="ST" maxLength={2} value={delivery.state} onChange={(e) => setDelivery({ ...delivery, state: e.target.value.toUpperCase() })} />
-        </div>
+        <LocationInput value={delivery} onChange={(patch) => setDelivery((current) => ({ ...current, ...patch }))} />
         <Input type="datetime-local" value={deliveryTime} onChange={(e) => setDeliveryTime(e.target.value)} />
         <Button className="w-full" disabled={!pickup.city || !delivery.city || estimating} onClick={estimateRoute}>
           {estimating ? 'Estimating route...' : 'Estimate Route & Check Feasibility'}

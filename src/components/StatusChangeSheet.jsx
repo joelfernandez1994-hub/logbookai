@@ -3,8 +3,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { MapPin, Loader2 } from 'lucide-react';
-import { resolveCurrentLocation } from '@/lib/locationService';
+import LocationInput from '@/components/LocationInput';
 
 const STATUSES = [
   { key: 'OFF_DUTY', label: 'Off Duty', color: 'bg-slate-500' },
@@ -25,20 +24,7 @@ export default function StatusChangeSheet({ open, onOpenChange, onApply, default
   const [remark, setRemark] = useState('');
   const [tractor, setTractor] = useState(defaultEquipment?.tractor || '');
   const [trailer, setTrailer] = useState(defaultEquipment?.trailer || '');
-  const [locating, setLocating] = useState(false);
   const [locationConfirmed, setLocationConfirmed] = useState(false);
-
-  // Shared GPS + reverse-geocode service (same resolver as Add/Edit Event),
-  // standardized to "City, ST" (2-letter state abbreviation).
-  const useMyLocation = async () => {
-    setLocating(true);
-    const res = await resolveCurrentLocation();
-    if (res.error) { setLocating(false); return; }
-    if (res.city) setCity(res.city);
-    if (res.state) setStateVal(res.state);
-    setLocationConfirmed(false);
-    setLocating(false);
-  };
 
   const handleApply = () => {
     onApply({ duty_status: status, city, state: stateVal, remark, tractor_number: tractor, trailer_numbers: trailer });
@@ -59,19 +45,13 @@ export default function StatusChangeSheet({ open, onOpenChange, onApply, default
             </button>
           ))}
         </div>
-        <div className="grid grid-cols-2 gap-3 mt-3">
-          <div>
-            <Label className="text-xs">City</Label>
-            <Input value={city} onChange={(e) => { setCity(e.target.value); setLocationConfirmed(false); }} placeholder="City" />
-          </div>
-          <div>
-            <Label className="text-xs">State</Label>
-            <Input value={stateVal} onChange={(e) => { setStateVal(e.target.value.toUpperCase()); setLocationConfirmed(false); }} placeholder="ST" maxLength={2} />
-          </div>
+        <div className="mt-3">
+          <LocationInput
+            value={{ city, state: stateVal }}
+            onChange={(patch) => { if (patch.city !== undefined) setCity(patch.city); if (patch.state !== undefined) setStateVal(patch.state); setLocationConfirmed(false); }}
+            showGps
+          />
         </div>
-        <Button variant="outline" size="sm" className="w-full mt-2" onClick={useMyLocation} disabled={locating}>
-          {locating ? <><Loader2 className="w-4 h-4 mr-1 animate-spin" /> Locating...</> : <><MapPin className="w-4 h-4 mr-1" /> Use My Current Location</>}
-        </Button>
         {city && !locationConfirmed && (
           <p className="text-xs text-warning">Location interpreted as {city}, {stateVal}. Please confirm or edit before applying.</p>
         )}
