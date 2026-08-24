@@ -63,10 +63,9 @@ export function loggedFuelStops(events, fuelReceipts, dateStr, tz) {
   return stops;
 }
 
-// Validate elapsed coverage only after canonical state-change normalization.
-// A known status carries forward until the next status change; bounded source
-// records therefore do not create filler-record gaps. A gap remains only when
-// no status can be determined at the start of the requested elapsed period.
+// Classify only gaps proven by canonical duty-status segments. An untouched
+// day has incomplete history, not a confirmed full-day gap. Open-ended status
+// segments naturally carry across midnight during canonical normalization.
 export function findTimelineGaps(events, dateStr, tz, now = new Date()) {
   const dayAnchor = new Date(`${dateStr}T12:00:00Z`);
   const dayStart = startOfDayInTz(dayAnchor, tz);
@@ -76,13 +75,25 @@ export function findTimelineGaps(events, dateStr, tz, now = new Date()) {
 
   const segments = normalizedSegments(events, now)
     .filter(s => s.end > dayStart && s.start < targetEnd)
+    .map(s => ({
+      start: s.start < dayStart ? dayStart : s.start,
+      end: s.end > targetEnd ? targetEnd : s.end,
+    }))
     .sort((a, b) => a.start - b.start);
-  if (!segments.length) return [{ start: dayStart, end: targetEnd, ms: targetEnd - dayStart, open: true }];
+  if (!segments.length) return [];
 
-  const firstStart = segments[0].start > dayStart ? segments[0].start : dayStart;
-  return firstStart - dayStart > 60000
-    ? [{ start: dayStart, end: firstStart, ms: firstStart - dayStart }]
-    : [];
+  const gaps = [];
+  let cursor = dayStart;
+  for (const segment of segments) {
+    if (segment.start - cursor > 60000) {
+      gaps.push({ start: cursor, end: segment.start, ms: segment.start - cursor });
+    }
+    if (segment.end > cursor) cursor = segment.end;
+  }
+  if (targetEnd - cursor > 60000) {
+    gaps.push({ start: cursor, end: targetEnd, ms: targetEnd - cursor });
+  }
+  return gaps;
 }
 
 // Persisted daily miles (manual override or last auto value).
