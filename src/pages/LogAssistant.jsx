@@ -23,6 +23,22 @@ const TABS = [
   { id: 'whatCanIDo', label: 'What Can I Do?', icon: HelpCircle },
 ];
 
+// Detects narratives that describe more than one event/activity and should go
+// straight to the AI instead of the deterministic single-intent parser.
+function isMultiEventNarrative(text) {
+  const t = String(text || '').toLowerCase();
+  if (!t) return false;
+  if (/\bdrove\s+from\b/.test(t) || /\bcontinued\s+to\b/.test(t) || /\bcontinued\s+driving\b/.test(t)) return true;
+  if (/\brest of (?:the )?day\b/.test(t) || /\bdone for the day\b/.test(t) || /\bend of (?:the )?day\b/.test(t)) return true;
+  const hasDriving = /\b(driv|drove|drive)\b/.test(t);
+  const hasOtherActivity = /\b(fuel|fueled|load|loaded|unload|unloaded|lunch|post[-\s]?trip|pre[-\s]?trip|sleeper|break|inspection|drop|hook)\b/.test(t);
+  if (hasDriving && hasOtherActivity) return true;
+  const concepts = ['driving', 'drove', 'fuel', 'fueled', 'load', 'loaded', 'unload', 'unloaded', 'pre-trip', 'pretrip', 'post-trip', 'posttrip', 'sleeper', 'off duty', 'off-duty', 'on duty', 'on-duty', 'lunch', 'break', 'inspection'];
+  let distinct = 0;
+  for (const c of concepts) if (new RegExp(`\\b${c}\\b`).test(t)) distinct++;
+  return distinct >= 2;
+}
+
 export default function LogAssistant() {
   const { profile, carrier, equipment, events, loading, reload } = useDriverData();
   const initialTab = new URLSearchParams(window.location.search).get('tab') || 'tell';
@@ -78,9 +94,10 @@ export default function LogAssistant() {
   // ---------------------------------------------------------------------------
   const handleTell = async (text, type) => {
     setError('');
-    const explicitTimes = text.match(/\b\d{1,2}:\d{2}\s*(?:a\.?m\.?|p\.?m\.?)\b/gi) || [];
-    const complexNarrative = /\bstarted driving\b/i.test(text) && /\bcontinued driving\b/i.test(text);
-    if (complexNarrative || explicitTimes.length > 2) {
+    // AI-first routing: any narrative describing more than one event/activity
+    // goes straight to manualLogAssistant. The deterministic parser is kept
+    // only for trivial single-intent commands ("off duty now", "sleeper at 10 PM").
+    if (isMultiEventNarrative(text)) {
       return callAssistant('interpret', text, { source: type });
     }
     const det = parseVoiceCommand(text, { now: new Date(), timezone: tz });

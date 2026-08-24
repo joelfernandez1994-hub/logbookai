@@ -229,8 +229,10 @@ export function parseVoiceCommand(text, ctx = {}) {
       _ambiguous: { time: t.ambiguous, location: loc?.ambiguous },
     });
     if (t.ambiguous) ambiguousFields.push(`event_${i + 1}:start_timestamp`);
+    // A bare city without a state is NOT blocking — the state is left
+    // blank/inferred for the driver to review. Only simple single-intent
+    // commands reach this parser, so a bare city never stops the flow.
     if (loc?.ambiguous) {
-      clarifications.push({ type: 'location', question: `You said "${loc.city}" — please confirm the city/state.`, field: `event_${i + 1}:city` });
       ambiguousFields.push(`event_${i + 1}:state`);
     }
     prevEnd = end;
