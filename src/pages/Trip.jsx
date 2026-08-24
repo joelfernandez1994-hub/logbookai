@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { useDriverData } from '@/hooks/useDriverData';
 import { computeHOS, fmtDur, dateKeyInTz } from '@/lib/hosEngine';
+import { whatCanIDo } from '@/lib/logAssistant';
 import { truckEtaHours, speedProfileLabel } from '@/lib/proposalValidation';
 import { limitingClock, maxDriveMiles, buildComplianceEdits } from '@/lib/complianceStop';
 import { firstEventOfDay, loggedFuelStops, getFuelReceipts } from '@/lib/tripSync';
@@ -57,7 +58,9 @@ export default function Trip() {
   const speedProfile = profile?.trip_planning_speed_profile || 'conservative';
   const now = new Date();
   const todayKey = dateKeyInTz(now, tz);
-  const hos = computeHOS(events, cycleType, tz, now, { historyComplete: profile?.entered_prior_history });
+  const availability = whatCanIDo(events, cycleType, tz, now, profile?.entered_prior_history);
+  const hosVerified = !availability.unavailable && !availability.cycleUnverified;
+  const hos = computeHOS(events, cycleType, tz, now, { historyComplete: hosVerified });
 
   useEffect(() => { getFuelReceipts(30).then(setFuelReceipts); }, []);
   useEffect(() => {
@@ -106,18 +109,18 @@ export default function Trip() {
   };
 
   const checkFeasibility = () => {
-    if (!estimate) return null;
+    if (!estimate || !hosVerified) return null;
     const neededHours = truckEtaHours(estimate, speedProfile) ?? estimate.hours;
-    const drivingRemaining = hos.driving.drivingRemainingMs / 3600000;
-    const windowRemaining = hos.window14.remainingMs / 3600000;
-    const cycleRemaining = hos.cycle.cycleRemainingHours;
+    const drivingRemaining = availability.driveRemainingMs / 3600000;
+    const windowRemaining = availability.windowRemainingMs / 3600000;
+    const cycleRemaining = availability.cycleRemainingHours;
     const achievable = neededHours <= drivingRemaining && neededHours <= windowRemaining && neededHours <= cycleRemaining;
     return { neededHours, drivingRemaining, windowRemaining, cycleRemaining, achievable };
   };
   const feasibility = checkFeasibility();
 
   const fetchComplianceStop = async () => {
-    if (!estimate || !pickup.city || !delivery.city) return;
+    if (!estimate || !pickup.city || !delivery.city || !hosVerified) return;
     setStopLoading(true); setStopError(null);
     try {
       const maxMiles = maxDriveMiles(hos, speedProfile);
@@ -141,11 +144,11 @@ export default function Trip() {
   };
 
   useEffect(() => {
-    if (autoAssist && estimate && feasibility && !feasibility.achievable && !stopSugg && !stopLoading && !stopError) {
+    if (hosVerified && autoAssist && estimate && feasibility && !feasibility.achievable && !stopSugg && !stopLoading && !stopError) {
       fetchComplianceStop();
     }
-    if (feasibility?.achievable) { setStopSugg(null); setEdits(null); setApplied(false); setStopError(null); }
-  }, [estimate, feasibility?.achievable, autoAssist]);
+    if (!hosVerified || feasibility?.achievable) { setStopSugg(null); setEdits(null); setApplied(false); setStopError(null); }
+  }, [estimate, feasibility?.achievable, autoAssist, hosVerified]);
 
   const applyEdits = () => {
     if (!edits) return;
@@ -190,18 +193,30 @@ export default function Trip() {
         <Switch checked={autoAssist} onCheckedChange={setAutoAssist} />
       </div>
 
+      {availability.unavailable && (
+        <div className="rounded-xl border border-warning/50 bg-warning-surface p-3 mb-4 text-warning-surface-foreground">
+          <div className="text-sm font-semibold">HOS availability unavailable</div>
+          <p className="text-xs mt-1">{availability.unavailableReason}</p>
+          <Button asChild variant="outline" size="sm" className="mt-2 bg-transparent"><Link to="/logs">Correct timeline</Link></Button>
+        </div>
+      )}
+
       <div className="grid grid-cols-2 gap-2 mb-4">
         <div className="rounded-xl border border-border bg-card p-3 text-sm">
           <div className="text-xs text-muted-foreground">Driving available</div>
-          <div className="font-bold text-card-foreground">{fmtDur(hos.driving.drivingRemainingMs)}</div>
+          <div data-testid="trip-driving-available" className="font-bold text-card-foreground">{availability.unavailable ? '--' : fmtDur(availability.driveRemainingMs)}</div>
+          {!availability.unavailable && availability.driveRemainingMs === 0 && <div className="text-[10px] text-muted-foreground mt-1">{availability.driveBlockers.find(b => b.rule === '11-hour driving limit')?.message}</div>}
         </div>
         <div className="rounded-xl border border-border bg-card p-3 text-sm">
           <div className="text-xs text-muted-foreground">14-hr window available</div>
-          <div className="font-bold text-card-foreground">{fmtDur(hos.window14.remainingMs)}</div>
+          <div data-testid="trip-window-available" className="font-bold text-card-foreground">{availability.unavailable ? '--' : fmtDur(availability.windowRemainingMs)}</div>
+          {!availability.unavailable && availability.windowRemainingMs === 0 && <div className="text-[10px] text-muted-foreground mt-1">{availability.driveBlockers.find(b => b.rule === '14-hour window')?.message}</div>}
         </div>
         <div className="rounded-xl border border-border bg-card p-3 text-sm">
           <div className="text-xs text-muted-foreground">Cycle available</div>
-          <div className="font-bold text-card-foreground">{fmtHM(hos.cycle.cycleRemainingHours)}</div>
+          <div data-testid="trip-cycle-available" className="font-bold text-card-foreground">{availability.cycleRemainingHours == null ? '--' : fmtHM(availability.cycleRemainingHours)}</div>
+          {availability.cycleUnverified && <div className="text-[10px] text-muted-foreground mt-1">{availability.cycleUnverifiedReason}</div>}
+          {!availability.unavailable && !availability.cycleUnverified && availability.cycleRemainingHours === 0 && <div className="text-[10px] text-muted-foreground mt-1">{availability.driveBlockers.find(b => b.rule.includes('cycle'))?.message}</div>}
         </div>
       </div>
       {hos.split.status === 'active' && (

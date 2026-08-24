@@ -171,6 +171,16 @@ describe('Manual Log Assistant — deterministic safety', () => {
     expect(info.driveBlockers.some(b => b.rule === '11-hour driving limit' && b.message.includes('10-hour rest'))).toBe(true);
   });
 
+  it('returns actual available clocks for a fresh valid day with sufficient history', () => {
+    const events = [ev(12, 2, 'OFF_DUTY'), ev(2, 0, 'ON_DUTY', { is_ongoing: true, end_timestamp: null })];
+    const info = whatCanIDo(events, CYCLE, TZ, NOW, true);
+    expect(info.unavailable).toBe(false);
+    expect(info.cycleUnverified).toBe(false);
+    expect(info.driveRemainingMs).toBe(11 * H);
+    expect(info.windowRemainingMs).toBe(12 * H);
+    expect(info.cycleRemainingHours).toBe(68);
+  });
+
   // 9. Impossible city/time combination generates a location/time conflict.
   it('flags Miami→Atlanta in 2 hours as a conflict', () => {
     const r = distanceReasonableness('Miami', 'FL', 'Atlanta', 'GA', 2 * H);
