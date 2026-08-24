@@ -7,12 +7,12 @@ import { getCertifications } from '@/lib/driverData';
 import { base44 } from '@/api/base44Client';
 import { insertEvent, editEvent, deleteEventById, clearDayEvents } from '@/lib/timelineWriter';
 import { validateTimeline } from '@/lib/timelineEngine';
-import { resolveCurrentLocation } from '@/lib/locationService';
+import LocationInput from '@/components/LocationInput';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { ChevronLeft, ChevronRight, BadgeCheck, AlertTriangle, Pencil, Trash2, Plus, Bot, Eraser, MapPin, Loader2 } from 'lucide-react';
+import { ChevronLeft, ChevronRight, BadgeCheck, AlertTriangle, Pencil, Trash2, Plus, Bot, Eraser } from 'lucide-react';
 import { validateProposal, hasBlocking } from '@/lib/proposalValidation';
 import { useEffect } from 'react';
 import DailyMilesCard from '@/components/DailyMilesCard';
@@ -250,8 +250,6 @@ function EventEditor({ open, event, prefill, onClose, onSave, tz, carrier, equip
   const [city, setCity] = useState(event?.city || '');
   const [stateVal, setStateVal] = useState(event?.state || '');
   const [remark, setRemark] = useState(event?.remark || '');
-  const [locating, setLocating] = useState(false);
-  const [locNote, setLocNote] = useState('');
   const [localError, setLocalError] = useState('');
 
   useEffect(() => {
@@ -259,20 +257,8 @@ function EventEditor({ open, event, prefill, onClose, onSave, tz, carrier, equip
     setStart(event ? new Date(event.start_timestamp).toISOString().slice(0, 16) : (prefill?.start_timestamp ? new Date(prefill.start_timestamp).toISOString().slice(0, 16) : ''));
     setEnd(event?.end_timestamp ? new Date(event.end_timestamp).toISOString().slice(0, 16) : (prefill?.end_timestamp ? new Date(prefill.end_timestamp).toISOString().slice(0, 16) : ''));
     setCity(event?.city || ''); setStateVal(event?.state || ''); setRemark(event?.remark || '');
-    setLocalError(''); setLocNote('');
+    setLocalError('');
   }, [event, open, prefill]);
-
-  // Shared GPS + reverse-geocode service (same resolver as Change Status).
-  // Standardizes to City, ST (2-letter state abbreviation).
-  const useMyLocation = async () => {
-    setLocating(true); setLocalError('');
-    const res = await resolveCurrentLocation();
-    setLocating(false);
-    if (res.error) { setLocalError(res.error); return; }
-    if (res.city) setCity(res.city);
-    if (res.state) setStateVal(res.state);
-    setLocNote(`Located as ${res.city || city}, ${res.state || stateVal}. Please confirm or edit.`);
-  };
 
   const save = () => {
     setLocalError('');
@@ -312,14 +298,14 @@ function EventEditor({ open, event, prefill, onClose, onSave, tz, carrier, equip
             <div><Label className="text-xs">Start</Label><Input type="datetime-local" value={start} onChange={(e) => setStart(e.target.value)} /></div>
             <div><Label className="text-xs">End</Label><Input type="datetime-local" value={end} onChange={(e) => setEnd(e.target.value)} /></div>
           </div>
-          <div className="grid grid-cols-2 gap-2">
-            <div><Label className="text-xs">City</Label><Input value={city} onChange={(e) => setCity(e.target.value)} /></div>
-            <div><Label className="text-xs">State</Label><Input value={stateVal} onChange={(e) => setStateVal(e.target.value.toUpperCase())} maxLength={2} /></div>
-          </div>
-          <Button variant="outline" size="sm" className="w-full" onClick={useMyLocation} disabled={locating}>
-            {locating ? <><Loader2 className="w-4 h-4 mr-1 animate-spin" /> Locating…</> : <><MapPin className="w-4 h-4 mr-1" /> Use My Current Location</>}
-          </Button>
-          {locNote && !localError && <p className="text-xs text-warning">{locNote}</p>}
+          <LocationInput
+            value={{ city, state: stateVal }}
+            onChange={(patch) => {
+              if (patch.city !== undefined) setCity(patch.city);
+              if (patch.state !== undefined) setStateVal(patch.state);
+            }}
+            showGps
+          />
           <div><Label className="text-xs">Remark</Label><Input value={remark} onChange={(e) => setRemark(e.target.value)} /></div>
         </div>
         {(localError || saveError) && (
