@@ -6,6 +6,7 @@ import RodsGraphEditor from '@/components/rodsEditor/RodsGraphEditor';
 import LogExportSheet from '@/components/LogExportSheet';
 import { getCertifications, getAllEvents, getDocuments } from '@/lib/driverData';
 import { getDvirs } from '@/lib/dvirData';
+import { getAllDailySummaries } from '@/lib/tripSync';
 import { generateLogsPdf } from '@/lib/pdfGenerator';
 import { Button } from '@/components/ui/button';
 import { ChevronLeft, ChevronRight, Share2, X, ShieldCheck } from 'lucide-react';
@@ -26,19 +27,22 @@ export default function Inspection() {
   const [certifications, setCertifications] = useState([]);
   const [dvirs, setDvirs] = useState([]);
   const [documents, setDocuments] = useState([]);
+  const [dailySummaries, setDailySummaries] = useState([]);
   const [dayOffset, setDayOffset] = useState(0); // 0 = today, -7 = 7 days ago
   const [showExport, setShowExport] = useState(false);
 
   const tz = carrier?.home_terminal_timezone || 'America/Chicago';
   const cycleType = carrier?.hos_cycle || '70_8';
+  const speedProfile = profile?.trip_planning_speed_profile || 'conservative';
 
   useEffect(() => {
     (async () => {
-      const [ev, certs, dv, docs] = await Promise.all([getAllEvents(), getCertifications(9), getDvirs(30), getDocuments(30)]);
+      const [ev, certs, dv, docs, sums] = await Promise.all([getAllEvents(), getCertifications(9), getDvirs(30), getDocuments(30), getAllDailySummaries()]);
       setEvents(ev || []);
       setCertifications(certs || []);
       setDvirs(dv || []);
       setDocuments(docs || []);
+      setDailySummaries(sums || []);
     })();
   }, []);
 
@@ -61,7 +65,7 @@ export default function Inspection() {
 
   const allDates = useMemo(() => Array.from(new Set((events || []).map(e => e.log_date).filter(Boolean))).sort(), [events]);
 
-  const buildDoc = (dates, options) => generateLogsPdf(profile, carrier, events, dates, tz, certifications, cycleType, { ...options, dvirs, documents });
+  const buildDoc = (dates, options) => generateLogsPdf(profile, carrier, events, dates, tz, certifications, cycleType, { ...options, dvirs, documents, dailySummaries, speedProfile });
 
   return (
     <div className="px-4 min-h-screen bg-slate-900 text-white safe-top">

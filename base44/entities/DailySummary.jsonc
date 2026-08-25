@@ -16,6 +16,12 @@
         "manual"
       ],
       "default": "auto"
+    },
+    "begin_odometer": {
+      "type": "number"
+    },
+    "end_odometer": {
+      "type": "number"
     }
   },
   "required": [

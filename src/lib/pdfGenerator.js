@@ -1,6 +1,7 @@
 import { jsPDF } from 'jspdf';
 import { getDailyGrid, computeCycle, computeHOS, fmtHours, fmtDur } from './hosEngine';
 import { labelForIana } from './timezones';
+import { computeDailyMiles } from './tripSync';
 
 const STATUS_ROWS = ['OFF_DUTY', 'SLEEPER_BERTH', 'DRIVING', 'ON_DUTY'];
 const STATUS_LABELS = {
@@ -33,7 +34,7 @@ const REPAIR_LABEL = {
 // FMCSA paper driver's daily log. The 24-hour graph is the visual focus; HOS
 // engine diagnostics live in a separate clean recap below the log.
 // ---------------------------------------------------------------------------
-function drawDay(doc, driver, carrier, events, dateStr, timezone, certification, cycleInfo, isFirst, cycleType) {
+function drawDay(doc, driver, carrier, events, dateStr, timezone, certification, cycleInfo, isFirst, cycleType, dailySummary, speedProfile) {
   const W = doc.internal.pageSize.getWidth();
   const H = doc.internal.pageSize.getHeight();
   const M = 7; // margin
@@ -54,8 +55,19 @@ function drawDay(doc, driver, carrier, events, dateStr, timezone, certification,
   doc.setLineWidth(0.3); doc.line(M, y + 6, W - M, y + 6);
   y += 8;
 
-  // --- Header grid: 4 columns x 3 rows of label/value, no license/plate ---
-  const fields = [
+  // --- Header grid ---
+  // Block 1: 8 identity fields in 4 columns x 2 rows (no license/plate).
+  // Block 2 (mileage strip): Total Miles (always) + Beg./End. Odometer ONLY
+  // when entered + Shipping/BOL, sized to fill the full width so an absent
+  // optional odometer never leaves an empty box on the export. Total Miles is
+  // required and always appears, populated from DailySummary.miles (falling back
+  // to the deterministic driving-hours estimate when no value is stored yet).
+  const ds = dailySummary || {};
+  const fbMiles = computeDailyMiles(events, dateStr, timezone, speedProfile);
+  const totalMilesVal = (ds.miles != null && Number.isFinite(ds.miles))
+    ? String(Math.round(ds.miles))
+    : (Number.isFinite(fbMiles) ? String(Math.round(fbMiles)) : '0');
+  const identityFields = [
     ['Driver', driver?.legal_name || ''],
     ['Date', dateStr],
     ['Carrier', carrier?.carrier_name || ''],
@@ -64,31 +76,34 @@ function drawDay(doc, driver, carrier, events, dateStr, timezone, certification,
     ['Main Office', carrier?.main_office_address || ''],
     ['Tractor / Unit #', events.flatMap(e => e.tractor_number ? [e.tractor_number] : []).slice(-1)[0] || ''],
     ['Trailer #', [...new Set(events.map(e => e.trailer_numbers).filter(Boolean))].join(', ')],
-    ['Total Miles', ''],
-    ['Beg. Odometer', ''],
-    ['End. Odometer', ''],
-    ['Shipping / BOL', [...new Set(events.map(e => e.remark).filter(r => /bol|ship|commod/i.test(r || '')))].slice(0, 1)[0] || ''],
   ];
-  const hdrH = 16, hdrCols = 4, colW = PW / hdrCols;
-  doc.setLineWidth(0.2); doc.rect(M, y, PW, hdrH);
-  for (let c = 1; c < hdrCols; c++) doc.line(M + c * colW, y, M + c * colW, y + hdrH);
-  doc.line(M, y + hdrH / 2, M + PW, y + hdrH / 2); // mid line -> 4x... actually 2 rows of 4? we want 3 rows
-  // redraw: clear and make 3 rows
-  doc.setFillColor(255, 255, 255); doc.rect(M, y, PW, hdrH, 'F');
-  doc.setLineWidth(0.2); doc.rect(M, y, PW, hdrH);
-  const rowsN = 3, rhH = hdrH / rowsN;
-  for (let c = 1; c < hdrCols; c++) doc.line(M + c * colW, y, M + c * colW, y + hdrH);
-  for (let r = 1; r < rowsN; r++) doc.line(M, y + r * rhH, M + PW, y + r * rhH);
-  doc.setFontSize(6.5);
-  fields.forEach((f, i) => {
-    const c = i % hdrCols, r = Math.floor(i / hdrCols);
-    const x = M + c * colW + 1.5, yy = y + r * rhH;
-    doc.setFont(undefined, 'bold'); doc.text(String(f[0]).toUpperCase(), x, yy + 2.6);
-    doc.setFont(undefined, 'normal');
-    const val = String(f[1] || '');
-    doc.text(doc.splitTextToSize(val, colW - 3), x, yy + 5.0);
-  });
-  y += hdrH + 2.5;
+  const mileageFields = [['Total Miles', totalMilesVal]];
+  if (ds.begin_odometer != null && Number.isFinite(ds.begin_odometer)) mileageFields.push(['Beg. Odometer', String(ds.begin_odometer)]);
+  if (ds.end_odometer != null && Number.isFinite(ds.end_odometer)) mileageFields.push(['End. Odometer', String(ds.end_odometer)]);
+  mileageFields.push(['Shipping / BOL', [...new Set(events.map(e => e.remark).filter(r => /bol|ship|commod/i.test(r || '')))].slice(0, 1)[0] || '']);
+
+  const drawFieldGrid = (fields, x0, y0, w, cols, rh) => {
+    const colW = w / cols;
+    const rowsN = Math.ceil(fields.length / cols);
+    const h = rowsN * rh;
+    doc.setLineWidth(0.2); doc.rect(x0, y0, w, h);
+    for (let c = 1; c < cols; c++) doc.line(x0 + c * colW, y0, x0 + c * colW, y0 + h);
+    for (let r = 1; r < rowsN; r++) doc.line(x0, y0 + r * rh, x0 + w, y0 + r * rh);
+    doc.setFontSize(6.5);
+    fields.forEach((f, i) => {
+      const c = i % cols, r = Math.floor(i / cols);
+      const x = x0 + c * colW + 1.5, yy = y0 + r * rh;
+      doc.setFont(undefined, 'bold'); doc.text(String(f[0]).toUpperCase(), x, yy + 2.6);
+      doc.setFont(undefined, 'normal');
+      doc.text(doc.splitTextToSize(String(f[1] || ''), colW - 3), x, yy + 5.0);
+    });
+    return h;
+  };
+  const hdrRowH = 7;
+  const idH = drawFieldGrid(identityFields, M, y, PW, 4, hdrRowH);
+  y += idH + 1.5;
+  const milH = drawFieldGrid(mileageFields, M, y, PW, mileageFields.length, hdrRowH);
+  y += milH + 2.5;
 
   // --- 24-hour graph (main focus) ---
   // Fixed sufficient label column so "ON DUTY — NOT DRIVING" never overlaps the
@@ -200,10 +215,11 @@ function drawDay(doc, driver, carrier, events, dateStr, timezone, certification,
 
 export function generateLogsPdf(driver, carrier, events, dateStrs, timezone, certifications, cycleType, options = {}) {
   const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
+  const dsByDate = new Map((options.dailySummaries || []).map(d => [d.log_date, d]));
   dateStrs.forEach((dateStr, i) => {
     const cert = certifications.find(c => c.log_date === dateStr && !c.is_superseded);
     const cycle = computeCycle(events, cycleType, timezone, new Date(dateStr + 'T12:00:00'));
-    drawDay(doc, driver, carrier, events, dateStr, timezone, cert, cycle, i === 0, cycleType);
+    drawDay(doc, driver, carrier, events, dateStr, timezone, cert, cycle, i === 0, cycleType, dsByDate.get(dateStr), options.speedProfile);
   });
 
   if (options.includeDvir && options.dvirs && options.dvirs.length) {

@@ -127,6 +127,85 @@ export async function saveProposalMiles(dateStr, miles, mileageEdited = false) {
     : saveAutoMilesIfNotManual(dateStr, miles);
 }
 
+// All Driving legs for a log day. A Driving leg's origin is its own city/state;
+// its destination is the next event's city/state (any status). Legs missing an
+// origin or destination are returned but flagged unroutable so the caller can
+// mark the suggestion incomplete instead of inventing mileage.
+export function getDrivingLegs(events, dateStr, tz) {
+  const evs = dayEvents(events, dateStr, tz);
+  const legs = [];
+  for (let i = 0; i < evs.length; i++) {
+    const e = evs[i];
+    if (e.duty_status !== 'DRIVING') continue;
+    const origin = [e.city, e.state].filter(Boolean).join(', ').trim();
+    let destination = '';
+    for (let j = i + 1; j < evs.length; j++) {
+      const dest = [evs[j].city, evs[j].state].filter(Boolean).join(', ').trim();
+      if (dest) { destination = dest; break; }
+    }
+    legs.push({ origin, destination, routable: !!(origin && destination) });
+  }
+  return legs;
+}
+
+// In-session cache keyed by log date + the routable-legs signature, so opening
+// a day again does not re-route (and re-spend integration credits). Invalidates
+// automatically when the day's Driving legs materially change.
+const suggestedMilesCache = new Map();
+const legsSignature = (legs) => legs.filter(l => l.routable).map(l => `${l.origin}->${l.destination}`).join(';;');
+
+// Real road miles for the day: routes every Driving leg that has both an origin
+// and a destination through the tripEstimate provider, sums the returned miles,
+// and marks the result incomplete when any leg was excluded or failed to route.
+export async function computeSuggestedMiles(events, dateStr, tz) {
+  const legs = getDrivingLegs(events, dateStr, tz);
+  const routable = legs.filter(l => l.routable);
+  if (!routable.length) return { miles: 0, incomplete: legs.length > 0, legsCount: legs.length, routedCount: 0, available: false };
+
+  const cacheKey = `${dateStr}::${legsSignature(routable)}`;
+  const cached = suggestedMilesCache.get(cacheKey);
+  if (cached) return { ...cached, cached: true };
+
+  let total = 0, routedCount = 0;
+  for (const leg of routable) {
+    try {
+      const res = await base44.functions.invoke('tripEstimate', { origin: leg.origin, destination: leg.destination });
+      if (res && typeof res.miles === 'number' && Number.isFinite(res.miles)) { total += res.miles; routedCount++; }
+    } catch (e) { /* leg unroutable — counted as incomplete below */ }
+  }
+  const result = {
+    miles: Math.round(total),
+    incomplete: routedCount < routable.length || routable.length < legs.length,
+    legsCount: legs.length,
+    routedCount,
+    available: routedCount > 0,
+  };
+  suggestedMilesCache.set(cacheKey, result);
+  return result;
+}
+
+// Persist optional Begin/End Odometer readings without touching Total Miles or
+// its source. Creates a record only when the driver actually entered a value.
+export async function saveOdometers(dateStr, beginOdometer, endOdometer) {
+  const b = beginOdometer === '' || beginOdometer == null ? null : Number(beginOdometer);
+  const e = endOdometer === '' || endOdometer == null ? null : Number(endOdometer);
+  if ((b == null || Number.isNaN(b)) && (e == null || Number.isNaN(e)) && !(await getDailyMiles(dateStr))) return null;
+  const patch = {
+    begin_odometer: b == null || Number.isNaN(b) ? null : b,
+    end_odometer: e == null || Number.isNaN(e) ? null : e,
+  };
+  const existing = await getDailyMiles(dateStr);
+  if (existing && existing.id) return await base44.entities.DailySummary.update(existing.id, patch);
+  return await base44.entities.DailySummary.create({ log_date: dateStr, ...patch });
+}
+
+export async function getAllDailySummaries() {
+  try {
+    const list = await base44.entities.DailySummary.list('-created_date', 400);
+    return list || [];
+  } catch (e) { return []; }
+}
+
 export async function getFuelReceipts(daysBack = 30) {
   try {
     const since = new Date(Date.now() - (daysBack + 1) * 24 * H);
