@@ -5,6 +5,7 @@ import { getAppSettings, getAIUsage } from '@/lib/driverData';
 import { computeHOS, fmtDur, startOfDayInTz, dateKeyInTz } from '@/lib/hosEngine';
 import { whatCanIDo, computeProposedHOS, earliestLegalEta } from '@/lib/logAssistant';
 import { addRouteWarning, enrichProposalMileage, fetchRoute, truckEtaHours, DEFAULT_SPEED_PROFILE } from '@/lib/proposalValidation';
+import { reconstructDrivingDurations } from '@/lib/drivingDurationReconstruction';
 import { saveProposalMiles } from '@/lib/tripSync';
 import { insertEventsBatch, editEvent, replaceRangeEvents } from '@/lib/timelineWriter';
 import { parseVoiceCommand } from '@/lib/voiceParser';
@@ -53,6 +54,7 @@ export default function LogAssistant() {
   const [usage, setUsage] = useState({ used: 0, allowance: 20 });
   const [now, setNow] = useState(new Date());
   const [routeWarning, setRouteWarning] = useState(null);
+  const [reconstructionConflicts, setReconstructionConflicts] = useState([]);
   // In-flight Apply guard: a single Apply flow may not be re-entered. The
   // ProposalReview button also locks visually; this ref defends against any
   // other caller invoking applyProposal/applyReplaceDay while one is running.
@@ -78,16 +80,23 @@ export default function LogAssistant() {
   );
 
   const prepareProposal = async (value) => {
-    if (!value?.proposed_events?.length) { setRouteWarning(null); return value; }
+    if (!value?.proposed_events?.length) { setRouteWarning(null); setReconstructionConflicts([]); return value; }
     const enriched = await enrichProposalMileage(value.proposed_events, { routingProvider: fetchRoute, speedProfile, now: new Date() });
-    const firstStart = enriched.events[0]?.start_timestamp;
+    // Route-aware reconstruction: replace AI-inferred Driving durations with
+    // routed truck-realistic travel time and cascade-shift subsequent inferred
+    // events (explicit driver timestamps are never moved). Runs at proposal time
+    // only; routed mileage is never reduced to fit an old inferred time. Reuses
+    // the routes already fetched by enrichment — no extra routing calls.
+    const { events: reconstructed, conflicts: reconstructionConflicts } = reconstructDrivingDurations(enriched.events, enriched.legs, { now: new Date() });
+    const firstStart = reconstructed[0]?.start_timestamp;
     const isFuture = firstStart ? new Date(firstStart) > new Date() : false;
-    const warning = await addRouteWarning(enriched.events, { routingProvider: fetchRoute, speedProfile, now: new Date(), isFuture, legs: enriched.legs });
+    const warning = await addRouteWarning(reconstructed, { routingProvider: fetchRoute, speedProfile, now: new Date(), isFuture });
     setRouteWarning(warning);
-    return { ...value, proposed_events: enriched.events };
+    setReconstructionConflicts(reconstructionConflicts);
+    return { ...value, proposed_events: reconstructed };
   };
 
-  const resetResults = () => { setProposal(null); setPastResult(null); setFutureResult(null); setError(''); setRouteWarning(null); };
+  const resetResults = () => { setProposal(null); setPastResult(null); setFutureResult(null); setError(''); setRouteWarning(null); setReconstructionConflicts([]); };
 
   // ---------------------------------------------------------------------------
   // TELL tab: deterministic voice/text command parser runs FIRST (no quota).
@@ -404,6 +413,7 @@ export default function LogAssistant() {
               onCancel={() => setProposal(null)}
               onResolveClarification={resolveClarification}
               routeWarning={routeWarning}
+              reconstructionConflicts={reconstructionConflicts}
               explicitGuard={proposal.explicit_guard}
               narrative={proposal.original_input}
               provenance={{ summary: proposal.interpretation, location_confirmations: proposal.location_confirmations }}

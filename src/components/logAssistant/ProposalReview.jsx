@@ -13,7 +13,7 @@ import TimezoneIndicator from '@/components/TimezoneIndicator';
 const STATUS_LABELS = { OFF_DUTY: 'Off Duty', SLEEPER_BERTH: 'Sleeper', DRIVING: 'Driving', ON_DUTY: 'On Duty' };
 const STATUSES = ['OFF_DUTY', 'SLEEPER_BERTH', 'DRIVING', 'ON_DUTY'];
 
-export default function ProposalReview({ existing, proposed, cycleType, tz, onApply, onApplyReplace, onCancel, interpretation, clarifications, onResolveClarification, routeWarning, intent, targetDate, explicitGuard, narrative, provenance, enteredPriorHistory }) {
+export default function ProposalReview({ existing, proposed, cycleType, tz, onApply, onApplyReplace, onCancel, interpretation, clarifications, onResolveClarification, routeWarning, reconstructionConflicts = [], intent, targetDate, explicitGuard, narrative, provenance, enteredPriorHistory }) {
   const isReplaceDay = intent === 'replace_day';
   const validationExisting = useMemo(() => {
     if (!isReplaceDay || !targetDate) return existing;
@@ -45,8 +45,9 @@ export default function ProposalReview({ existing, proposed, cycleType, tz, onAp
   const warnings = useMemo(() => {
     const ws = [...validation.warnings];
     if (routeWarning) ws.push(routeWarning);
+    if (reconstructionConflicts.length) ws.push(...reconstructionConflicts);
     return ws;
-  }, [validation.warnings, routeWarning]);
+  }, [validation.warnings, routeWarning, reconstructionConflicts]);
 
   const blocking = hasBlocking(warnings);
   const violations = validation.violations;
