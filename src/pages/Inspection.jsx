@@ -1,6 +1,7 @@
 import { useState, useMemo, useEffect } from 'react';
 import { useDriverData } from '@/hooks/useDriverData';
-import { getDailyGrid, computeCycle, computeHOS, fmtDur, dateKeyInTz } from '@/lib/hosEngine';
+import { getDailyGrid, computeCycle, computeHOS, hasSufficientCycleHistory, dateKeyInTz } from '@/lib/hosEngine';
+import { deriveHosDisplay } from '@/lib/proposalValidation';
 import RodsGraphEditor from '@/components/rodsEditor/RodsGraphEditor';
 import LogExportSheet from '@/components/LogExportSheet';
 import { getCertifications, getAllEvents, getDocuments } from '@/lib/driverData';
@@ -53,7 +54,9 @@ export default function Inspection() {
   const selectedKey = dayKeys[Math.max(0, Math.min(7, dayOffset + 7))];
   const grid = useMemo(() => getDailyGrid(events, selectedKey, tz), [events, selectedKey, tz]);
   const cycle = useMemo(() => computeCycle(events, cycleType, tz, new Date(selectedKey + 'T12:00:00')), [events, cycleType, tz, selectedKey]);
-  const hosForDay = useMemo(() => computeHOS(events, cycleType, tz, grid.dayEnd, { historyComplete: true }), [events, cycleType, tz, grid.dayEnd]);
+  const historyComplete = useMemo(() => hasSufficientCycleHistory(events, cycleType, profile?.entered_prior_history, tz, grid.dayEnd), [events, cycleType, profile, tz, grid.dayEnd]);
+  const hosForDay = useMemo(() => computeHOS(events, cycleType, tz, grid.dayEnd, { historyComplete }), [events, cycleType, tz, grid.dayEnd, historyComplete]);
+  const hosDisplay = useMemo(() => deriveHosDisplay(hosForDay, historyComplete), [hosForDay, historyComplete]);
   const cert = certifications.find(c => c.log_date === selectedKey && !c.is_superseded);
 
   const allDates = useMemo(() => Array.from(new Set((events || []).map(e => e.log_date).filter(Boolean))).sort(), [events]);
@@ -105,7 +108,10 @@ export default function Inspection() {
         <div className="font-semibold mb-1">{cycle?.cycleLimit || (cycleType === '60_7' ? 60 : 70)}-Hour / {cycle?.cycleDays || (cycleType === '60_7' ? 7 : 8)}-Day Recap</div>
         <div className="grid grid-cols-2 gap-1 text-xs text-slate-300">
           <div>Used: {fmtHM(cycle?.cycleUsedHours)}</div>
-          <div>Available: {fmtHM(cycle?.cycleRemainingHours)}</div>
+          <div>
+            <div>Available: {hosDisplay.cycle.value}</div>
+            {hosDisplay.cycle.note && <div className="text-slate-500 text-[11px]">{hosDisplay.cycle.note}</div>}
+          </div>
           <div>Today: {fmtHM(cycle?.dailyTotals?.[cycle.dailyTotals.length - 1]?.onDutyHours)}</div>
           <div>Back tomorrow: {fmtHM(cycle?.returningTomorrowHours)}</div>
         </div>
@@ -115,8 +121,14 @@ export default function Inspection() {
       <div className="bg-slate-800 rounded-xl p-3 mb-3 text-sm">
         <div className="font-semibold mb-1">HOS Clocks (end of day)</div>
         <div className="grid grid-cols-2 gap-1 text-xs text-slate-300">
-          <div>Driving remaining: {fmtDur(hosForDay.driving.drivingRemainingMs)}</div>
-          <div>14-hr window remaining: {fmtDur(hosForDay.window14.remainingMs)}</div>
+          <div>
+            Driving remaining: {hosDisplay.driving.value}
+            {hosDisplay.driving.note && <div className="text-slate-500 text-[11px]">{hosDisplay.driving.note}</div>}
+          </div>
+          <div>
+            14-hr window remaining: {hosDisplay.window14.value}
+            {hosDisplay.window14.note && <div className="text-slate-500 text-[11px]">{hosDisplay.window14.note}</div>}
+          </div>
           <div className="col-span-2 text-slate-400 pt-1">
             {hosForDay.split.status === 'active'
               ? 'Split sleeper active (optional) — 11-hr & 14-hr clocks recalculated from the qualifying pairing.'
