@@ -1,6 +1,6 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useLayoutEffect } from 'react';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
 import { Mic, Send, Square } from 'lucide-react';
 
 export default function AssistantInput({ onSend, disabled }) {
@@ -8,6 +8,15 @@ export default function AssistantInput({ onSend, disabled }) {
   const [transcript, setTranscript] = useState('');
   const [listening, setListening] = useState(false);
   const recRef = useRef(null);
+  const taRef = useRef(null);
+
+  // Auto-grow: start ~3 lines, cap ~6 lines, then scroll inside the composer.
+  useLayoutEffect(() => {
+    const ta = taRef.current;
+    if (!ta) return;
+    ta.style.height = 'auto';
+    ta.style.height = `${ta.scrollHeight}px`;
+  }, [input]);
 
   const startVoice = () => {
     const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
@@ -36,16 +45,25 @@ export default function AssistantInput({ onSend, disabled }) {
     if (ok !== false) { setInput(''); setTranscript(''); }
   };
 
+  // Desktop submit chord; on mobile Enter inserts a line so narratives can be
+  // composed without accidental submission.
+  const onKeyDown = (e) => {
+    if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); send(); }
+  };
+
   return (
-    <div className="rounded-xl border border-border bg-card p-3 mb-3">
-      <div className="flex gap-2">
-        <Input
-          value={input}
-          onChange={(e) => { setInput(e.target.value); setTranscript(''); }}
-          placeholder="Tell LogbookAI what happened or what you want to do…"
-          onKeyDown={(e) => e.key === 'Enter' && send()}
-          disabled={disabled}
-        />
+    <div className="rounded-xl border border-border bg-card p-3 mb-3 space-y-2">
+      <Textarea
+        ref={taRef}
+        value={input}
+        onChange={(e) => { setInput(e.target.value); setTranscript(''); }}
+        onKeyDown={onKeyDown}
+        placeholder="Tell LogbookAI what happened or what you want to do…"
+        disabled={disabled}
+        rows={3}
+        className="min-h-[72px] max-h-[150px] resize-none overflow-y-auto w-full"
+      />
+      <div className="flex justify-end gap-2">
         <Button aria-label={listening ? 'Stop voice input' : 'Start voice input'} variant="outline" onClick={listening ? stopVoice : startVoice} disabled={disabled}>
           {listening ? <Square className="w-4 h-4 text-error animate-pulse" /> : <Mic className="w-4 h-4" />}
         </Button>
