@@ -1,4 +1,5 @@
-import { getDailyGrid, fmtHours } from '@/lib/hosEngine';
+import { fmtHours } from '@/lib/hosEngine';
+import { getDisplayGrid } from '@/lib/timelineDisplay';
 import { validateTimeline } from '@/lib/timelineEngine';
 
 const STATUS_LABELS = {
@@ -20,7 +21,7 @@ const ROW_ORDER = ['OFF_DUTY', 'SLEEPER_BERTH', 'DRIVING', 'ON_DUTY'];
 
 export default function LogGraph({ events, dateStr, timezone, interactive = true, totalsOverride = null }) {
   const now = new Date();
-  const grid = getDailyGrid(events, dateStr, timezone, now);
+  const grid = getDisplayGrid(events, dateStr, timezone, now);
   const displayedTotals = totalsOverride || grid.totals;
   const displayedTotalHours = totalsOverride?.totalHours ?? grid.totalHours;
   const validation = validateTimeline(events, { dateStr, timezone, now });

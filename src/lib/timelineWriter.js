@@ -194,6 +194,35 @@ export async function changeStatus(newStatus, details = {}, allEvents = []) {
   const seen = new Set(ongoing.map(o => o.id));
   const allOngoing = [...ongoing, ...(dbOngoing || []).filter(d => d && !seen.has(d.id))];
 
+  // Same-status re-select guard: if the most recent ongoing event already equals
+  // the new status, do NOT end it and do NOT create a new event. Only fill blank
+  // fields on the existing ongoing record from provided details (original
+  // start_timestamp, duty_status, and is_ongoing=true are preserved). Stale
+  // older ongoing duplicates are still ended so the one-ongoing invariant holds.
+  if (allOngoing.length > 0) {
+    const mostRecent = allOngoing.slice().sort((a, b) =>
+      new Date(b.start_timestamp).getTime() - new Date(a.start_timestamp).getTime())[0];
+    if (mostRecent.duty_status === newStatus) {
+      const updates = [];
+      for (const o of allOngoing) {
+        if (o.id !== mostRecent.id) {
+          updates.push({ id: o.id, data: { end_timestamp: startTs, is_ongoing: false } });
+        }
+      }
+      const patch = {};
+      const fillFields = ['city', 'state', 'remark', 'tractor_number', 'trailer_numbers'];
+      for (const f of fillFields) {
+        const v = details[f];
+        if (v != null && v !== '' && !mostRecent[f]) patch[f] = v;
+      }
+      if (Object.keys(patch).length > 0) updates.push({ id: mostRecent.id, data: patch });
+      if (updates.length > 0) {
+        await applyTimelineOps({ creates: [], updates, deletes: [] }, allEvents, { reason: 'Change duty status' });
+      }
+      return mostRecent;
+    }
+  }
+
   const updates = allOngoing.map(o => ({ id: o.id, data: { end_timestamp: startTs, is_ongoing: false } }));
 
   const startMs = new Date(startTs).getTime();

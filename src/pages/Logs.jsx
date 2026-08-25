@@ -1,7 +1,8 @@
 import { useState, useMemo } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useDriverData } from '@/hooks/useDriverData';
-import { getDailyGrid, computeCycle, dateKeyInTz, fmtHours } from '@/lib/hosEngine';
+import { computeCycle, dateKeyInTz, fmtHours } from '@/lib/hosEngine';
+import { getDisplayGrid } from '@/lib/timelineDisplay';
 import RodsGraphEditor from '@/components/rodsEditor/RodsGraphEditor';
 import { getCertifications } from '@/lib/driverData';
 import { base44 } from '@/api/base44Client';
@@ -61,7 +62,7 @@ export default function Logs() {
   }, [location.search]);
 
   const dateStr = useMemo(() => dateKeyInTz(selectedDate, tz), [selectedDate, tz]);
-  const grid = useMemo(() => getDailyGrid(events, dateStr, tz), [events, dateStr, tz]);
+  const grid = useMemo(() => getDisplayGrid(events, dateStr, tz), [events, dateStr, tz]);
   const cycle = useMemo(() => computeCycle(events, cycleType, tz, selectedDate), [events, cycleType, tz, selectedDate]);
 
   const cert = certifications.find(c => c.log_date === dateStr && !c.is_superseded);
