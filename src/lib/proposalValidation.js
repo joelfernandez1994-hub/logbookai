@@ -16,7 +16,7 @@
 
 import {
   computeHOS, runComplianceCheck, normalizeEvents, compute30MinBreak,
-  dateKeyInTz,
+  dateKeyInTz, hasSufficientCycleHistory, fmtDur,
 } from './hosEngine';
 import { mergeProposedEvents, collectViolations, distanceReasonableness } from './logAssistant';
 import { startOfDayInTz } from './timelineEngine';
@@ -277,7 +277,7 @@ export function recommendBreakInsertion(proposed, now = new Date()) {
 // provider is available; both return the same warning shape.
 // ---------------------------------------------------------------------------
 export function validateProposal(existing, proposed, opts = {}) {
-  const { cycleType = '70_8', tz = 'UTC', now = new Date(), isFuture = null } = opts;
+  const { cycleType = '70_8', tz = 'UTC', now = new Date(), isFuture = null, enteredPriorHistory = false } = opts;
   const t = now instanceof Date ? now : new Date(now);
   const merged = mergeProposedEvents(existing, proposed, t);
 
@@ -325,9 +325,28 @@ export function validateProposal(existing, proposed, opts = {}) {
   for (const p of (proposed || [])) {
     if (p.end_timestamp) { const e = new Date(p.end_timestamp); if (e > evalNow) evalNow = new Date(e); }
   }
-  const hos = computeHOS(merged, cycleType, tz, evalNow, { historyComplete: true });
-  const issues = runComplianceCheck(merged, cycleType, tz, evalNow, { historyComplete: true });
+  const historyComplete = hasSufficientCycleHistory(merged, cycleType, enteredPriorHistory, tz, evalNow);
+  const hos = computeHOS(merged, cycleType, tz, evalNow, { historyComplete });
+  const issues = runComplianceCheck(merged, cycleType, tz, evalNow, { historyComplete });
   const violations = collectViolations(hos, issues);
+
+  // Surface canonical structural-validation failures (gaps, same-start
+  // conflicts, negative durations, daily-total violations) already detected
+  // by validateTimeline inside computeHOS as BLOCKING warnings, so the existing
+  // two-gate Apply lock catches them. The "--" HOS display is NOT itself a
+  // blocker — the canonical structural invalidity is.
+  if (!hos.calculable && hos.validity?.issues?.length) {
+    for (const issue of hos.validity.issues) {
+      if (issue.severity === 'blocking') {
+        warnings.push({
+          type: issue.type || 'structural',
+          severity: 'blocking',
+          title: 'TIMELINE STRUCTURE',
+          message: issue.message,
+        });
+      }
+    }
+  }
 
   const br = breakStatus(merged, evalNow);
   const future = isFuture != null ? isFuture : ((proposed || [])[0]?.start_timestamp ? new Date((proposed || [])[0].start_timestamp) > t : false);
@@ -343,7 +362,7 @@ export function validateProposal(existing, proposed, opts = {}) {
     });
   }
 
-  return { merged, warnings, violations, hos, break: br, pretrip, evalNow, isFuture: future };
+  return { merged, warnings, violations, hos, break: br, pretrip, evalNow, isFuture: future, historyComplete };
 }
 
 // Add async route-reasonableness results for every proposed driving segment.
@@ -484,4 +503,44 @@ export function isBlocking(w) {
 }
 export function hasBlocking(warnings = []) {
   return warnings.some(isBlocking);
+}
+
+// ---------------------------------------------------------------------------
+// THREE-STATE HOS DISPLAY (canonical, testable).
+// Mirrors Today / Compliance / What-Can-I-Do / Trip: real values when the
+// timeline is calculable, real 0 (with the deterministic violation shown
+// separately by the caller) when a clock is genuinely exhausted, and "--"
+// when HOS is unavailable/unverified. Never presents the engine's
+// uncalculable placeholder 0 as confirmed exhaustion.
+//   state ∈ {'unavailable','unverified','real','exhausted'}
+// ---------------------------------------------------------------------------
+export function deriveHosDisplay(hos, historyComplete) {
+  const calculable = !!(hos?.calculable && hos?.validity?.valid);
+  const unavailable = { value: '--', note: 'Unavailable until timeline is valid', state: 'unavailable' };
+  if (!calculable) {
+    return { calculable: false, driving: unavailable, window14: unavailable, break: unavailable, cycle: unavailable };
+  }
+  const driving = (() => {
+    const rem = hos.driving.drivingRemainingMs;
+    if (!hos.driving.applicable) return { value: fmtDur(rem), note: 'No tour started yet', state: 'real' };
+    if (rem <= 0) return { value: fmtDur(0), note: 'Exhausted — 11-hr limit', state: 'exhausted' };
+    return { value: fmtDur(rem), note: '11-hr limit', state: 'real' };
+  })();
+  const window14 = (() => {
+    const rem = hos.window14.remainingMs;
+    if (!hos.window14.applicable) return { value: fmtDur(rem), note: 'No tour started yet', state: 'real' };
+    if (rem <= 0) return { value: fmtDur(0), note: 'Window closed', state: 'exhausted' };
+    return { value: fmtDur(rem), note: '14-hr window', state: 'real' };
+  })();
+  const breakStatus = (() => {
+    const br = hos.break30 || {};
+    return { value: br.satisfied ? 'Satisfied' : (br.breakRequired ? 'Required' : 'Not yet'), note: '', state: 'real' };
+  })();
+  const cycle = (() => {
+    if (!historyComplete) return { value: '--', note: 'Cycle unverified — prior history needed', state: 'unverified' };
+    const rem = hos.cycle.cycleRemainingHours;
+    if (rem <= 0) return { value: '0.0 hr', note: `${hos.cycle.cycleUsedHours.toFixed(1)} used`, state: 'exhausted' };
+    return { value: `${rem.toFixed(1)} hr`, note: `${hos.cycle.cycleUsedHours.toFixed(1)} used`, state: 'real' };
+  })();
+  return { calculable: true, driving, window14, break: breakStatus, cycle };
 }

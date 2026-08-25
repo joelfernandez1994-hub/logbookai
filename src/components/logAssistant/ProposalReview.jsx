@@ -1,8 +1,8 @@
 import { useMemo, useState, useEffect } from 'react';
-import { validateProposal, hasBlocking, recommendBreakInsertion, buildPreTripEvent, computeProposalTotals } from '@/lib/proposalValidation';
+import { validateProposal, hasBlocking, recommendBreakInsertion, buildPreTripEvent, computeProposalTotals, deriveHosDisplay } from '@/lib/proposalValidation';
 import { replaceDayRange } from '@/lib/aiLayer';
 import { highestSeverity, fmtClockShort } from '@/lib/logAssistant';
-import { fmtDur, dateKeyInTz } from '@/lib/hosEngine';
+import { dateKeyInTz } from '@/lib/hosEngine';
 import LogGraph from '@/components/LogGraph';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -13,7 +13,7 @@ import TimezoneIndicator from '@/components/TimezoneIndicator';
 const STATUS_LABELS = { OFF_DUTY: 'Off Duty', SLEEPER_BERTH: 'Sleeper', DRIVING: 'Driving', ON_DUTY: 'On Duty' };
 const STATUSES = ['OFF_DUTY', 'SLEEPER_BERTH', 'DRIVING', 'ON_DUTY'];
 
-export default function ProposalReview({ existing, proposed, cycleType, tz, onApply, onApplyReplace, onCancel, interpretation, clarifications, onResolveClarification, routeWarning, intent, targetDate, explicitGuard, narrative, provenance }) {
+export default function ProposalReview({ existing, proposed, cycleType, tz, onApply, onApplyReplace, onCancel, interpretation, clarifications, onResolveClarification, routeWarning, intent, targetDate, explicitGuard, narrative, provenance, enteredPriorHistory }) {
   const isReplaceDay = intent === 'replace_day';
   const validationExisting = useMemo(() => {
     if (!isReplaceDay || !targetDate) return existing;
@@ -39,8 +39,8 @@ export default function ProposalReview({ existing, proposed, cycleType, tz, onAp
 
   // MANDATORY validation pipeline (deterministic). routeWarning supplied async by parent.
   const validation = useMemo(
-    () => validateProposal(validationExisting, events, { cycleType, tz, now: evalNow, explicitGuard, narrative, provenance }),
-    [validationExisting, events, cycleType, tz, evalNow, explicitGuard, narrative, provenance]
+    () => validateProposal(validationExisting, events, { cycleType, tz, now: evalNow, explicitGuard, narrative, provenance, enteredPriorHistory }),
+    [validationExisting, events, cycleType, tz, evalNow, explicitGuard, narrative, provenance, enteredPriorHistory]
   );
   const warnings = useMemo(() => {
     const ws = [...validation.warnings];
@@ -259,12 +259,24 @@ export default function ProposalReview({ existing, proposed, cycleType, tz, onAp
         </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-2 mb-3 text-xs">
-        <div className="rounded border border-border p-2"><div className="text-muted-foreground">Driving Remaining</div><div className="font-semibold text-card-foreground">{fmtDur(hos.driving.drivingRemainingMs)}</div></div>
-        <div className="rounded border border-border p-2"><div className="text-muted-foreground">14-Hour Window</div><div className="font-semibold text-card-foreground">{fmtDur(hos.window14.remainingMs)}</div></div>
-        <div className="rounded border border-border p-2"><div className="text-muted-foreground">30-Min Break</div><div className="font-semibold text-card-foreground">{validation.break.satisfied ? 'Satisfied' : (validation.break.required ? 'Required' : 'Not yet')}</div></div>
-        <div className="rounded border border-border p-2"><div className="text-muted-foreground">Cycle {hos.cycle.cycleLimit}/{hos.cycle.cycleDays}</div><div className="font-semibold text-card-foreground">{hos.cycle.cycleRemainingHours.toFixed(1)} hr</div></div>
-      </div>
+      {(() => {
+        const d = deriveHosDisplay(hos, validation.historyComplete);
+        const card = (label, c) => (
+          <div className="rounded border border-border p-2">
+            <div className="text-muted-foreground">{label}</div>
+            <div className="font-semibold text-card-foreground">{c.value}</div>
+            {c.note && <div className="text-[10px] text-muted-foreground mt-0.5">{c.note}</div>}
+          </div>
+        );
+        return (
+          <div className="grid grid-cols-2 gap-2 mb-3 text-xs">
+            {card('Driving Remaining', d.driving)}
+            {card('14-Hour Window', d.window14)}
+            {card('30-Min Break', d.break)}
+            {card(`Cycle ${hos.cycle.cycleLimit}/${hos.cycle.cycleDays}`, d.cycle)}
+          </div>
+        );
+      })()}
 
       <div className="flex flex-wrap gap-2">
         <Button data-testid="apply-proposal" className="flex-1" disabled={blocking || applying} onClick={handleApply}>

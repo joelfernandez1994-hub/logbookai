@@ -407,6 +407,7 @@ export default function LogAssistant() {
               explicitGuard={proposal.explicit_guard}
               narrative={proposal.original_input}
               provenance={{ summary: proposal.interpretation, location_confirmations: proposal.location_confirmations }}
+              enteredPriorHistory={profile?.entered_prior_history}
             />
           )}
           {showProposal && !isQuestion && !canApply && (
