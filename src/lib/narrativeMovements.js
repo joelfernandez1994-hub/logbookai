@@ -20,31 +20,51 @@
 function normCity(v) { return String(v == null ? '' : v).trim().toLowerCase(); }
 function normState(v) { return String(v == null ? '' : v).trim().toUpperCase(); }
 
-// "drove from A, ST to B, ST" — full origin+destination capture.
-const FROM_TO_RE = /\bdrove\s+from\s+([A-Z][A-Za-z.'-]+(?:\s+[A-Z][A-Za-z.'-]+){0,2})(?:,\s*([A-Z]{2}))?\s+to\s+([A-Z][A-Za-z.'-]+(?:\s+[A-Za-z.'-]+){0,2})(?:,\s*([A-Z]{2}))?\b/gi;
+// Capture a Capitalized city (1–3 words) optionally followed by ", ST". This
+// regex is case-SENSITIVE (no `i` flag) so lowercase connectors ("and", "did",
+// "for") terminate the match — unlike the trigger regexes below which are
+// case-insensitive to catch "Drove"/"DROVE".
+const CITY_RE = /^([A-Z][A-Za-z.'-]+(?:\s+[A-Z][A-Za-z.'-]+){0,2})(?:,\s*([A-Z]{2}))?\b/;
 
-// "... to B" after a driving verb — destination-only capture.
-const TO_RE = /\b(?:drove|continued|headed|left|made\s+it)\b(?:\s+(?:driving|for|it|on))?\s+to\s+([A-Z][A-Za-z.'-]+(?:\s+[A-Za-z.'-]+){0,2})(?:,\s*([A-Z]{2}))?\b/gi;
+function captureCityAt(str) {
+  const m = String(str || '').match(CITY_RE);
+  if (!m) return null;
+  return { city: m[1].trim(), state: (m[2] || '').trim() };
+}
+
+// Case-insensitive triggers (verbs), used only to LOCATE the movement; the
+// city itself is captured case-sensitively via captureCityAt.
+const FROM_TRIGGER = /\bdrove\s+from\s+/gi;
+const TO_TRIGGER = /\b(?:drove|continued|headed|left|made\s+it)\b(?:\s+(?:driving|for|it|on))?\s+to\s+/gi;
 
 export function extractDescribedMovements(narrative, provenance = {}) {
   const text = String(narrative || '');
   const moves = [];
 
   if (text) {
-    for (const m of text.matchAll(FROM_TO_RE)) {
-      moves.push({
-        from: { city: m[1].trim(), state: (m[2] || '').trim() },
-        to: { city: m[3].trim(), state: (m[4] || '').trim() },
-        evidence: 'regex',
-      });
+    // "drove from <Origin> to <Dest>"
+    for (const m of text.matchAll(FROM_TRIGGER)) {
+      const afterFrom = text.slice(m.index + m[0].length);
+      const origin = captureCityAt(afterFrom);
+      if (!origin || !origin.city) continue;
+      const originText = origin.city + (origin.state ? ', ' + origin.state : '');
+      const originStart = afterFrom.indexOf(originText);
+      if (originStart < 0) continue;
+      const rest = afterFrom.slice(originStart + originText.length);
+      const toMatch = rest.match(/^\s+to\s+/i);
+      if (!toMatch) continue;
+      const dest = captureCityAt(rest.slice(toMatch[0].length));
+      if (dest && dest.city) moves.push({ from: origin, to: dest, evidence: 'regex' });
     }
+    // "... to <Dest>" after a driving verb (destination-only)
     const destSeen = new Set(moves.map(mv => normCity(mv.to.city)));
-    for (const m of text.matchAll(TO_RE)) {
-      const to = { city: m[1].trim(), state: (m[2] || '').trim() };
-      const key = normCity(to.city);
-      if (!key || destSeen.has(key)) continue;
+    for (const m of text.matchAll(TO_TRIGGER)) {
+      const dest = captureCityAt(text.slice(m.index + m[0].length));
+      if (!dest || !dest.city) continue;
+      const key = normCity(dest.city);
+      if (destSeen.has(key)) continue;
       destSeen.add(key);
-      moves.push({ from: null, to, evidence: 'regex' });
+      moves.push({ from: null, to: dest, evidence: 'regex' });
     }
   }
   if (moves.length) return moves;
@@ -53,9 +73,10 @@ export function extractDescribedMovements(narrative, provenance = {}) {
   // found nothing — use the AI's own interpretation summary / location
   // confirmations to detect a described city transition.
   const summary = String(provenance.summary || provenance.interpretation || '');
-  const sm = summary.match(/\b(?:drove|driving|continued|headed)\b[^.]*?\bto\s+([A-Z][A-Za-z.'-]+(?:\s+[A-Za-z.'-]+){0,2})(?:,\s*([A-Z]{2}))?/i);
+  const sm = summary.match(/\b(?:drove|driving|continued|headed)\b[^.]*?\bto\s+/i);
   if (sm) {
-    moves.push({ from: null, to: { city: sm[1].trim(), state: (sm[2] || '').trim() }, evidence: 'ai_provenance' });
+    const dest = captureCityAt(summary.slice(sm.index + sm[0].length));
+    if (dest && dest.city) moves.push({ from: null, to: dest, evidence: 'ai_provenance' });
   }
   const confirms = Array.isArray(provenance.location_confirmations) ? provenance.location_confirmations : [];
   for (const c of confirms) {
