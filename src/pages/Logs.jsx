@@ -105,7 +105,7 @@ export default function Logs() {
       } else {
         res = await insertEvent(events, {
           ...data,
-          log_date: new Date(data.start_timestamp).toISOString().slice(0, 10),
+          log_date: dateKeyInTz(data.start_timestamp, tz),
           is_ongoing: false,
           method_of_creation: 'Manual',
         }, { editedBy: profile?.legal_name, reason: 'Manual add', carrierName: carrier?.carrier_name });
@@ -225,7 +225,7 @@ export default function Logs() {
 
       <EventEditor open={!!editing || adding} event={editing} prefill={prefill} saving={saving} saveError={saveError}
         onClose={() => { setEditing(null); setAdding(false); setPrefill(null); setSaveError(''); if (location.search) navigate('/logs', { replace: true }); }}
-        onSave={saveEvent} tz={tz} carrier={carrier} equipment={equipment} isCertified={isCertified} />
+        onSave={saveEvent} tz={tz} carrier={carrier} equipment={equipment} isCertified={isCertified} dateStr={dateStr} />
 
       <Dialog open={confirmClear} onOpenChange={(o) => !clearing && setConfirmClear(o)}>
         <DialogContent className="max-w-md">
@@ -245,11 +245,11 @@ export default function Logs() {
   );
 }
 
-function EventEditor({ open, event, prefill, onClose, onSave, tz, carrier, equipment, isCertified, saving, saveError }) {
+function EventEditor({ open, event, prefill, onClose, onSave, tz, carrier, equipment, isCertified, saving, saveError, dateStr }) {
   const pfStart = prefill?.start_timestamp ? isoToWallTime(prefill.start_timestamp, tz) : '';
   const pfEnd = prefill?.end_timestamp ? isoToWallTime(prefill.end_timestamp, tz) : '';
   const [status, setStatus] = useState(event?.duty_status || 'DRIVING');
-  const [start, setStart] = useState(event ? isoToWallTime(event.start_timestamp, tz) : pfStart);
+  const [start, setStart] = useState(event ? isoToWallTime(event.start_timestamp, tz) : (pfStart || `${dateStr}T08:00`));
   const [end, setEnd] = useState(event?.end_timestamp ? isoToWallTime(event.end_timestamp, tz) : pfEnd);
   const [city, setCity] = useState(event?.city || '');
   const [stateVal, setStateVal] = useState(event?.state || '');
@@ -258,7 +258,7 @@ function EventEditor({ open, event, prefill, onClose, onSave, tz, carrier, equip
 
   useEffect(() => {
     setStatus(event?.duty_status || 'DRIVING');
-    setStart(event ? isoToWallTime(event.start_timestamp, tz) : (prefill?.start_timestamp ? isoToWallTime(prefill.start_timestamp, tz) : ''));
+    setStart(event ? isoToWallTime(event.start_timestamp, tz) : (prefill?.start_timestamp ? isoToWallTime(prefill.start_timestamp, tz) : `${dateStr}T08:00`));
     setEnd(event?.end_timestamp ? isoToWallTime(event.end_timestamp, tz) : (prefill?.end_timestamp ? isoToWallTime(prefill.end_timestamp, tz) : ''));
     setCity(event?.city || ''); setStateVal(event?.state || ''); setRemark(event?.remark || '');
     setLocalError('');
