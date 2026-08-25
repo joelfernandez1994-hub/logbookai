@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect, useRef } from 'react';
 import { useDriverData } from '@/hooks/useDriverData';
 import { base44 } from '@/api/base44Client';
 import { getAppSettings, getAIUsage } from '@/lib/driverData';
@@ -53,6 +53,10 @@ export default function LogAssistant() {
   const [usage, setUsage] = useState({ used: 0, allowance: 20 });
   const [now, setNow] = useState(new Date());
   const [routeWarning, setRouteWarning] = useState(null);
+  // In-flight Apply guard: a single Apply flow may not be re-entered. The
+  // ProposalReview button also locks visually; this ref defends against any
+  // other caller invoking applyProposal/applyReplaceDay while one is running.
+  const applyingRef = useRef(false);
   const speedProfile = profile?.trip_planning_speed_profile || DEFAULT_SPEED_PROFILE;
 
   const tz = carrier?.home_terminal_timezone || 'America/Chicago';
@@ -185,7 +189,9 @@ export default function LogAssistant() {
 
   // --- TELL: apply proposed events (canonical batch insert) ---
   const applyProposal = async (proposedEvents, mileageMeta = {}) => {
-    if (!proposedEvents?.length) { setProposal(null); reload(); return; }
+    if (applyingRef.current) return false;
+    if (!proposedEvents?.length) { setProposal(null); reload(); return true; }
+    applyingRef.current = true;
     const shaped = proposedEvents.map((p, i) => shapeEvent(p, i === proposedEvents.length - 1));
     try {
       const res = await insertEventsBatch(events, shaped, {
@@ -194,18 +200,22 @@ export default function LogAssistant() {
         editedBy: profile?.legal_name,
         reason: 'AI Apply',
       });
-      if (res?.error) { setError(res.error); return; }
+      if (res?.error) { setError(res.error); return false; }
       const date = proposedEvents[0]?.start_timestamp ? dateKeyInTz(new Date(proposedEvents[0].start_timestamp), tz) : proposal?.target_date;
       if (date && Number.isFinite(mileageMeta.dailyMileage)) await saveProposalMiles(date, mileageMeta.dailyMileage, mileageMeta.mileageEdited);
       setProposal(null); reload();
-    } catch (e) { setError(e?.message || 'Failed to apply proposed events.'); }
+      return true;
+    } catch (e) { setError(e?.message || 'Failed to apply proposed events.'); return false; }
+    finally { applyingRef.current = false; }
   };
 
   // --- TELL: replace-day (redo an entire day) routes through the canonical
   // replace-range writer — it REPLACES the period, never stacks a second
   // timeline. Requires the driver's explicit Apply (the labeled button). ---
   const applyReplaceDay = async (proposedEvents, mileageMeta = {}) => {
-    if (!proposedEvents?.length) { setError('Nothing to replace the day with.'); return; }
+    if (applyingRef.current) return false;
+    if (!proposedEvents?.length) { setError('Nothing to replace the day with.'); return false; }
+    applyingRef.current = true;
     const { dayStart, dayEnd } = replaceDayRange(proposal?.target_date || proposedEvents[0]?.start_timestamp?.slice(0, 10), tz);
     const shaped = proposedEvents.map((p) => shapeEvent(p, false));
     try {
@@ -218,7 +228,9 @@ export default function LogAssistant() {
       const date = proposal?.target_date || dateKeyInTz(new Date(proposedEvents[0].start_timestamp), tz);
       if (date && Number.isFinite(mileageMeta.dailyMileage)) await saveProposalMiles(date, mileageMeta.dailyMileage, mileageMeta.mileageEdited);
       setProposal(null); reload();
-    } catch (e) { setError(e?.message || 'Failed to replace the day.'); }
+      return true;
+    } catch (e) { setError(e?.message || 'Failed to replace the day.'); return false; }
+    finally { applyingRef.current = false; }
   };
 
   const resolveClarification = (idx, answer) => {
@@ -393,6 +405,8 @@ export default function LogAssistant() {
               onResolveClarification={resolveClarification}
               routeWarning={routeWarning}
               explicitGuard={proposal.explicit_guard}
+              narrative={proposal.original_input}
+              provenance={{ summary: proposal.interpretation, location_confirmations: proposal.location_confirmations }}
             />
           )}
           {showProposal && !isQuestion && !canApply && (

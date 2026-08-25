@@ -20,6 +20,7 @@ import {
 } from './hosEngine';
 import { mergeProposedEvents, collectViolations, distanceReasonableness } from './logAssistant';
 import { startOfDayInTz } from './timelineEngine';
+import { describedMovementCoverage } from './narrativeMovements';
 
 const H = 3600000;
 const MIN = 60000;
@@ -298,6 +299,13 @@ export function validateProposal(existing, proposed, opts = {}) {
       message: `${adjustment.field}: adjusted from ${adjustment.original_stated_value} to ${adjustment.adjusted_value}. ${adjustment.reason || ''}`.trim(),
       eventIndex: adjustment.eventIndex,
     });
+  }
+  // Described-movement gate: if the driver explicitly described a driving
+  // movement (A→B) the proposal omits, block Apply until the missing Driving
+  // event is added. Never invents driving from a bare city difference — only
+  // blocks when the narrative/provenance actually described the movement.
+  if (opts.narrative) {
+    warnings.push(...describedMovementCoverage(proposed, opts.narrative, opts.provenance || {}));
   }
   warnings.push(...findOverlaps(merged, t));
   warnings.push(...findLocationConflicts(merged, t));

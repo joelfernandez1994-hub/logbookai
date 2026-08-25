@@ -44,6 +44,11 @@ function richest(a, b) {
   return a || b;
 }
 
+// Display-identity equality for coalescing: city, state, and remark must all
+// match (trimmed, case-insensitive). Two same-status segments in different
+// cities or with different activities are distinct events and must NOT fuse.
+const norm = (v) => String(v == null ? '' : v).trim().toLowerCase();
+
 // ---------------------------------------------------------------------------
 // coalescedSegments — display-only fusion of adjacent same-status segments.
 // Wraps the unchanged normalizedSegments. Two consecutive segments merge
@@ -59,7 +64,13 @@ export function coalescedSegments(rawEvents, now = new Date()) {
     const prev = out[out.length - 1];
     const cur = segs[i];
     const gap = cur.start.getTime() - prev.end.getTime();
-    if (cur.duty_status === prev.duty_status && gap <= COALESCE_TOLERANCE_MS) {
+    if (
+      cur.duty_status === prev.duty_status &&
+      gap <= COALESCE_TOLERANCE_MS &&
+      norm(prev.city) === norm(cur.city) &&
+      norm(prev.state) === norm(cur.state) &&
+      norm(prev.remark) === norm(cur.remark)
+    ) {
       const mergedEnd = prev.end.getTime() >= cur.end.getTime() ? prev.end : cur.end;
       out[out.length - 1] = {
         ...prev,

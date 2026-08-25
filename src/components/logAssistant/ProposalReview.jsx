@@ -13,7 +13,7 @@ import TimezoneIndicator from '@/components/TimezoneIndicator';
 const STATUS_LABELS = { OFF_DUTY: 'Off Duty', SLEEPER_BERTH: 'Sleeper', DRIVING: 'Driving', ON_DUTY: 'On Duty' };
 const STATUSES = ['OFF_DUTY', 'SLEEPER_BERTH', 'DRIVING', 'ON_DUTY'];
 
-export default function ProposalReview({ existing, proposed, cycleType, tz, onApply, onApplyReplace, onCancel, interpretation, clarifications, onResolveClarification, routeWarning, intent, targetDate, explicitGuard }) {
+export default function ProposalReview({ existing, proposed, cycleType, tz, onApply, onApplyReplace, onCancel, interpretation, clarifications, onResolveClarification, routeWarning, intent, targetDate, explicitGuard, narrative, provenance }) {
   const isReplaceDay = intent === 'replace_day';
   const validationExisting = useMemo(() => {
     if (!isReplaceDay || !targetDate) return existing;
@@ -28,6 +28,7 @@ export default function ProposalReview({ existing, proposed, cycleType, tz, onAp
   const [events, setEvents] = useState(proposed);
   const [mileageEdited, setMileageEdited] = useState(false);
   const [pretripOpen, setPretripOpen] = useState(false);
+  const [applying, setApplying] = useState(false);
   useEffect(() => { setEvents(proposed); setMileageEdited(false); }, [proposed]);
 
   const evalNow = useMemo(() => {
@@ -38,8 +39,8 @@ export default function ProposalReview({ existing, proposed, cycleType, tz, onAp
 
   // MANDATORY validation pipeline (deterministic). routeWarning supplied async by parent.
   const validation = useMemo(
-    () => validateProposal(validationExisting, events, { cycleType, tz, now: evalNow, explicitGuard }),
-    [validationExisting, events, cycleType, tz, evalNow, explicitGuard]
+    () => validateProposal(validationExisting, events, { cycleType, tz, now: evalNow, explicitGuard, narrative, provenance }),
+    [validationExisting, events, cycleType, tz, evalNow, explicitGuard, narrative, provenance]
   );
   const warnings = useMemo(() => {
     const ws = [...validation.warnings];
@@ -84,6 +85,23 @@ export default function ProposalReview({ existing, proposed, cycleType, tz, onAp
     const br = recommendBreakInsertion(events, evalNow);
     if (!br) return;
     setEvents(prev => [...prev, br].sort((a, b) => new Date(a.start_timestamp) - new Date(b.start_timestamp)));
+  };
+
+  // Confirm & Apply: lock immediately, ignore re-entrant taps, keep the
+  // proposal visible in a disabled/loading state, and only clear it after
+  // successful persistence. On failure the parent returns false and we
+  // restore the enabled state so the driver can retry.
+  const handleApply = async () => {
+    if (applying || blocking) return;
+    setApplying(true);
+    try {
+      const ok = isReplaceDay
+        ? await onApplyReplace?.(events, { mileageEdited, dailyMileage })
+        : await onApply(events, { mileageEdited, dailyMileage });
+      if (ok === false) setApplying(false);
+    } catch (e) {
+      setApplying(false);
+    }
   };
 
   const pretripWarning = warnings.find(w => w.type === 'pretrip');
@@ -249,8 +267,8 @@ export default function ProposalReview({ existing, proposed, cycleType, tz, onAp
       </div>
 
       <div className="flex flex-wrap gap-2">
-        <Button data-testid="apply-proposal" className="flex-1" disabled={blocking} onClick={() => (isReplaceDay ? onApplyReplace?.(events, { mileageEdited, dailyMileage }) : onApply(events, { mileageEdited, dailyMileage }))}>
-          <Check className="w-4 h-4 mr-1" /> {isReplaceDay ? 'Replace Day & Apply' : 'Confirm & Apply'}
+        <Button data-testid="apply-proposal" className="flex-1" disabled={blocking || applying} onClick={handleApply}>
+          <Check className="w-4 h-4 mr-1" /> {applying ? 'Applying…' : (isReplaceDay ? 'Replace Day & Apply' : 'Confirm & Apply')}
         </Button>
         <Button variant="outline" onClick={() => setEditable(v => !v)}><Pencil className="w-4 h-4 mr-1" /> Edit Proposal</Button>
         <Button data-testid="cancel-proposal" aria-label="Cancel proposal" variant="ghost" onClick={onCancel}><X className="w-4 h-4" /></Button>

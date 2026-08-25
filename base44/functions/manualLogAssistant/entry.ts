@@ -461,6 +461,28 @@ export default async function(req) {
     }
 
     const result = mode === 'interpret' ? mapInterpret(parsed, source, ctx.timezone, input) : parsed;
+
+    // Persist every interpret result as an AIProposal so a future dropped
+    // Driving leg (or any omitted event) is provable from stored data without
+    // re-running the model. Audit-only — never blocks the response.
+    if (mode === 'interpret') {
+      try {
+        await base44.entities.AIProposal.create({
+          request_text: input,
+          request_type: source,
+          interpretation: result.interpretation || result.summary || '',
+          proposed_changes: {
+            intent: result.intent,
+            target_date: result.target_date,
+            proposed_events: result.proposed_events,
+            location_confirmations: result.location_confirmations,
+            clarifications: result.clarifications,
+          },
+          status: 'pending',
+        });
+      } catch (e) { /* audit-only; do not block the driver's response */ }
+    }
+
     return Response.json({ ...result, mode, used: newCount, allowance });
   } catch (error) {
     return Response.json({ error: error.message || UNAVAILABLE_MSG, unavailable: true }, { status: 500 });

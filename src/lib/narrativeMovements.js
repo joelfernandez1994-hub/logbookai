@@ -1,0 +1,122 @@
+// ============================================================================
+// LogbookAI — DESCRIBED-MOVEMENT COVERAGE (deterministic, no AI).
+// ----------------------------------------------------------------------------
+// Prevents an explicitly described driving leg from silently vanishing past
+// Confirm & Apply. The AI interpretation occasionally omits a Driving event the
+// driver described (e.g. "unloaded in Ocala, then drove to Gainesville,
+// post-trip" with no Driving segment). This module extracts the movements the
+// driver ACTUALLY described and verifies each has a corresponding DRIVING event
+// in the proposed sequence. It never invents a Driving event from a bare city
+// difference — it only blocks when the narrative/provenance explicitly
+// described that movement.
+//
+// Detection is two-layered:
+//   1. PRIMARY — deterministic regex over the original narrative text.
+//   2. BACKSTOP — AI provenance (interpretation summary / location_confirmations)
+//      used only when the regex finds nothing, to catch a described city
+//      transition the regex missed.
+// ============================================================================
+
+function normCity(v) { return String(v == null ? '' : v).trim().toLowerCase(); }
+function normState(v) { return String(v == null ? '' : v).trim().toUpperCase(); }
+
+// "drove from A, ST to B, ST" — full origin+destination capture.
+const FROM_TO_RE = /\bdrove\s+from\s+([A-Z][A-Za-z.'-]+(?:\s+[A-Z][A-Za-z.'-]+){0,2})(?:,\s*([A-Z]{2}))?\s+to\s+([A-Z][A-Za-z.'-]+(?:\s+[A-Za-z.'-]+){0,2})(?:,\s*([A-Z]{2}))?\b/gi;
+
+// "... to B" after a driving verb — destination-only capture.
+const TO_RE = /\b(?:drove|continued|headed|left|made\s+it)\b(?:\s+(?:driving|for|it|on))?\s+to\s+([A-Z][A-Za-z.'-]+(?:\s+[A-Za-z.'-]+){0,2})(?:,\s*([A-Z]{2}))?\b/gi;
+
+export function extractDescribedMovements(narrative, provenance = {}) {
+  const text = String(narrative || '');
+  const moves = [];
+
+  if (text) {
+    for (const m of text.matchAll(FROM_TO_RE)) {
+      moves.push({
+        from: { city: m[1].trim(), state: (m[2] || '').trim() },
+        to: { city: m[3].trim(), state: (m[4] || '').trim() },
+        evidence: 'regex',
+      });
+    }
+    const destSeen = new Set(moves.map(mv => normCity(mv.to.city)));
+    for (const m of text.matchAll(TO_RE)) {
+      const to = { city: m[1].trim(), state: (m[2] || '').trim() };
+      const key = normCity(to.city);
+      if (!key || destSeen.has(key)) continue;
+      destSeen.add(key);
+      moves.push({ from: null, to, evidence: 'regex' });
+    }
+  }
+  if (moves.length) return moves;
+
+  // BACKSTOP: AI provenance. Only when the regex over the original narrative
+  // found nothing — use the AI's own interpretation summary / location
+  // confirmations to detect a described city transition.
+  const summary = String(provenance.summary || provenance.interpretation || '');
+  const sm = summary.match(/\b(?:drove|driving|continued|headed)\b[^.]*?\bto\s+([A-Z][A-Za-z.'-]+(?:\s+[A-Za-z.'-]+){0,2})(?:,\s*([A-Z]{2}))?/i);
+  if (sm) {
+    moves.push({ from: null, to: { city: sm[1].trim(), state: (sm[2] || '').trim() }, evidence: 'ai_provenance' });
+  }
+  const confirms = Array.isArray(provenance.location_confirmations) ? provenance.location_confirmations : [];
+  for (const c of confirms) {
+    const o = String((c && c.original) || ''), intr = String((c && c.interpreted) || '');
+    if (!o || !intr || normCity(o) === normCity(intr)) continue;
+    moves.push({ from: null, to: { city: intr, state: '' }, evidence: 'ai_provenance' });
+  }
+  return moves;
+}
+
+function locMatch(eventCity, eventState, target) {
+  if (!target || !target.city) return false;
+  if (normCity(eventCity) !== normCity(target.city)) return false;
+  if (target.state && normState(eventState) !== normState(target.state)) return false;
+  return true;
+}
+
+// Is a single described movement covered by a DRIVING event in the proposed
+// sequence? A DRIVING event bridges A→B when it is immediately followed by an
+// event at B (the destination). If `from` is null (only the destination was
+// described), any DRIVING followed by an event at B counts.
+export function movementCovered(proposed, movement) {
+  if (!movement || !movement.to || !movement.to.city) return true;
+  const sorted = [...(proposed || [])]
+    .filter(p => p && p.start_timestamp)
+    .sort((a, b) => new Date(a.start_timestamp) - new Date(b.start_timestamp));
+  for (let i = 0; i < sorted.length; i++) {
+    if (sorted[i].duty_status !== 'DRIVING') continue;
+    const next = sorted[i + 1];
+    if (!next) continue;
+    if (!locMatch(next.city, next.state, movement.to)) continue;
+    if (movement.from && movement.from.city) {
+      const prev = sorted[i - 1];
+      const originMatch = locMatch(sorted[i].city, sorted[i].state, movement.from)
+        || (prev && locMatch(prev.city, prev.state, movement.from));
+      if (!originMatch) continue;
+    }
+    return true;
+  }
+  return false;
+}
+
+// Returns blocking warnings for every described movement the proposal fails to
+// cover. Consumed by validateProposal so ProposalReview's Confirm & Apply stays
+// disabled until the driver adds the missing Driving event.
+export function describedMovementCoverage(proposed, narrative, provenance = {}) {
+  const moves = extractDescribedMovements(narrative, provenance);
+  const warnings = [];
+  for (const m of moves) {
+    if (movementCovered(proposed, m)) continue;
+    const label = m.from && m.from.city
+      ? `${m.from.city}${m.from.state ? ', ' + m.from.state : ''} → ${m.to.city}${m.to.state ? ', ' + m.to.state : ''}`
+      : `${m.to.city}${m.to.state ? ', ' + m.to.state : ''}`;
+    warnings.push({
+      type: 'described_movement_missing',
+      severity: 'blocking',
+      title: 'DESCRIBED DRIVING MISSING',
+      message: `You described driving to ${label}, but no Driving event connects to it in this proposal. Add the missing Driving event (or edit the proposal) before confirming.`,
+      hint: `Evidence: ${m.evidence === 'regex' ? 'your narrative' : 'AI interpretation'}. LogbookAI will not invent a Driving event — add the actual drive you performed.`,
+      movement: m,
+    });
+  }
+  return warnings;
+}

@@ -47,6 +47,35 @@ async function activeCertsByDate(dates) {
   return map;
 }
 
+// ---------------------------------------------------------------------------
+// Idempotency re-check (DB-side). Before issuing creates, we re-fetch the
+// current DutyStatusEvent rows for every affected log_date and skip a create
+// whose (start_timestamp, duty_status) already exists. This makes normal
+// retries, double-clicks, and stale-snapshot replays idempotent at the DB
+// layer, complementing the UI button lock and the in-flight guard.
+//
+// CAVEAT: this is read-before-create dedupe, NOT an atomic uniqueness
+// constraint. Base44 entities expose no unique constraint / idempotency
+// token, so two truly simultaneous independent writers could still create a
+// duplicate pair. The button lock + in-flight guard prevent that within a
+// single Apply flow; cross-flow concurrency is out of scope for this fix.
+// ---------------------------------------------------------------------------
+async function existingKeysForDates(dates) {
+  const set = new Set();
+  if (!dates || !dates.length) return set;
+  for (const d of dates) {
+    try {
+      const rows = await base44.entities.DutyStatusEvent.filter({ log_date: d });
+      for (const r of (rows || [])) {
+        if (r && r.start_timestamp && r.duty_status) {
+          set.add(`${new Date(r.start_timestamp).getTime()}|${r.duty_status}`);
+        }
+      }
+    } catch (e) { /* best-effort; ignore */ }
+  }
+  return set;
+}
+
 // Apply a computed ops set to the database in canonical order (deletes, then
 // updates, then creates), then supersede active certifications for every
 // affected date. When a certified day is edited/deleted, an EventVersion
@@ -77,9 +106,19 @@ export async function applyTimelineOps(ops, allEvents = [], opts = {}) {
 
   for (const id of ops.deletes) await base44.entities.DutyStatusEvent.delete(id);
   for (const u of ops.updates) await base44.entities.DutyStatusEvent.update(u.id, u.data);
+
+  // Idempotency: re-check current DB rows (after deletes/updates so removed
+  // rows don't block replacement creates) and skip any create that already
+  // exists. Also dedupe within this batch.
+  const existingKeys = await existingKeysForDates(dates);
   const created = [];
+  const seenInBatch = new Set();
   for (const c of ops.creates) {
     const { id, ...rest } = c;
+    if (!rest.start_timestamp || !rest.duty_status) continue;
+    const key = `${new Date(rest.start_timestamp).getTime()}|${rest.duty_status}`;
+    if (existingKeys.has(key) || seenInBatch.has(key)) continue;
+    seenInBatch.add(key);
     created.push(await base44.entities.DutyStatusEvent.create(rest));
   }
 
