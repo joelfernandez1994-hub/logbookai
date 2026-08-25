@@ -18,6 +18,7 @@ import { validateProposal, hasBlocking } from '@/lib/proposalValidation';
 import { useEffect } from 'react';
 import DailyMilesCard from '@/components/DailyMilesCard';
 import TimelineGapNotice from '@/components/TimelineGapNotice';
+import RouteTimeConflictNotice from '@/components/RouteTimeConflictNotice';
 import PullToRefresh from '@/components/PullToRefresh';
 import TimezoneIndicator from '@/components/TimezoneIndicator';
 import { wallTimeToIso, isoToWallTime } from '@/lib/timezones';
@@ -173,6 +174,7 @@ export default function Logs() {
       </div>
 
       <TimelineGapNotice events={events} dateStr={dateStr} tz={tz} now={new Date()} />
+      <RouteTimeConflictNotice events={events} dateStr={dateStr} tz={tz} speedProfile={speedProfile} now={new Date()} />
       <DailyMilesCard events={events} dateStr={dateStr} tz={tz} speedProfile={speedProfile} />
 
       <div className="rounded-xl border border-border bg-card p-3 mb-3">

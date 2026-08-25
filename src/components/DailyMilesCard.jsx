@@ -18,9 +18,16 @@ export default function DailyMilesCard({ events, dateStr, tz, speedProfile }) {
 
   const autoMiles = Math.round(computeDailyMiles(events, dateStr, tz, speedProfile));
   const isManual = override?.miles_source === 'manual';
-  const miles = isManual ? Math.round(override?.miles ?? 0) : autoMiles;
+  const routedAvailable = !!suggestion?.available && !suggestion?.incomplete;
+  const storedAuto = (!isManual && override?.miles_source === 'auto' && Number.isFinite(override?.miles)) ? Math.round(override.miles) : null;
+  const miles = isManual
+    ? Math.round(override?.miles ?? 0)
+    : routedAvailable
+      ? suggestion.miles
+      : (storedAuto != null ? storedAuto : autoMiles);
   const mph = planningMph(speedProfile);
   const hasSuggestion = !!suggestion?.available;
+  const sourceLabel = isManual ? 'manual' : (routedAvailable || storedAuto != null) ? 'routed' : 'est.';
 
   useEffect(() => {
     let mounted = true;
@@ -65,7 +72,7 @@ export default function DailyMilesCard({ events, dateStr, tz, speedProfile }) {
 
   const resetAuto = async () => {
     setSaving(true);
-    try { setOverride(await saveDailyMiles(dateStr, autoMiles, 'auto')); } catch (e) {}
+    try { setOverride(await saveDailyMiles(dateStr, suggestion?.available ? suggestion.miles : autoMiles, 'auto')); } catch (e) {}
     setSaving(false);
   };
 
@@ -96,14 +103,14 @@ export default function DailyMilesCard({ events, dateStr, tz, speedProfile }) {
             ) : (
               <div className="font-bold text-sm flex items-center gap-2 mt-0.5 text-card-foreground">
                 {miles} mi
-                {isManual && <span className="text-[10px] text-muted-foreground font-normal">(manual)</span>}
+                <span className="text-[10px] text-muted-foreground font-normal">({sourceLabel})</span>
                 <button onClick={() => { setVal(String(miles)); setEditing(true); }} className="text-muted-foreground hover:text-foreground"><Pencil className="w-3 h-3" /></button>
                 {isManual && <button onClick={resetAuto} disabled={saving} className="text-[10px] text-primary underline inline-flex items-center"><RotateCcw className="w-2.5 h-2.5 mr-0.5" />use auto</button>}
               </div>
             )}
           </div>
         </div>
-        <div className="text-[11px] text-muted-foreground text-right">Auto est: {autoMiles} mi @ {mph} mph</div>
+        {!routedAvailable && <div className="text-[11px] text-muted-foreground text-right">Auto est: {autoMiles} mi @ {mph} mph</div>}
       </div>
 
       {(suggesting || hasSuggestion) && (

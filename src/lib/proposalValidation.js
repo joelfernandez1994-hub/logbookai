@@ -44,52 +44,97 @@ export function speedProfileLabel(id) {
   return (SPEED_PROFILES[id] || SPEED_PROFILES.conservative).label;
 }
 
-// Realistic truck planning time. Conservative = routing base ETA with a
-// planning buffer for urban congestion / fuel & inspection stops / metro
-// slowdown, floored at a 62 mph open-road average. Fixed-mph profiles divide
-// miles by the chosen speed. "Routing Provider ETA" returns the base ETA.
-export function truckEtaHours(route, profileId = DEFAULT_SPEED_PROFILE) {
-  if (!route || route.miles == null) return null;
-  const base = typeof route.hours === 'number' ? route.hours : null;
+// Planning-profile speed ceiling (mph). Mirrors planningMph in complianceStop
+// but kept local here to avoid a circular import (complianceStop imports
+// SPEED_PROFILES from this module). The profile caps the effective average
+// speed used for travel-time derating.
+export function profileMph(profileId = DEFAULT_SPEED_PROFILE) {
   const p = SPEED_PROFILES[profileId] || SPEED_PROFILES.conservative;
-  if (p.mph) return route.miles / p.mph;
-  if (p.id === 'provider') return base;
-  const buffered = base != null ? base * 1.08 : null;
-  const floor = route.miles / 62;
-  return buffered != null ? Math.max(buffered, floor) : floor;
+  if (p.mph) return p.mph;
+  return p.id === 'provider' ? 50 : 55; // conservative -> 55 mph ceiling
+}
+
+// Route-aware truck-realistic travel time (hours) — the PRIMARY travel-time
+// source whenever a real road route is available:
+//   required_truck_time = max(provider_hours, route_miles / planningMph(profile))
+// The profile caps effective speed, so a 70 mph freeway route is derated to the
+// profile ceiling; a surface-street route already slower than the ceiling keeps
+// the provider's duration. Mileage always comes from routed road distance,
+// never from this time. truckEtaHours is kept as the export name for callers.
+export function requiredTruckTime(route, profileId = DEFAULT_SPEED_PROFILE) {
+  if (!route || route.miles == null) return null;
+  const providerHours = typeof route.hours === 'number' ? route.hours : null;
+  const profileHours = route.miles / profileMph(profileId);
+  return providerHours != null ? Math.max(providerHours, profileHours) : profileHours;
+}
+export const truckEtaHours = requiredTruckTime;
+
+// Deterministic tolerance for the route/time conflict. A proposed driving
+// duration is only "impossibly fast" when it is shorter than the truck-realistic
+// time by MORE than this tolerance, so rounding and minor routing noise do not
+// false-flag plausible legs. We use the larger of 5 minutes (0.0833 h) or 5% of
+// the required time — short legs get a fixed minute margin, longer routes a
+// proportional one. A driver taking LONGER than the estimate is never flagged.
+const ROUTE_TIME_TOL_MIN = 5 / 60;   // 5 minutes in hours
+const ROUTE_TIME_TOL_PCT = 0.05;     // 5%
+export function routeTimeTolerance(requiredHours) {
+  if (requiredHours == null || !Number.isFinite(requiredHours)) return 0;
+  return Math.max(ROUTE_TIME_TOL_MIN, ROUTE_TIME_TOL_PCT * requiredHours);
 }
 
 // Pure evaluator: given a road route {miles, hours} and the requested driving
 // hours, decide whether the requested driving time is reasonable for a truck.
+// CONFLICT DIRECTION (corrected): a conflict exists only when the proposed/
+// inferred driving duration is SHORTER than the route realistically requires
+// (minus tolerance) — i.e. the truck cannot physically cover the route that
+// fast. A driver taking longer (traffic, stops) is NOT a conflict.
 export function evaluateRouteReasonableness(route, requestedDrivingHours, profileId = DEFAULT_SPEED_PROFILE) {
   if (!route || route.miles == null) return { known: false };
   const baseEta = typeof route.hours === 'number' ? route.hours : null;
-  const truck = truckEtaHours(route, profileId);
-  const conflict = requestedDrivingHours != null && truck != null && requestedDrivingHours < truck * 0.92;
+  const required = requiredTruckTime(route, profileId);
+  const tolerance = routeTimeTolerance(required);
+  const conflict = requestedDrivingHours != null && required != null && requestedDrivingHours < (required - tolerance);
   return {
     known: true,
     miles: Math.round(route.miles),
     baseEtaHours: baseEta,
-    truckEtaHours: truck,
+    truckEtaHours: required,
+    requiredTruckTime: required,
+    toleranceHours: tolerance,
     requestedDrivingHours: requestedDrivingHours,
     planningProfile: profileId,
     planningProfileLabel: speedProfileLabel(profileId),
     conflict,
     note: conflict
-      ? `Road route ~${Math.round(route.miles)} mi · base routing ETA ~${baseEta != null ? baseEta.toFixed(1) : '?'} h · realistic truck travel ~${truck.toFixed(1)} h. Requested ${requestedDrivingHours} h of driving is not consistent with the route.`
-      : `Road route ~${Math.round(route.miles)} mi · realistic truck travel ~${truck.toFixed(1)} h. Requested driving time is plausible.`,
+      ? `Road route ~${Math.round(route.miles)} mi · realistic truck time ~${required.toFixed(1)} h (capped at ${profileMph(profileId)} mph). Proposed ${Number(requestedDrivingHours).toFixed(1)} h of driving is shorter than the route realistically requires.`
+      : `Road route ~${Math.round(route.miles)} mi · realistic truck time ~${required.toFixed(1)} h. Proposed driving time is plausible.`,
   };
 }
 
 // Production routing provider: calls the existing tripEstimate backend
-// (which uses a routing/web-context LLM for real road miles/ETA).
+// (OSRM/Nominatim) for real road miles/ETA. Results are cached in-memory so
+// repeated validation (ProposalReview + Logs timeline) does not re-bill
+// routing credits. Failures are NOT cached — a transient outage retries on the
+// next validation rather than poisoning the session.
+const routeCache = new Map();
+export function clearRouteCache() { routeCache.clear(); }
+
 export async function fetchRoute(origin, destination) {
   if (!origin || !destination) return null;
+  const key = `${origin}||${destination}`;
+  if (routeCache.has(key)) return routeCache.get(key);
   const { base44 } = await import('@/api/base44Client');
-  const res = await base44.functions.invoke('tripEstimate', { origin, destination });
+  let res;
+  try {
+    res = await base44.functions.invoke('tripEstimate', { origin, destination });
+  } catch (e) {
+    return null; // do not cache failures
+  }
   const d = res?.data || res;
-  if (!d || d.error) return null;
-  return { miles: d.miles, hours: d.hours, notes: d.notes, isTruckRoute: d.is_truck_route };
+  if (!d || d.error) return null; // do not cache failures
+  const route = { miles: d.miles, hours: d.hours, notes: d.notes, isTruckRoute: d.is_truck_route };
+  routeCache.set(key, route);
+  return route;
 }
 
 // ---------------------------------------------------------------------------
@@ -415,6 +460,7 @@ export function getDrivingLegs(proposed, now = new Date()) {
       origin: { city: String(event.city || '').trim(), state: String(event.state || '').trim().toUpperCase() },
       destination: { city: String(destinationEvent?.city || '').trim(), state: String(destinationEvent?.state || '').trim().toUpperCase() },
       drivingHours: Math.max(0, (end - new Date(event.start_timestamp)) / H),
+      nextExplicitStartMs: destinationEvent?.start_timestamp ? new Date(destinationEvent.start_timestamp).getTime() : null,
     };
   }).filter(Boolean);
 }
@@ -437,6 +483,20 @@ export async function inspectProposalRoutes(proposed, { routingProvider = fetchR
     if (evaluation.known && Number(route?.miles) <= 0.5 && leg.drivingHours > 0.25) {
       evaluation.conflict = true;
       evaluation.note = `Road route is approximately 0 mi, which is not consistent with ${leg.drivingHours.toFixed(1)} h of driving.`;
+    }
+    // Inferred-arrival case: the driving leg has no explicit end, so its
+    // arrival is inferred as start + required_truck_time. If the next explicit
+    // event begins before that inferred arrival (beyond tolerance), the route
+    // cannot physically complete before the next known fact — a conflict.
+    // Explicit driver-entered times are never rewritten; this only surfaces.
+    if (evaluation.known && !leg.event.end_timestamp && leg.nextExplicitStartMs != null && evaluation.requiredTruckTime != null) {
+      const startMs = new Date(leg.event.start_timestamp).getTime();
+      const inferredArrivalMs = startMs + evaluation.requiredTruckTime * H;
+      const tolMs = routeTimeTolerance(evaluation.requiredTruckTime) * H;
+      if (leg.nextExplicitStartMs < inferredArrivalMs - tolMs) {
+        evaluation.conflict = true;
+        evaluation.note = `Road route ~${evaluation.miles} mi · realistic truck time ~${evaluation.requiredTruckTime.toFixed(1)} h. The inferred arrival would fall after the next logged event — review the times or add the missing stop.`;
+      }
     }
     return { ...leg, origin, destination, route, evaluation };
   }));
@@ -471,7 +531,7 @@ export async function addRouteWarning(proposed, { routingProvider = fetchRoute, 
   const details = legs.map(leg => `${leg.origin || 'Unknown'} → ${leg.destination || 'Unknown'}: ${leg.evaluation?.known ? leg.evaluation.note : 'Road route unavailable; mileage will be labeled as an estimate.'}`);
   return {
     type: 'route_reasonableness',
-    severity: 'review',
+    severity: conflicts.length ? 'blocking' : 'review',
     title: conflicts.length ? 'ROUTE / TRAVEL-TIME CONFLICT — REVIEW' : 'ROUTE VALIDATION',
     message: details.join(' '),
     isFuture,
