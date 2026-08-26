@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect } from 'react';
 import { useDriverData } from '@/hooks/useDriverData';
-import { getDailyGrid, computeCycle, computeHOS, hasSufficientCycleHistory, dateKeyInTz } from '@/lib/hosEngine';
+import { getDailyGrid, computeHOS, hasSufficientCycleHistory, dateKeyInTz } from '@/lib/hosEngine';
 import { deriveHosDisplay } from '@/lib/proposalValidation';
 import RodsGraphEditor from '@/components/rodsEditor/RodsGraphEditor';
 import LogExportSheet from '@/components/LogExportSheet';
@@ -13,13 +13,61 @@ import { ChevronLeft, ChevronRight, Share2, X, ShieldCheck } from 'lucide-react'
 import TimezoneIndicator from '@/components/TimezoneIndicator';
 
 const STATUS_LABELS = { OFF_DUTY: 'Off Duty', SLEEPER_BERTH: 'Sleeper', DRIVING: 'Driving', ON_DUTY: 'On Duty' };
-// Format hours as X hr YY min; NaN/undefined -> 0 hr 00 min (never expose "NaN").
-// Guards the cycle recap against computeCycle returning NaN for empty/new drivers.
+
+// Format a finite number of hours as "X hr YY min". Non-finite (NaN/undefined)
+// renders as '--' — never a false "0 hr 00 min" — so placeholder/uncalculated
+// values cannot masquerade as a real zero on the Recap card.
 const fmtHM = (h) => {
-  const v = Number.isFinite(h) ? h : 0;
-  const totalMin = Math.round(v * 60);
+  if (!Number.isFinite(h)) return '--';
+  const totalMin = Math.round(h * 60);
   return `${Math.floor(totalMin / 60)} hr ${String(totalMin % 60).padStart(2, '0')} min`;
 };
+
+// ---------------------------------------------------------------------------
+// recapDisplay — PRESENTATION HELPER ONLY.
+// Performs no HOS or cycle calculation of its own. It only reads numbers that
+// computeHOS() has already produced on hosForDay.cycle and formats/gates them
+// using the SAME three-state contract as the canonical deriveHosDisplay:
+//   state ∈ {'unavailable','unverified','real','exhausted'}
+// Because computeHOS is gated by validateTimeline, an invalid timeline makes
+// hosForDay.cycle carry the same unavailable state as hosDisplay.cycle, so
+// Used and Available on the Recap can never disagree.
+// ---------------------------------------------------------------------------
+const UNAVAILABLE = { value: '--', note: 'Unavailable until timeline is valid', state: 'unavailable' };
+const UNVERIFIED = { value: '--', note: 'Cycle unverified — prior history needed', state: 'unverified' };
+
+function recapDisplay(hosForDay, historyComplete) {
+  const cyc = hosForDay?.cycle || {};
+  const cycleLimit = Number.isFinite(cyc.cycleLimit) ? cyc.cycleLimit : (cyc.cycleType === '60_7' ? 60 : 70);
+  const cycleDays = Number.isFinite(cyc.cycleDays) ? cyc.cycleDays : (cyc.cycleType === '60_7' ? 7 : 8);
+
+  const valid = !!(hosForDay?.calculable && hosForDay?.validity?.valid);
+  if (!valid) {
+    return { used: UNAVAILABLE, available: UNAVAILABLE, today: UNAVAILABLE, returningTomorrow: UNAVAILABLE, cycleLimit, cycleDays };
+  }
+  if (!historyComplete) {
+    return { used: UNVERIFIED, available: UNVERIFIED, today: UNVERIFIED, returningTomorrow: UNVERIFIED, cycleLimit, cycleDays };
+  }
+
+  const usedH = Number.isFinite(cyc.cycleUsedHours) ? cyc.cycleUsedHours : 0;
+  const remH = Number.isFinite(cyc.cycleRemainingHours) ? cyc.cycleRemainingHours : 0;
+  const retH = Number.isFinite(cyc.returningTomorrowHours) ? cyc.returningTomorrowHours : NaN;
+  const totals = Array.isArray(cyc.dailyTotals) ? cyc.dailyTotals : [];
+  const todayH = totals.length ? totals[totals.length - 1]?.onDutyHours : NaN;
+  const exhausted = remH <= 0;
+  const usedNote = `${fmtHM(usedH)} used`;
+
+  return {
+    used: { value: fmtHM(usedH), note: '', state: 'real' },
+    available: exhausted
+      ? { value: '0 hr 00 min', note: usedNote, state: 'exhausted' }
+      : { value: fmtHM(remH), note: usedNote, state: 'real' },
+    today: { value: fmtHM(todayH), note: '', state: 'real' },
+    returningTomorrow: { value: fmtHM(retH), note: '', state: 'real' },
+    cycleLimit,
+    cycleDays,
+  };
+}
 
 export default function Inspection() {
   const { profile, carrier } = useDriverData(9);
@@ -57,10 +105,10 @@ export default function Inspection() {
 
   const selectedKey = dayKeys[Math.max(0, Math.min(7, dayOffset + 7))];
   const grid = useMemo(() => getDailyGrid(events, selectedKey, tz), [events, selectedKey, tz]);
-  const cycle = useMemo(() => computeCycle(events, cycleType, tz, new Date(selectedKey + 'T12:00:00')), [events, cycleType, tz, selectedKey]);
   const historyComplete = useMemo(() => hasSufficientCycleHistory(events, cycleType, profile?.entered_prior_history, tz, grid.dayEnd), [events, cycleType, profile, tz, grid.dayEnd]);
   const hosForDay = useMemo(() => computeHOS(events, cycleType, tz, grid.dayEnd, { historyComplete }), [events, cycleType, tz, grid.dayEnd, historyComplete]);
   const hosDisplay = useMemo(() => deriveHosDisplay(hosForDay, historyComplete), [hosForDay, historyComplete]);
+  const recap = useMemo(() => recapDisplay(hosForDay, historyComplete), [hosForDay, historyComplete]);
   const cert = certifications.find(c => c.log_date === selectedKey && !c.is_superseded);
 
   const allDates = useMemo(() => Array.from(new Set((events || []).map(e => e.log_date).filter(Boolean))).sort(), [events]);
@@ -107,17 +155,26 @@ export default function Inspection() {
         <RodsGraphEditor events={events} dateStr={selectedKey} timezone={tz} readOnly carrier={carrier} />
       </div>
 
-      {/* Recap */}
+      {/* Recap — all values sourced from hosForDay.cycle via recapDisplay */}
       <div className="bg-slate-800 rounded-xl p-3 mb-3 text-sm">
-        <div className="font-semibold mb-1">{cycle?.cycleLimit || (cycleType === '60_7' ? 60 : 70)}-Hour / {cycle?.cycleDays || (cycleType === '60_7' ? 7 : 8)}-Day Recap</div>
+        <div className="font-semibold mb-1">{recap.cycleLimit}-Hour / {recap.cycleDays}-Day Recap</div>
         <div className="grid grid-cols-2 gap-1 text-xs text-slate-300">
-          <div>Used: {fmtHM(cycle?.cycleUsedHours)}</div>
           <div>
-            <div>Available: {hosDisplay.cycle.value}</div>
-            {hosDisplay.cycle.note && <div className="text-slate-500 text-[11px]">{hosDisplay.cycle.note}</div>}
+            <div>Used: {recap.used.value}</div>
+            {recap.used.note && <div className="text-slate-500 text-[11px]">{recap.used.note}</div>}
           </div>
-          <div>Today: {fmtHM(cycle?.dailyTotals?.[cycle.dailyTotals.length - 1]?.onDutyHours)}</div>
-          <div>Back tomorrow: {fmtHM(cycle?.returningTomorrowHours)}</div>
+          <div>
+            <div>Available: {recap.available.value}</div>
+            {recap.available.note && <div className="text-slate-500 text-[11px]">{recap.available.note}</div>}
+          </div>
+          <div>
+            <div>Today: {recap.today.value}</div>
+            {recap.today.note && <div className="text-slate-500 text-[11px]">{recap.today.note}</div>}
+          </div>
+          <div>
+            <div>Back tomorrow: {recap.returningTomorrow.value}</div>
+            {recap.returningTomorrow.note && <div className="text-slate-500 text-[11px]">{recap.returningTomorrow.note}</div>}
+          </div>
         </div>
       </div>
 
