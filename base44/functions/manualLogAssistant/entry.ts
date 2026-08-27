@@ -377,13 +377,37 @@ export default async function(req) {
 
     const carrierList = await base44.entities.CarrierProfile.list('-created_date', 1);
     const carrier = carrierList[0] || null;
+    // Carrier home-terminal timezone is the single source of truth for encoding
+    // proposed timestamps. If it is missing or not a valid IANA tz, refuse to
+    // generate a proposal (do NOT default to America/Chicago or the device tz) —
+    // the client surfaces a configuration-required message. No AI usage is
+    // consumed when the carrier profile is not configured.
+    const homeTz = carrier?.home_terminal_timezone || '';
+    let tzValid = false;
+    if (homeTz) {
+      try { Intl.DateTimeFormat('en-US', { timeZone: homeTz }); tzValid = true; } catch { tzValid = false; }
+    }
+    if (!tzValid) {
+      return Response.json({
+        error: 'Carrier home-terminal timezone not configured — set it before generating a proposal.',
+        configuration_required: true,
+        unavailable: true,
+        proposed_events: [],
+        interpretation: '',
+        summary: 'Carrier home-terminal timezone not configured.',
+        intent: 'clarification',
+        target_date: '',
+        requires_clarification: true,
+        clarification_question: 'Set your carrier home-terminal timezone in Carrier settings, then describe your day again.',
+      }, { status: 400 });
+    }
     const ctx = {
       userName: user.full_name || '',
       carrierName: carrier?.carrier_name || '',
       cycle: carrier?.hos_cycle || '70_8',
-      timezone: carrier?.home_terminal_timezone || 'America/Chicago',
+      timezone: homeTz,
       nowIso: new Date().toISOString(),
-      todayLocal: new Date().toLocaleDateString('en-CA', { timeZone: carrier?.home_terminal_timezone || 'America/Chicago' }),
+      todayLocal: new Date().toLocaleDateString('en-CA', { timeZone: homeTz }),
       currentLocation: body.currentLocation || '',
       tractor: body.tractor || '',
       trailer: body.trailer || '',

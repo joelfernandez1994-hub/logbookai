@@ -17,9 +17,10 @@
 import {
   computeHOS, runComplianceCheck, normalizeEvents, compute30MinBreak,
   dateKeyInTz, hasSufficientCycleHistory, fmtDur,
+  computeContiguousGoverningReset,
 } from './hosEngine';
 import { mergeProposedEvents, collectViolations, distanceReasonableness } from './logAssistant';
-import { startOfDayInTz } from './timelineEngine';
+import { startOfDayInTz, normalizeTimeline, nextLocalMidnightInTz } from './timelineEngine';
 import { describedMovementCoverage } from './narrativeMovements';
 
 const H = 3600000;
@@ -365,14 +366,41 @@ export function validateProposal(existing, proposed, opts = {}) {
     });
   }
 
-  // evaluation time = latest of now / last proposed end
-  let evalNow = new Date(t);
-  for (const p of (proposed || [])) {
-    if (p.end_timestamp) { const e = new Date(p.end_timestamp); if (e > evalNow) evalNow = new Date(e); }
-  }
+  // DST-correct proposal evaluation endpoint. The proposed log day ends at the
+  // NEXT local midnight in the carrier timezone after the proposal log date —
+  // never at the device clock. evalNow = min(that day-end, deviceNow). A past
+  // proposal day evaluates at its day-end; the current day at now (capped at
+  // day-end). This prevents the cross-day 50h+ 14h-window artifact at the eval
+  // boundary. (deviceNow = opts.now, which the caller sets to max(now, last
+  // proposed end) so future-plan projection is preserved within the day.)
+  const firstPropStart = (proposed || [])[0]?.start_timestamp;
+  const proposalLogDate = firstPropStart ? dateKeyInTz(new Date(firstPropStart), tz) : dateKeyInTz(t, tz);
+  const dayEnd = nextLocalMidnightInTz(proposalLogDate, tz);
+  const evalNow = new Date(Math.min(dayEnd.getTime(), t.getTime()));
+
   const historyComplete = hasSufficientCycleHistory(merged, cycleType, enteredPriorHistory, tz, evalNow);
-  const hos = computeHOS(merged, cycleType, tz, evalNow, { historyComplete });
-  const issues = runComplianceCheck(merged, cycleType, tz, evalNow, { historyComplete });
+
+  // Contiguous backward-walk governing anchor for the 14h/11h clocks
+  // (proposal-only restriction). Walk BACKWARD from the first proposed Driving
+  // event through the chronologically contiguous normalized merged timeline;
+  // stop at the first unresolved gap / same-start conflict / continuity
+  // boundary (~1s tolerance). Most-recent valid split-sleeper pair wins, else
+  // the most recent single ≥10h reset, else 'unverified' (never reaching
+  // through a discontinuity to an older reset). Cycle keeps full history.
+  const norm = normalizeTimeline(merged, evalNow);
+  const firstProposedDriveMs = (proposed || [])
+    .filter(p => p.duty_status === 'DRIVING' && p.start_timestamp)
+    .map(p => new Date(p.start_timestamp).getTime())
+    .reduce((min, x) => (min == null || x < min ? x : min), null);
+  const contiguousGov = (firstProposedDriveMs != null && Number.isFinite(firstProposedDriveMs))
+    ? computeContiguousGoverningReset(norm.segments, new Date(firstProposedDriveMs), evalNow, norm.conflicts)
+    : null;
+  const govOpts = contiguousGov && contiguousGov.unverified
+    ? { windowUnverified: true, windowUnverifiedReason: contiguousGov.reason }
+    : (contiguousGov ? { governingOverride: contiguousGov } : {});
+
+  const hos = computeHOS(merged, cycleType, tz, evalNow, { historyComplete, ...govOpts });
+  const issues = runComplianceCheck(merged, cycleType, tz, evalNow, { historyComplete, ...govOpts });
   const violations = collectViolations(hos, issues);
 
   // Surface canonical structural-validation failures (gaps, same-start
@@ -407,7 +435,25 @@ export function validateProposal(existing, proposed, opts = {}) {
     });
   }
 
-  return { merged, warnings, violations, hos, break: br, pretrip, evalNow, isFuture: future, historyComplete };
+  // Contiguous-walk review notices (never blocking): (1) when the rest period
+  // immediately before driving had an inferred start but a qualifying anchor
+  // was found contiguously further back, flag the inferred start; (2) when no
+  // qualifying split or ≥10h anchor was reached contiguously, surface the
+  // 14h/11h unverified state so the driver knows the clocks are not confirmed.
+  if (contiguousGov && contiguousGov.inferredRestNote && !contiguousGov.unverified) {
+    warnings.push({
+      type: 'inferred_rest_start', severity: 'review', title: 'INFERRED REST START',
+      message: contiguousGov.inferredRestNote,
+    });
+  }
+  if (contiguousGov && contiguousGov.unverified && hos.calculable) {
+    warnings.push({
+      type: 'rest_history_unverified', severity: 'review', title: 'HOS REST HISTORY UNVERIFIED',
+      message: 'The rest history immediately before your driving could not be verified contiguously (a gap or conflict in the timeline). The 14-hour window and 11-hour driving clocks are shown as unverified until the timeline is continuous back to a qualifying reset or split-sleeper pair.',
+    });
+  }
+
+  return { merged, warnings, violations, hos, break: br, pretrip, evalNow, isFuture: future, historyComplete, contiguousGov };
 }
 
 // Add async route-reasonableness results for every proposed driving segment.
@@ -615,12 +661,14 @@ export function deriveHosDisplay(hos, historyComplete) {
     return { calculable: false, driving: unavailable, window14: unavailable, break: unavailable, cycle: unavailable };
   }
   const driving = (() => {
+    if (hos.driving?.unverified) return { value: '--', note: hos.driving.unverifiedReason || 'Unverified — rest history before driving is not contiguous', state: 'unverified' };
     const rem = hos.driving.drivingRemainingMs;
     if (!hos.driving.applicable) return { value: fmtDur(rem), note: 'No tour started yet', state: 'real' };
     if (rem <= 0) return { value: fmtDur(0), note: 'Exhausted — 11-hr limit', state: 'exhausted' };
     return { value: fmtDur(rem), note: '11-hr limit', state: 'real' };
   })();
   const window14 = (() => {
+    if (hos.window14?.unverified) return { value: '--', note: hos.window14.unverifiedReason || 'Unverified — rest history before driving is not contiguous', state: 'unverified' };
     const rem = hos.window14.remainingMs;
     if (!hos.window14.applicable) return { value: fmtDur(rem), note: 'No tour started yet', state: 'real' };
     if (rem <= 0) return { value: fmtDur(0), note: 'Window closed', state: 'exhausted' };

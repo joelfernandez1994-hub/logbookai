@@ -161,6 +161,7 @@ export default function LogAssistant() {
       });
       if (res.status === 429 || res.data?.limit) setError(res.data?.error || 'AI limit reached.');
       else if (res.data?.disabled) setError(res.data?.error || 'AI disabled.');
+      else if (res.data?.configuration_required) setError(res.data?.error || 'Carrier home-terminal timezone not configured — set it before generating a proposal.');
       else if (res.data?.unavailable) setError(res.data?.error || 'LogbookAI is temporarily unavailable. Your request has not been applied.');
       else if (res.data?.error) setError(res.data.error);
       else {

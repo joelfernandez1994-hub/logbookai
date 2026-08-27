@@ -61,6 +61,20 @@ export function startOfDayInTz(date, timezone) {
   return new Date(utcMidnight - offset);
 }
 
+// The NEXT local midnight in `timezone` strictly after the given local calendar
+// date (YYYY-MM-DD). Computed by advancing one calendar day in the carrier tz
+// and taking that local midnight's instant — NOT startOfDay + 24h — so DST
+// transitions are correct. Used as the proposal evaluation endpoint (the
+// proposed log day ends at the next local midnight, never at the device clock).
+export function nextLocalMidnightInTz(dateStr, timezone) {
+  const [y, m, d] = String(dateStr).split('-').map(Number);
+  // UTC midnight of the next calendar date (Date.UTC rolls month/year automatically).
+  const nextUtcMid = Date.UTC(y, m - 1, d + 1);
+  // Convert that calendar-date's local midnight to an instant using the tz offset
+  // AT that instant (correct across DST transitions).
+  return new Date(nextUtcMid - tzOffsetMs(new Date(nextUtcMid), timezone));
+}
+
 // ---------------------------------------------------------------------------
 // Parse a raw event into a segment with concrete Date start/end.
 //   - end_timestamp present  -> end = that time

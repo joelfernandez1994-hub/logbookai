@@ -38,6 +38,11 @@ export function mergeProposedEvents(existing, proposed, now = new Date()) {
     method_of_creation: p.source === 'voice' ? 'Voice AI' : 'Typed AI',
     is_ongoing: !p.end_timestamp,
     is_current_version: true,
+    // Carry per-timestamp provenance (explicit/inferred) so the contiguous
+    // backward-walk anchor can apply the split-ambiguity rule and emit the
+    // inferred-rest-start note. Explicit driver times are never moved; this
+    // only filters which rests can ANCHOR the 14h/11h window.
+    ...(p.field_provenance ? { field_provenance: p.field_provenance } : {}),
     _proposed: true,
   })).filter(p => p.start_timestamp && p.duty_status);
 

@@ -450,6 +450,119 @@ export function computeGoverningReset(segments, now = new Date()) {
 }
 
 // ---------------------------------------------------------------------------
+// CONTIGUOUS GOVERNING RESET — proposal-only 14h/11h anchor (no fixed hour
+// cutoff; ~1s tolerance). Walks BACKWARD from the first proposed Driving event
+// through the chronologically contiguous normalized timeline, stopping at the
+// first unresolved gap, same-start conflict, or other continuity boundary.
+// Within the reached contiguous region, the MOST RECENT valid split-sleeper
+// pair wins (current FMCSA §395.1(g)(1)(ii): ≥7h consecutive Sleeper Berth +
+// ≥2h Off Duty/Sleeper, combined ≥10h), then the most recent single ≥10h
+// reset as fallback. If neither is reached contiguously, returns 'unverified'
+// — never reaching through a discontinuity to an older reset (the source of the
+// cross-day 50h+ 14h-window artifact). Reuses the existing split-sleeper
+// engine (enumerateValidPairings / selectAuthoritativeSplit) — no new math.
+// SPLIT-AMBIGUITY: a rest block whose qualifying duration/sleeper-run depends
+// on an inferred boundary cannot confirm a split member → skipped (then
+// unverified if nothing else qualifies).
+// ---------------------------------------------------------------------------
+const CONTIG_TOL_MS = 1000; // engine ~1s gap/continuity tolerance
+
+function blockConfirmableForSplit(block, regionSegs) {
+  // A split member is only confirmable when none of its constituent rest
+  // segments rely on an inferred start or end (an inferred boundary makes the
+  // ≥7h-sleeper / ≥2h / ≥10h membership a guess).
+  const blockSegs = regionSegs.filter(s =>
+    REST_STATUSES.includes(s.duty_status) &&
+    s.start.getTime() >= block.start.getTime() - CONTIG_TOL_MS &&
+    s.end.getTime() <= block.end.getTime() + CONTIG_TOL_MS
+  );
+  return !blockSegs.some(s =>
+    s.field_provenance &&
+    (s.field_provenance.start_time === 'inferred' || s.field_provenance.end_time === 'inferred')
+  );
+}
+
+export function computeContiguousGoverningReset(segments, firstDriveStart, now = new Date(), conflicts = []) {
+  const t = now instanceof Date ? now : new Date(now);
+  const fds = firstDriveStart instanceof Date ? firstDriveStart.getTime() : new Date(firstDriveStart).getTime();
+  const sorted = [...(segments || [])].sort((a, b) => a.start.getTime() - b.start.getTime());
+  const unverified = (reason) => ({
+    type: 'unverified', referenceTime: null, effectiveTime: null, secondDuration: 0,
+    block: null, split: null, inferredRestNote: null, unverified: true, reason,
+  });
+  if (!sorted.length || !Number.isFinite(fds)) return unverified('No driving event in the timeline.');
+
+  // Segment containing or starting at firstDriveStart.
+  let startIdx = -1;
+  for (let i = 0; i < sorted.length; i++) {
+    const s = sorted[i];
+    if (s.start.getTime() <= fds && s.end.getTime() > fds) { startIdx = i; break; }
+    if (s.start.getTime() >= fds) { startIdx = i; break; }
+  }
+  if (startIdx === -1) return unverified('Driving event not found in timeline.');
+
+  // Backward contiguous walk: each step requires prev.end ≈ cur.start (within
+  // ~1s) and no same-start conflict at cur.start. Stop at the first boundary.
+  const conflictStarts = new Set((conflicts || []).map(c => new Date(c.start).getTime()));
+  let regionStartIdx = startIdx;
+  for (let i = startIdx; i > 0; i--) {
+    const cur = sorted[i];
+    if (conflictStarts.has(cur.start.getTime())) break;
+    const prev = sorted[i - 1];
+    if (Math.abs(prev.end.getTime() - cur.start.getTime()) <= CONTIG_TOL_MS) {
+      regionStartIdx = i - 1;
+    } else {
+      break;
+    }
+  }
+
+  const regionSegs = sorted.slice(regionStartIdx, startIdx + 1);
+  const fdsDate = new Date(fds);
+  const blocks = buildRestBlocksWithSleeper(regionSegs, fdsDate);
+
+  // Most recent ≥10h rest in the contiguous region (single-reset fallback).
+  let fullReset = null;
+  for (const b of blocks) {
+    if (b.duration >= MS.QUAL_REST && b.end.getTime() <= fds) fullReset = b;
+  }
+  const tFull = fullReset ? fullReset.end.getTime() : -Infinity;
+
+  // Split pairings — only confirmable blocks (no inferred boundaries).
+  const confirmable = blocks.filter(b => blockConfirmableForSplit(b, regionSegs));
+  const pairings = enumerateValidPairings(confirmable, fdsDate, tFull);
+  let splitSel = null;
+  if (pairings.length) splitSel = selectAuthoritativeSplit(pairings, regionSegs, fdsDate);
+
+  let governing;
+  if (splitSel) {
+    const p = splitSel.pairing;
+    governing = {
+      type: 'split', referenceTime: p.first.end, effectiveTime: p.second.end,
+      secondDuration: p.second.duration, block: null, split: { status: 'active', pairing: p, clocks: splitSel.clocks },
+      unverified: false,
+    };
+  } else if (fullReset) {
+    governing = {
+      type: 'full', referenceTime: fullReset.end, effectiveTime: fullReset.end,
+      secondDuration: 0, block: fullReset, split: null, unverified: false,
+    };
+  } else {
+    return unverified('No qualifying split-sleeper pair or ≥10h reset found in the contiguous timeline before driving.');
+  }
+
+  // Inferred-rest note: the rest segment ending at firstDrive whose start was
+  // inferred. When a qualifying anchor (split or ≥10h) was found contiguously
+  // (not unverified), flag the inferred start for driver verification.
+  const preDriveRestSeg = regionSegs.find(s =>
+    REST_STATUSES.includes(s.duty_status) && Math.abs(s.end.getTime() - fds) <= CONTIG_TOL_MS
+  );
+  if (preDriveRestSeg && preDriveRestSeg.field_provenance && preDriveRestSeg.field_provenance.start_time === 'inferred') {
+    governing.inferredRestNote = 'Rest period start was inferred — verify.';
+  }
+  return governing;
+}
+
+// ---------------------------------------------------------------------------
 // 11-HOUR DRIVING LIMIT (split-aware)
 // Driving accumulated from the governing reference point to now. Under a split,
 // this includes driving between and after the paired periods.
@@ -709,25 +822,28 @@ export function runComplianceCheck(rawEvents, cycleType, timezone, now = new Dat
   const segments = normalizeEvents(rawEvents, now);
   const issues = { hos: [], missingInfo: [], docConflicts: [], suggestions: [] };
 
-  const governing = computeGoverningReset(segments, now);
+  const governing = opts.governingOverride || computeGoverningReset(segments, now);
   const drive = computeDrivingLimit(segments, now, governing);
   const window = compute14HourWindow(segments, now, governing);
   const brk = compute30MinBreak(segments, now);
   const cycle = computeCycle(segments, cycleType, timezone, now);
 
-  // 11-hour
-  if (drive.applicable && drive.drivingUsedMs >= MS.DRIVE_LIMIT) {
-    const over = drive.drivingUsedMs - MS.DRIVE_LIMIT;
-    const sev = severityFor(over);
-    issues.hos.push({ rule: '11-Hour Driving Limit', severity: sev, message: `11-hour driving limit exceeded by ${fmtDur(over)}. Further driving is a violation.` });
-  } else if (drive.applicable && drive.drivingRemainingMs < MS.HOUR) {
-    issues.hos.push({ rule: '11-Hour Driving Limit', severity: 'warning', message: `Less than 1 hour of driving remaining.` });
-  }
-  // 14-hour
-  if (window.applicable && window.elapsedMs >= MS.WINDOW) {
-    const over = window.elapsedMs - MS.WINDOW;
-    const sev = severityFor(over);
-    issues.hos.push({ rule: '14-Hour Driving Window', severity: sev, message: `14-hour driving window exceeded by ${fmtDur(over)}. Driving is not permitted without a qualifying rest or split-sleeper.` });
+  // 11-hour / 14-hour — SKIPPED when the governing reset is unverified (the
+  // contiguous backward walk stopped at a gap/conflict before any qualifying
+  // split or ≥10h reset). Do not emit a violation or fabricate an overage.
+  if (!opts.windowUnverified) {
+    if (drive.applicable && drive.drivingUsedMs >= MS.DRIVE_LIMIT) {
+      const over = drive.drivingUsedMs - MS.DRIVE_LIMIT;
+      const sev = severityFor(over);
+      issues.hos.push({ rule: '11-Hour Driving Limit', severity: sev, message: `11-hour driving limit exceeded by ${fmtDur(over)}. Further driving is a violation.` });
+    } else if (drive.applicable && drive.drivingRemainingMs < MS.HOUR) {
+      issues.hos.push({ rule: '11-Hour Driving Limit', severity: 'warning', message: `Less than 1 hour of driving remaining.` });
+    }
+    if (window.applicable && window.elapsedMs >= MS.WINDOW) {
+      const over = window.elapsedMs - MS.WINDOW;
+      const sev = severityFor(over);
+      issues.hos.push({ rule: '14-Hour Driving Window', severity: sev, message: `14-hour driving window exceeded by ${fmtDur(over)}. Driving is not permitted without a qualifying rest or split-sleeper.` });
+    }
   }
   // 30-min break
   if (brk.breakRequired) {
@@ -823,7 +939,7 @@ export function computeHOS(rawEvents, cycleType, timezone, now = new Date(), opt
     };
   }
   const segments = validity.segments;
-  const governing = computeGoverningReset(segments, now);
+  const governing = opts.governingOverride || computeGoverningReset(segments, now);
   const driving = computeDrivingLimit(segments, now, governing);
   const window14 = compute14HourWindow(segments, now, governing);
   const break30 = compute30MinBreak(segments, now);
@@ -836,7 +952,7 @@ export function computeHOS(rawEvents, cycleType, timezone, now = new Date(), opt
     if (segments[i].start <= now) { currentStatus = segments[i]; break; }
   }
 
-  return {
+  const result = {
     calculable: true,
     validity,
     currentStatus,
@@ -849,6 +965,18 @@ export function computeHOS(rawEvents, cycleType, timezone, now = new Date(), opt
     split,
     historyComplete: opts.historyComplete !== false,
   };
+
+  // Proposal-only unverified state: the contiguous backward walk could not
+  // establish a governing reset (gap/conflict before any qualifying split or
+  // ≥10h reset). Mark 14h/11h unverified so the display shows "--" rather than
+  // a fabricated cross-day overage. Cycle retains its real/unverified state.
+  if (opts.windowUnverified) {
+    const reason = opts.windowUnverifiedReason || 'Rest history before driving could not be verified contiguously.';
+    result.driving = { ...driving, applicable: false, unverified: true, unverifiedReason: reason };
+    result.window14 = { ...window14, applicable: false, unverified: true, unverifiedReason: reason };
+    result.governing = { ...governing, unverified: true };
+  }
+  return result;
 }
 
 // ---------------------------------------------------------------------------
