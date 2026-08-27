@@ -20,7 +20,7 @@ import { secrets } from 'base44:runtime';
 // no usage is consumed and the client keeps the driver's typed request.
 // ============================================================================
 
-const OPENAI_MODEL = 'gpt-4o-mini';
+const OPENAI_MODEL = 'gpt-5.4-mini';
 const OPENAI_URL = 'https://api.openai.com/v1/chat/completions';
 const UNAVAILABLE_MSG = 'LogbookAI is temporarily unavailable. Your request has not been applied.';
 
@@ -432,7 +432,7 @@ export default async function(req) {
         messages,
         response_format: responseFormat,
         temperature: 0.2,
-        max_tokens: maxTokens,
+        max_completion_tokens: maxTokens,
       }),
     });
     if (!oaResp.ok) {
