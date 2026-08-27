@@ -415,6 +415,9 @@ export function planReplaceRange(existingEvents, rangeStart, rangeEnd, replaceme
       method_of_creation: s.method_of_creation || (s.source === 'voice' ? 'Voice AI' : 'Typed AI'),
       is_ongoing: s.is_ongoing ?? !s.end_timestamp,
       is_current_version: true,
+      // Carry per-timestamp provenance (explicit/inferred) through replace-day
+      // creates so AI-inferred flags persist on the saved record.
+      ...(s.field_provenance ? { field_provenance: s.field_provenance } : {}),
     });
   }
   return { creates, updates, deletes };

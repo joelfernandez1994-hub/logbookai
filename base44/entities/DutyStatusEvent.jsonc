@@ -60,6 +60,26 @@
       ],
       "default": "Manual"
     },
+    "field_provenance": {
+      "type": "object",
+      "description": "Per-timestamp provenance: whether start_time/end_time was explicitly provided by the driver or inferred by AI. Used by the route-aware reconstruction engine so explicit driver times are never moved. Absent (legacy logs) is treated as explicit/unknown and never shifted.",
+      "properties": {
+        "start_time": {
+          "type": "string",
+          "enum": [
+            "explicit",
+            "inferred"
+          ]
+        },
+        "end_time": {
+          "type": "string",
+          "enum": [
+            "explicit",
+            "inferred"
+          ]
+        }
+      }
+    },
     "original_event_id": {
       "type": "string"
     },

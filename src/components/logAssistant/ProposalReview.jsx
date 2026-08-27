@@ -1,12 +1,13 @@
 import { useMemo, useState, useEffect } from 'react';
-import { validateProposal, hasBlocking, recommendBreakInsertion, buildPreTripEvent, computeProposalTotals, deriveHosDisplay } from '@/lib/proposalValidation';
+import { validateProposal, hasBlocking, recommendBreakInsertion, buildPreTripEvent, computeProposalTotals, deriveHosDisplay, inspectProposalRoutes, addRouteWarning } from '@/lib/proposalValidation';
+import { reconstructDrivingDurations } from '@/lib/drivingDurationReconstruction';
 import { replaceDayRange } from '@/lib/aiLayer';
 import { highestSeverity, fmtClockShort } from '@/lib/logAssistant';
 import { dateKeyInTz } from '@/lib/hosEngine';
 import LogGraph from '@/components/LogGraph';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Check, X, Pencil, AlertTriangle, ShieldCheck, AlertCircle, Plus } from 'lucide-react';
+import { Check, X, Pencil, AlertTriangle, ShieldCheck, AlertCircle, Plus, Wrench } from 'lucide-react';
 import PreTripDialog from '@/components/PreTripDialog';
 import TimezoneIndicator from '@/components/TimezoneIndicator';
 
@@ -29,7 +30,14 @@ export default function ProposalReview({ existing, proposed, cycleType, tz, onAp
   const [mileageEdited, setMileageEdited] = useState(false);
   const [pretripOpen, setPretripOpen] = useState(false);
   const [applying, setApplying] = useState(false);
-  useEffect(() => { setEvents(proposed); setMileageEdited(false); }, [proposed]);
+  // "Fix route timing" overrides: once the driver fixes inferred route times, a
+  // fresh route warning (re-evaluated on the corrected events) replaces the
+  // parent-supplied one, and any reconstruction gap conflict surfaces here as a
+  // manual-review message instead of forcing a shift.
+  const [fixedRouteWarning, setFixedRouteWarning] = useState(null);
+  const [manualReview, setManualReview] = useState(null);
+  const [fixing, setFixing] = useState(false);
+  useEffect(() => { setEvents(proposed); setMileageEdited(false); setFixedRouteWarning(null); setManualReview(null); }, [proposed]);
 
   const evalNow = useMemo(() => {
     let t = new Date();
@@ -42,12 +50,45 @@ export default function ProposalReview({ existing, proposed, cycleType, tz, onAp
     () => validateProposal(validationExisting, events, { cycleType, tz, now: evalNow, explicitGuard, narrative, provenance, enteredPriorHistory }),
     [validationExisting, events, cycleType, tz, evalNow, explicitGuard, narrative, provenance, enteredPriorHistory]
   );
+  // Effective route warning: a locally recomputed one (after Fix route timing)
+  // takes precedence over the parent-supplied prop, so the card never shows a
+  // stale conflict after the fix.
+  const effectiveRouteWarning = fixedRouteWarning !== null ? fixedRouteWarning : routeWarning;
+  const canFixRouteTiming = !!(effectiveRouteWarning?.legs?.some(
+    (leg) => leg?.evaluation?.conflict && leg?.event?.field_provenance?.end_time === 'inferred'
+  ));
+
+  const fixRouteTiming = async () => {
+    if (fixing) return;
+    setFixing(true);
+    setManualReview(null);
+    try {
+      // Re-route on the current events (cached) so leg eventIndex stays aligned,
+      // then reconstruct inferred Driving durations and cascade-shift inferred
+      // events up to the first explicit anchor. Explicit times never move.
+      const legs = await inspectProposalRoutes(events, { now: evalNow });
+      const { events: corrected, conflicts } = reconstructDrivingDurations(events, legs, { now: evalNow });
+      const gaps = (conflicts || []).filter((c) => c.type === 'route_time_gap');
+      if (gaps.length) { setManualReview(gaps); return; }
+      setEvents(corrected);
+      // Re-evaluate the route warning on the corrected events (cached routes) so
+      // the card reflects the resolved — or still-open — conflict accurately.
+      const freshLegs = await inspectProposalRoutes(corrected, { now: evalNow });
+      const freshWarning = await addRouteWarning(corrected, { legs: freshLegs, now: evalNow, isFuture });
+      setFixedRouteWarning(freshWarning);
+    } catch (e) {
+      setManualReview([{ type: 'route_time_gap', message: 'Could not reconstruct route timing. Review the times manually.' }]);
+    } finally {
+      setFixing(false);
+    }
+  };
+
   const warnings = useMemo(() => {
     const ws = [...validation.warnings];
-    if (routeWarning) ws.push(routeWarning);
-    if (reconstructionConflicts.length) ws.push(...reconstructionConflicts);
+    if (effectiveRouteWarning) ws.push(effectiveRouteWarning);
+    if (reconstructionConflicts.length && fixedRouteWarning === null) ws.push(...reconstructionConflicts);
     return ws;
-  }, [validation.warnings, routeWarning, reconstructionConflicts]);
+  }, [validation.warnings, effectiveRouteWarning, reconstructionConflicts, fixedRouteWarning]);
 
   const blocking = hasBlocking(warnings);
   const violations = validation.violations;
@@ -160,6 +201,20 @@ export default function ProposalReview({ existing, proposed, cycleType, tz, onAp
                 )}
                 {w.type === 'break30' && !isFuture && (
                   <div className="text-[11px] mt-0.5">If a real stop occurred, add the actual event via Edit Proposal. LogbookAI will not fabricate a break.</div>
+                )}
+                {w.type === 'route_reasonableness' && canFixRouteTiming && !manualReview && (
+                  <div className="flex gap-2 mt-1">
+                    <Button size="sm" onClick={fixRouteTiming} disabled={fixing}>
+                      <Wrench className="w-3.5 h-3.5 mr-1" /> {fixing ? 'Fixing…' : 'Fix route timing'}
+                    </Button>
+                  </div>
+                )}
+                {w.type === 'route_reasonableness' && manualReview && (
+                  <div className="text-[11px] mt-1 rounded border border-warning/50 bg-warning-surface px-2 py-1 text-warning-surface-foreground">
+                    <div className="font-semibold mb-0.5">Manual review needed</div>
+                    <div>Reconstructing the inferred times would collide with an explicitly logged event. LogbookAI will not move an explicit time. Review the times or locations by hand.</div>
+                    {manualReview.map((g, gi) => <div key={gi} className="opacity-90">{g.message}</div>)}
+                  </div>
                 )}
                 {w.hint && <div className="text-[11px] mt-0.5 opacity-80">{w.hint}</div>}
               </div>

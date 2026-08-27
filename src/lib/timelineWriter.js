@@ -217,6 +217,59 @@ export async function clearDayEvents(allEvents, dateStr, tz, opts = {}) {
   return { ...res, ops, dayStart, dayEnd };
 }
 
+// Canonical route-timing correction: persist an in-memory-reconstructed day as
+// ONE logical correction. All planning happens against a working copy (NO DB
+// writes during planning); a single applyTimelineOps call applies the entire
+// approved correction at once — it never writes event-by-event as reconstruction
+// runs, so a failed apply cannot leave a partially corrected timeline.
+// Only timestamps that actually changed are patched, and each patched
+// timestamp is marked explicit (driver-confirmed correction), so a later fix
+// won't re-shift it. Preserves EventVersion audit snapshots and invalidates
+// certification exactly like any manual edit (reason: 'Fix route timing').
+export async function applyRouteTimingCorrection(allEvents, dateStr, tz, correctedDayEvents, opts = {}) {
+  const working = [...(allEvents || [])];
+  const merged = { creates: [], updates: [], deletes: [] };
+  let changedCount = 0;
+
+  for (const corrected of (correctedDayEvents || [])) {
+    if (!corrected?.id) continue;
+    const original = (allEvents || []).find((e) => e && e.id === corrected.id);
+    if (!original) continue;
+    const startChanged = (corrected.start_timestamp || null) !== (original.start_timestamp || null);
+    const endChanged = (corrected.end_timestamp || null) !== (original.end_timestamp || null);
+    if (!startChanged && !endChanged) continue;
+
+    // Corrected timestamps become explicit — the driver confirmed the fix.
+    const editedEvent = {
+      ...original,
+      start_timestamp: corrected.start_timestamp,
+      end_timestamp: corrected.end_timestamp,
+      field_provenance: { start_time: 'explicit', end_time: 'explicit' },
+    };
+
+    // Plan each edit against the working copy (mirrors post-op state) so later
+    // edits see earlier ones — preventing overlaps/duplicates among the set.
+    const ops = planEdit(working, corrected.id, editedEvent);
+    const delSet = new Set(ops.deletes);
+    for (const u of ops.updates) {
+      const idx = working.findIndex((e) => e && e.id === u.id);
+      if (idx >= 0) working[idx] = { ...working[idx], ...u.data };
+    }
+    for (let i = working.length - 1; i >= 0; i--) if (delSet.has(working[i]?.id)) working.splice(i, 1);
+    for (const c of ops.creates) working.push({ ...c, id: c.id || `__new_${merged.creates.length}` });
+
+    merged.creates.push(...ops.creates);
+    merged.updates.push(...ops.updates);
+    merged.deletes.push(...ops.deletes);
+    changedCount++;
+  }
+
+  if (!changedCount) return { ops: merged, changedCount: 0, created: [] };
+
+  const res = await applyTimelineOps(merged, allEvents, { ...opts, reason: opts.reason || 'Fix route timing' });
+  return { ...res, ops: merged, changedCount };
+}
+
 // Change Duty Status: end every currently-ongoing event at the new status
 // start, then create the new ongoing status (deduped). Routes through
 // applyTimelineOps so certification for the affected day is invalidated.

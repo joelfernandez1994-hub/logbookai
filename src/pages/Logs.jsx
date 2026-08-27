@@ -19,6 +19,7 @@ import { useEffect } from 'react';
 import DailyMilesCard from '@/components/DailyMilesCard';
 import TimelineGapNotice from '@/components/TimelineGapNotice';
 import RouteTimeConflictNotice from '@/components/RouteTimeConflictNotice';
+import RouteTimingFixDialog from '@/components/RouteTimingFixDialog';
 import PullToRefresh from '@/components/PullToRefresh';
 import TimezoneIndicator from '@/components/TimezoneIndicator';
 import { wallTimeToIso, isoToWallTime } from '@/lib/timezones';
@@ -39,6 +40,7 @@ export default function Logs() {
   const [saveError, setSaveError] = useState('');
   const [confirmClear, setConfirmClear] = useState(false);
   const [clearing, setClearing] = useState(false);
+  const [fixOpen, setFixOpen] = useState(false);
 
   const tz = carrier?.home_terminal_timezone || 'America/Chicago';
   const cycleType = carrier?.hos_cycle || '70_8';
@@ -174,7 +176,7 @@ export default function Logs() {
       </div>
 
       <TimelineGapNotice events={events} dateStr={dateStr} tz={tz} now={new Date()} />
-      <RouteTimeConflictNotice events={events} dateStr={dateStr} tz={tz} speedProfile={speedProfile} now={new Date()} />
+      <RouteTimeConflictNotice events={events} dateStr={dateStr} tz={tz} speedProfile={speedProfile} now={new Date()} onFix={() => setFixOpen(true)} />
       <DailyMilesCard events={events} dateStr={dateStr} tz={tz} speedProfile={speedProfile} />
 
       <div className="rounded-xl border border-border bg-card p-3 mb-3">
@@ -229,6 +231,18 @@ export default function Logs() {
         onClose={() => { setEditing(null); setAdding(false); setPrefill(null); setSaveError(''); if (location.search) navigate('/logs', { replace: true }); }}
         onSave={saveEvent} tz={tz} carrier={carrier} equipment={equipment} isCertified={isCertified} dateStr={dateStr} />
 
+      <RouteTimingFixDialog
+        open={fixOpen}
+        onClose={() => setFixOpen(false)}
+        onApplied={reload}
+        events={events}
+        dateStr={dateStr}
+        tz={tz}
+        speedProfile={speedProfile}
+        carrierName={carrier?.carrier_name}
+        editedBy={profile?.legal_name}
+      />
+
       <Dialog open={confirmClear} onOpenChange={(o) => !clearing && setConfirmClear(o)}>
         <DialogContent className="max-w-md">
           <DialogHeader><DialogTitle className="flex items-center gap-2"><AlertTriangle className="w-5 h-5 text-error" /> Clear {selectedDate.toLocaleDateString('en-US', { month: 'long', day: 'numeric', timeZone: tz })} Log?</DialogTitle></DialogHeader>
@@ -279,6 +293,8 @@ function EventEditor({ open, event, prefill, onClose, onSave, tz, carrier, equip
       start_timestamp: startIso,
       end_timestamp: endIso,
       city: city.trim(), state: stateVal.trim().toUpperCase(), remark,
+      // Manual add/edit timestamps are explicit — never movable by Fix route timing.
+      field_provenance: { start_time: 'explicit', end_time: 'explicit' },
     };
     if (event) onSave(data);
     else onSave({ ...data, log_date: dateKeyInTz(startIso, tz), is_ongoing: false, is_current_version: true, method_of_creation: 'Manual', carrier_name: carrier?.carrier_name });

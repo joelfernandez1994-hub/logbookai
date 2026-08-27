@@ -45,5 +45,10 @@ export async function detectTimelineRouteConflicts(events, { dateStr, tz, profil
       requiredHours: leg.evaluation?.requiredTruckTime,
       proposedHours: leg.evaluation?.requestedDrivingHours,
       message: leg.evaluation?.note,
+      // Expose provenance so the notice can show a "Fix route timing" button
+      // only when the conflicted driving end was AI-inferred (movable). Absent
+      // on legacy logs (no field_provenance) -> not inferred -> not fixable.
+      eventIndex: leg.eventIndex,
+      endInferred: leg.event?.field_provenance?.end_time === 'inferred',
     }));
 }

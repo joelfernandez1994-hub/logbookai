@@ -1,12 +1,18 @@
 import { useState, useEffect } from 'react';
-import { AlertTriangle } from 'lucide-react';
+import { AlertTriangle, Wrench } from 'lucide-react';
 import { detectTimelineRouteConflicts } from '@/lib/routeAware';
+import { Button } from '@/components/ui/button';
 
 // Surfaces route/time conflicts on the canonical saved timeline (visible while
 // a driver certifies). Uses the SAME shared validation as ProposalReview, so
 // the two never disagree. Explicit driver-entered times are never rewritten —
 // this only informs the driver to review before certifying.
-export default function RouteTimeConflictNotice({ events, dateStr, tz, speedProfile, now = new Date() }) {
+//
+// A "Fix route timing" action is offered ONLY when at least one conflicted
+// Driving leg has an AI-inferred end (field_provenance.end_time = 'inferred').
+// Tapping it opens the in-memory review dialog (RouteTimingFixDialog); nothing
+// is persisted until the driver confirms there.
+export default function RouteTimeConflictNotice({ events, dateStr, tz, speedProfile, now = new Date(), onFix }) {
   const [conflicts, setConflicts] = useState([]);
   const [loading, setLoading] = useState(true);
 
@@ -21,6 +27,8 @@ export default function RouteTimeConflictNotice({ events, dateStr, tz, speedProf
   }, [events, dateStr, tz, speedProfile, now]);
 
   if (loading || !conflicts.length) return null;
+
+  const fixable = conflicts.some(c => c.endInferred);
 
   return (
     <div className="rounded-xl border border-error/40 bg-error-surface p-3 mb-3">
@@ -37,6 +45,11 @@ export default function RouteTimeConflictNotice({ events, dateStr, tz, speedProf
               </div>
             ))}
           </div>
+          {fixable && onFix && (
+            <Button size="sm" variant="outline" className="mt-2 bg-card" onClick={onFix}>
+              <Wrench className="w-3.5 h-3.5 mr-1" /> Fix route timing
+            </Button>
+          )}
         </div>
       </div>
     </div>

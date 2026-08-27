@@ -183,7 +183,10 @@ export default function LogAssistant() {
     return ok;
   };
 
-  // Shape a proposed event for the canonical writer.
+  // Shape a proposed event for the canonical writer. field_provenance is
+  // carried through so AI-inferred timestamps persist on the saved record —
+  // the route-aware reconstruction engine ("Fix route timing") can then move
+  // only inferred times and never touch explicit driver times.
   const shapeEvent = (p, isLast) => ({
     log_date: (p.date || (p.start_timestamp ? p.start_timestamp.slice(0, 10) : dateKeyInTz(new Date(), tz))),
     start_timestamp: p.start_timestamp,
@@ -194,6 +197,7 @@ export default function LogAssistant() {
     tractor_number: p.tractor_number || '', trailer_numbers: p.trailer_numbers || '',
     method_of_creation: p.source === 'voice' ? 'Voice AI' : 'Typed AI',
     is_ongoing: isLast && !p.end_timestamp,
+    ...(p.field_provenance ? { field_provenance: p.field_provenance } : {}),
   });
 
   // --- TELL: apply proposed events (canonical batch insert) ---
@@ -301,6 +305,7 @@ export default function LogAssistant() {
         city: c.proposed_event.city ?? target.city, state: c.proposed_event.state ?? target.state,
         remark: c.proposed_event.remark || target.remark,
         method_of_creation: 'Correction',
+        field_provenance: { start_time: 'explicit', end_time: 'explicit' },
       }, { carrierName: carrier?.carrier_name, editedBy: profile?.legal_name, reason: c.description || 'AI correction' });
       setPastResult(p => ({ ...p, factual_corrections: p.factual_corrections.filter((_, i) => i !== idx) }));
       reload();

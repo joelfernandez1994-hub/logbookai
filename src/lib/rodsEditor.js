@@ -97,7 +97,11 @@ export function planEdit(dayEvents, eventId, editedEvent) {
   if (!target) return planDayInsertion(dayEvents, editedEvent);
   const others = dayEvents.filter((e) => e.id !== eventId);
   const ops = planDayInsertion(others, editedEvent);
-  ops.updates.push({
+  // Carry field_provenance through the edit so explicit/inferred flags persist
+  // on the saved record (used by the route-aware reconstruction engine). Only
+  // set when the caller provided it (manual edits/corrections pass explicit;
+  // AI edits pass the AI-provided flags).
+  const update = {
     id: eventId,
     data: {
       duty_status: editedEvent.duty_status,
@@ -109,7 +113,9 @@ export function planEdit(dayEvents, eventId, editedEvent) {
       tractor_number: editedEvent.tractor_number || '',
       trailer_numbers: editedEvent.trailer_numbers || '',
     },
-  });
+  };
+  if (editedEvent.field_provenance) update.data.field_provenance = editedEvent.field_provenance;
+  ops.updates.push(update);
   return ops;
 }
 
