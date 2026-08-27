@@ -446,6 +446,25 @@ function fallbackMph(profileId) {
   return profile.id === 'provider' ? 50 : 55;
 }
 
+// A location is usable as a leg endpoint when it has a non-empty trimmed city.
+// State is carried through but not required to be non-empty.
+function usableLocation(ev) {
+  return ev && String(ev.city || '').trim() !== '';
+}
+function locOf(ev) {
+  return { city: String(ev?.city || '').trim(), state: String(ev?.state || '').trim().toUpperCase() };
+}
+
+// Derive the route leg for a Driving event from its NON-DRIVING neighbors:
+//   origin      = nearest preceding event (status != DRIVING) with a usable city/state
+//   destination = nearest following  event (status != DRIVING) with a usable city/state
+// The Driving event's own city/state is only a fallback when the relevant
+// neighbor is genuinely unavailable. This is robust to the AI convention of
+// storing the destination (not the origin) on the Driving event, and to the
+// origin-on-Driving convention. Consecutive Driving events with no usable
+// non-driving event between them do NOT chain — each Driving falls back to its
+// own city for the missing side, surfacing ambiguity rather than fabricating
+// movement.
 export function getDrivingLegs(proposed, now = new Date()) {
   const source = proposed || [];
   const sorted = source.filter(event => event.start_timestamp)
@@ -454,11 +473,26 @@ export function getDrivingLegs(proposed, now = new Date()) {
     if (event.duty_status !== 'DRIVING') return null;
     const destinationEvent = sorted[index + 1];
     const end = event.end_timestamp ? new Date(event.end_timestamp) : now;
+
+    let origin = null;
+    for (let i = index - 1; i >= 0; i--) {
+      if (sorted[i].duty_status === 'DRIVING') continue;
+      if (usableLocation(sorted[i])) { origin = locOf(sorted[i]); break; }
+    }
+    if (!origin) origin = locOf(event);
+
+    let destination = null;
+    for (let i = index + 1; i < sorted.length; i++) {
+      if (sorted[i].duty_status === 'DRIVING') continue;
+      if (usableLocation(sorted[i])) { destination = locOf(sorted[i]); break; }
+    }
+    if (!destination) destination = locOf(event);
+
     return {
       event,
       eventIndex: source.indexOf(event),
-      origin: { city: String(event.city || '').trim(), state: String(event.state || '').trim().toUpperCase() },
-      destination: { city: String(destinationEvent?.city || '').trim(), state: String(destinationEvent?.state || '').trim().toUpperCase() },
+      origin,
+      destination,
       drivingHours: Math.max(0, (end - new Date(event.start_timestamp)) / H),
       nextExplicitStartMs: destinationEvent?.start_timestamp ? new Date(destinationEvent.start_timestamp).getTime() : null,
     };
