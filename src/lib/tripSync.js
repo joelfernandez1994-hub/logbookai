@@ -4,7 +4,6 @@
 // speed, and detects unaccounted time gaps between duty records so the driver
 // can fill them. Never mutates RODS; the planner is a plan, not a log.
 
-import { planningMph } from './complianceStop';
 import { dateKeyInTz } from './hosEngine';
 import { normalizedSegments, startOfDayInTz } from './timelineEngine';
 import { base44 } from '@/api/base44Client';
@@ -26,10 +25,11 @@ export function firstEventOfDay(events, dateStr, tz) {
   return evs.length ? evs[0] : null;
 }
 
-// Daily miles derived from logged driving hours x planning speed profile.
+// Daily miles fallback: logged Driving hours × 65 mph. Used only when real
+// routed mileage is unavailable or incomplete (DailyMilesCard display + PDF).
 export function computeDailyMiles(events, dateStr, tz, speedProfile) {
   const evs = dayEvents(events, dateStr, tz);
-  const mph = planningMph(speedProfile);
+  const mph = 65; // fallback estimate (Driving Hours × 65 mph)
   let driveMs = 0;
   for (const e of evs) {
     if (e.duty_status !== 'DRIVING') continue;

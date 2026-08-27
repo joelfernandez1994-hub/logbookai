@@ -1,7 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Gauge, Pencil, Check, RotateCcw, Route, Sparkles } from 'lucide-react';
 import { computeDailyMiles, getDailyMiles, saveDailyMiles, saveOdometers, computeSuggestedMiles, getDrivingLegs } from '@/lib/tripSync';
-import { planningMph } from '@/lib/complianceStop';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 
@@ -25,7 +24,6 @@ export default function DailyMilesCard({ events, dateStr, tz, speedProfile }) {
     : routedAvailable
       ? suggestion.miles
       : (storedAuto != null ? storedAuto : autoMiles);
-  const mph = planningMph(speedProfile);
   const hasSuggestion = !!suggestion?.available;
   const sourceLabel = isManual ? 'manual' : (routedAvailable || storedAuto != null) ? 'routed' : 'est.';
 
@@ -110,7 +108,7 @@ export default function DailyMilesCard({ events, dateStr, tz, speedProfile }) {
             )}
           </div>
         </div>
-        {!routedAvailable && <div className="text-[11px] text-muted-foreground text-right">Auto est: {autoMiles} mi @ {mph} mph</div>}
+        {!routedAvailable && <div className="text-[11px] text-muted-foreground text-right">Fallback est: {autoMiles} mi @ 65 mph</div>}
       </div>
 
       {(suggesting || hasSuggestion) && (
