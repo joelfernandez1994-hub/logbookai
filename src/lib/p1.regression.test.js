@@ -15,13 +15,7 @@
 //     base44 client (zero AI requests).
 // ============================================================================
 
-import { describe, it, expect, vi } from 'vitest';
-
-// locationService.js imports the base44 client for its async helpers; mock
-// it so importing normalizeState (a pure function) doesn't pull in browser
-// globals (window) that don't exist in vitest's default node environment.
-vi.mock('@/api/base44Client', () => ({ base44: { entities: {} } }));
-
+import { describe, it, expect } from 'vitest';
 import { whatCanIDo, computeProposedHOS } from './logAssistant';
 import { runComplianceCheck, computeHOS, fmtDur } from './hosEngine';
 import { normalizeState } from './locationService';
