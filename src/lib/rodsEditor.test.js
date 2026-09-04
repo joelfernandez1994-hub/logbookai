@@ -105,6 +105,43 @@ describe('planEdit', () => {
     const upd = ops.updates.find((u) => u.id === 'DRIVING-6');
     expect(new Date(upd.data.end_timestamp).getTime()).toBe(DAY + 10 * 3600000);
   });
+
+  it('does NOT create a duplicate event when only metadata changes on an otherwise-unchanged event', () => {
+    // Regression: planEdit used to delegate wholesale to planDayInsertion,
+    // which always self-inserts the edited event as a brand-new "create" in
+    // addition to the update — so adding a city/state to an existing status
+    // spawned a second, duplicate record instead of just updating the original.
+    const drive = ev('DRIVING', 6, 12);
+    const ops = planEdit([drive], 'DRIVING-6', {
+      ...ev('DRIVING', 6, 12, { id: 'DRIVING-6', city: 'Chicago', state: 'IL', remark: 'BOL #4471' }),
+    });
+    expect(ops.creates).toHaveLength(0);
+    expect(ops.deletes).toHaveLength(0);
+    const upd = ops.updates.find((u) => u.id === 'DRIVING-6');
+    expect(upd).toBeTruthy();
+    expect(upd.data.city).toBe('Chicago');
+    expect(upd.data.state).toBe('IL');
+    expect(upd.data.remark).toBe('BOL #4471');
+  });
+
+  it('does NOT create a duplicate when adding a location to the currently-open (ongoing) status', () => {
+    // Same regression as above, but for the live open status: no end_timestamp,
+    // is_ongoing true. The edit must patch the existing record in place and
+    // must NOT spawn a zero-duration "is_ongoing: false" phantom twin, which
+    // would make the real open status disappear from the normalized timeline.
+    const start = iso(DAY + 6 * 3600000);
+    const ongoing = { id: 'open-drive', start_timestamp: start, end_timestamp: null, duty_status: 'DRIVING', city: '', state: '', remark: '', is_ongoing: true };
+    const ops = planEdit([ongoing], 'open-drive', {
+      duty_status: 'DRIVING', start_timestamp: start, end_timestamp: null, is_ongoing: true,
+      city: 'Chicago', state: 'IL', remark: '',
+    });
+    expect(ops.creates).toHaveLength(0);
+    const upd = ops.updates.find((u) => u.id === 'open-drive');
+    expect(upd).toBeTruthy();
+    expect(upd.data.city).toBe('Chicago');
+    expect(upd.data.is_ongoing).toBe(true);
+    expect(upd.data.end_timestamp).toBeFalsy();
+  });
 });
 
 describe('validateTimeline', () => {
