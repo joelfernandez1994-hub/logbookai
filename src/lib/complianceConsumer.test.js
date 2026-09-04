@@ -88,4 +88,39 @@ describe('Compliance canonical availability consumer', () => {
     expect(result.info.driveBlockers.some((blocker) => blocker.rule === '70-hour cycle' && blocker.message.includes('34-hour restart'))).toBe(true);
     expect(result.issues.missingInfo.some((item) => item.message.includes('Cycle calculation incomplete'))).toBe(false);
   });
+
+  it('never reports an HOS violation while the timeline is invalid — unavailable and violations go dark together', () => {
+    // A stale/ancient DRIVING event with nothing after it (same-day conflict
+    // forces the timeline invalid) used to still let runComplianceCheck
+    // compute the 14-hour window off of it directly, reporting a huge
+    // fabricated overage (e.g. 230+ hours) even while whatCanIDo/computeHOS
+    // correctly said HOS was unavailable.
+    const events = [
+      event(DAY_START.toISOString(), null, 'OFF_DUTY', 'conflict-off'),
+      event(DAY_START.toISOString(), null, 'DRIVING', 'conflict-driving'),
+    ];
+    const result = evaluate(events, true);
+    expect(result.hos.calculable).toBe(false);
+    expect(result.info.unavailable).toBe(true);
+    // No 11h/14h/cycle/overlap violation may appear — only the single blocking
+    // "timeline needs correction" notice, matching computeHOS's own gating.
+    expect(result.issues.hos).toHaveLength(1);
+    expect(result.issues.hos[0].severity).toBe('blocking');
+    expect(result.issues.hos.some((h) => /11-hour|14-hour|cycle/i.test(h.rule))).toBe(false);
+  });
+
+  it('does not require a full 24-hour total for the current (still in progress) day', () => {
+    const events = [event(DAY_START.toISOString(), null, 'DRIVING', 'today-driving')];
+    // NOW is 11h after DAY_START, so today's logged total is ~11h, not 24h.
+    const partialDayIssues = runComplianceCheck(events, CYCLE, TZ, NOW, {
+      historyComplete: true, dailyTotal: 11, isCurrentDay: true,
+    });
+    expect(partialDayIssues.missingInfo.some((item) => item.message.includes('should be 24'))).toBe(false);
+
+    // The same partial total on a COMPLETED day is still a real data-quality issue.
+    const completedDayIssues = runComplianceCheck(events, CYCLE, TZ, NOW, {
+      historyComplete: true, dailyTotal: 11, isCurrentDay: false,
+    });
+    expect(completedDayIssues.missingInfo.some((item) => item.message.includes('should be 24'))).toBe(true);
+  });
 });
