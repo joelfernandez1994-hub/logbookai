@@ -822,6 +822,32 @@ export function runComplianceCheck(rawEvents, cycleType, timezone, now = new Dat
   const segments = normalizeEvents(rawEvents, now);
   const issues = { hos: [], missingInfo: [], docConflicts: [], suggestions: [] };
 
+  // Gate ALL HOS-rule violations (11h/14h/break/cycle/overlap) on the SAME
+  // canonical timeline validity check computeHOS uses. An invalid timeline
+  // (unresolved gap, same-start conflict, duplicate events, etc.) means the
+  // elapsed-time math behind these rules cannot be trusted — e.g. a fake gap
+  // can make the 14-hour window look like it started a day ago, reporting a
+  // 230+ hour "violation". HOS calculations and violations must go
+  // unavailable together; never show a stale/fabricated violation while the
+  // rest of the app says HOS is unavailable.
+  const validity = validateTimeline(rawEvents, { now });
+  if (!validity.valid) {
+    issues.hos.push({
+      rule: 'Timeline', severity: 'blocking',
+      message: 'HOS calculations and violations are unavailable until the duty-status timeline is corrected (unresolved gap or conflict).',
+    });
+    if (!opts.historyComplete) {
+      issues.missingInfo.push({ message: 'Cycle calculation incomplete — previous duty history required. Available hours may be overstated until prior days are entered.' });
+    }
+    if (opts.equipmentMissing) {
+      issues.missingInfo.push({ message: 'Equipment (tractor/trailer) information is missing for one or more events.' });
+    }
+    if (issues.hos.length === 0 && issues.missingInfo.length === 0 && issues.docConflicts.length === 0) {
+      issues.suggestions.push({ message: 'No issues detected by the current LogbookAI compliance checks.' });
+    }
+    return issues;
+  }
+
   const governing = opts.governingOverride || computeGoverningReset(segments, now);
   const drive = computeDrivingLimit(segments, now, governing);
   const window = compute14HourWindow(segments, now, governing);
@@ -873,8 +899,11 @@ export function runComplianceCheck(rawEvents, cycleType, timezone, now = new Dat
       break;
     }
   }
-  // 24-hour total
-  if (opts.dailyTotal !== undefined && Math.abs(opts.dailyTotal - 24) > 0.01) {
+  // 24-hour total — only a COMPLETED day must total 24h. The current day's
+  // required coverage is midnight through now (evalNow), not a full 24h, so
+  // this check is skipped for opts.isCurrentDay to avoid flagging today as
+  // "incomplete" simply because the day hasn't finished yet.
+  if (!opts.isCurrentDay && opts.dailyTotal !== undefined && Math.abs(opts.dailyTotal - 24) > 0.01) {
     issues.missingInfo.push({ message: `Duty totals for the selected day equal ${opts.dailyTotal.toFixed(2)} hours (should be 24).` });
   }
   if (opts.firstDrivingWithoutPretrip) {
