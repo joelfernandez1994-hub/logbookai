@@ -98,16 +98,17 @@ export function planEdit(dayEvents, eventId, editedEvent) {
   const others = dayEvents.filter((e) => e.id !== eventId);
   const ops = planDayInsertion(others, editedEvent);
   // planDayInsertion (canonicalInsert) has no notion of "this is an edit" —
-  // it always appends a fresh self-insert create for editedEvent, since from
-  // its point of view it is just inserting a new event into `others`. That
-  // self-insert must be dropped here: the edit is applied in place via the
-  // `update` below (preserving the event's id), so keeping the self-insert
-  // would create a second, duplicate record for the SAME logical event
-  // (e.g. adding a city/state to an existing status would create a stray
-  // twin instead of just updating the original).
-  const selfCreateIdx = ops.creates.findIndex(c =>
-    !c.id && c.start_timestamp === editedEvent.start_timestamp && c.duty_status === editedEvent.duty_status);
-  const creates = selfCreateIdx >= 0 ? ops.creates.filter((_, i) => i !== selfCreateIdx) : ops.creates;
+  // it always appends a fresh self-insert create for editedEvent as the LAST
+  // entry of ops.creates (canonicalInsert/planInsert pushes it unconditionally,
+  // exactly once, after any neighbor-split creates), since from its point of
+  // view it is just inserting a new event into `others`. That self-insert must
+  // be dropped here: the edit is applied in place via the `update` below
+  // (preserving the event's id), so keeping the self-insert would create a
+  // second, duplicate record for the SAME logical event (e.g. adding a
+  // city/state to an existing status would create a stray twin instead of
+  // just updating the original). An empty ops.creates means planInsert took
+  // its exact-duplicate early-return path, so there is nothing to drop.
+  const creates = ops.creates.length > 0 ? ops.creates.slice(0, -1) : ops.creates;
   // Carry field_provenance through the edit so explicit/inferred flags persist
   // on the saved record (used by the route-aware reconstruction engine). Only
   // set when the caller provided it (manual edits/corrections pass explicit;
