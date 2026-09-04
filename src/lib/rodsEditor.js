@@ -97,6 +97,17 @@ export function planEdit(dayEvents, eventId, editedEvent) {
   if (!target) return planDayInsertion(dayEvents, editedEvent);
   const others = dayEvents.filter((e) => e.id !== eventId);
   const ops = planDayInsertion(others, editedEvent);
+  // planDayInsertion (canonicalInsert) has no notion of "this is an edit" —
+  // it always appends a fresh self-insert create for editedEvent, since from
+  // its point of view it is just inserting a new event into `others`. That
+  // self-insert must be dropped here: the edit is applied in place via the
+  // `update` below (preserving the event's id), so keeping the self-insert
+  // would create a second, duplicate record for the SAME logical event
+  // (e.g. adding a city/state to an existing status would create a stray
+  // twin instead of just updating the original).
+  const selfCreateIdx = ops.creates.findIndex(c =>
+    !c.id && c.start_timestamp === editedEvent.start_timestamp && c.duty_status === editedEvent.duty_status);
+  const creates = selfCreateIdx >= 0 ? ops.creates.filter((_, i) => i !== selfCreateIdx) : ops.creates;
   // Carry field_provenance through the edit so explicit/inferred flags persist
   // on the saved record (used by the route-aware reconstruction engine). Only
   // set when the caller provided it (manual edits/corrections pass explicit;
@@ -107,6 +118,7 @@ export function planEdit(dayEvents, eventId, editedEvent) {
       duty_status: editedEvent.duty_status,
       start_timestamp: editedEvent.start_timestamp,
       end_timestamp: editedEvent.end_timestamp,
+      is_ongoing: editedEvent.is_ongoing ?? !editedEvent.end_timestamp,
       city: editedEvent.city || '',
       state: editedEvent.state || '',
       remark: editedEvent.remark || '',
@@ -115,8 +127,7 @@ export function planEdit(dayEvents, eventId, editedEvent) {
     },
   };
   if (editedEvent.field_provenance) update.data.field_provenance = editedEvent.field_provenance;
-  ops.updates.push(update);
-  return ops;
+  return { ...ops, creates, updates: [...ops.updates, update] };
 }
 
 // Apply ops to a day's events -> the resulting event list (for preview).
