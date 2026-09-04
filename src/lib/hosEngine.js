@@ -830,7 +830,7 @@ export function runComplianceCheck(rawEvents, cycleType, timezone, now = new Dat
   // 230+ hour "violation". HOS calculations and violations must go
   // unavailable together; never show a stale/fabricated violation while the
   // rest of the app says HOS is unavailable.
-  const validity = validateTimeline(rawEvents, { now });
+  const validity = validateTimeline(rawEvents, { now, dateStr: dateKeyInTz(now, timezone), timezone });
   if (!validity.valid) {
     issues.hos.push({
       rule: 'Timeline', severity: 'blocking',
