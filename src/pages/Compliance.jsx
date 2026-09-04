@@ -30,6 +30,7 @@ export default function Compliance() {
     const result = runComplianceCheck(events, cycleType, tz, t, {
       historyComplete: hasSufficientCycleHistory(events, cycleType, profile?.entered_prior_history, tz, t),
       dailyTotal: grid.totalHours,
+      isCurrentDay: grid.isCurrent,
       firstDrivingWithoutPretrip: false,
       equipmentMissing: false,
     });
