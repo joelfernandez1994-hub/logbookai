@@ -34,7 +34,7 @@ vi.mock('@/api/base44Client', () => ({
 }));
 
 // Import AFTER the mock is registered.
-import { applyTimelineOps, insertEvent, editEvent, deleteEventById, clearDayEvents, changeStatus, insertEventsBatch } from './timelineWriter';
+import { applyTimelineOps, insertEvent, editEvent, deleteEventById, clearDayEvents, changeStatus, insertEventsBatch, updateEventFields } from './timelineWriter';
 import { planReplaceRange } from './timelineEngine';
 
 const TZ = 'America/New_York';
@@ -231,6 +231,22 @@ describe('changeStatus (Change Duty Status)', () => {
     existing[0].start_timestamp = sameStart;
     await changeStatus('DRIVING', { start_timestamp: sameStart, city: 'Miami', state: 'FL' }, existing);
     expect(calls.create.length).toBe(0);
+  });
+});
+
+describe('updateEventFields (Today: BOL / metadata patch)', () => {
+  it('patches a field on the current open status without touching time/status or creating a new event', async () => {
+    const ongoing = ev('DRIVING', 6, null, { id: 'open-drive' });
+    await updateEventFields([ongoing], 'open-drive', { bill_of_lading_number: 'BOL-4471' });
+    expect(calls.create.length).toBe(0);
+    expect(calls.delete.length).toBe(0);
+    expect(calls.update).toEqual([{ id: 'open-drive', data: { bill_of_lading_number: 'BOL-4471' } }]);
+  });
+
+  it('invalidates certification for the affected day, same as any other edit', async () => {
+    certify(DAY);
+    await updateEventFields([ev('DRIVING', 6, 10, { id: 'a' })], 'a', { bill_of_lading_number: 'BOL-1' });
+    expect(calls.certUpdate.some(u => u.data.is_superseded === true)).toBe(true);
   });
 });
 
