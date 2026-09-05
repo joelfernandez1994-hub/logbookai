@@ -7,7 +7,8 @@
 import { base44 } from '@/api/base44Client';
 import { getAllEvents } from '@/lib/driverData';
 import {
-  resolveMissingDays, recomputeDay, eventsForDay, currentQuarter, quarterDateRange, IFTA_RESOLVER_VERSION,
+  resolveMissingDays, recomputeDay, eventsForDay, buildQuarterlyReport,
+  currentQuarter, quarterDateRange, IFTA_RESOLVER_VERSION,
 } from '@/lib/iftaResolver';
 import { normalizeJurisdiction } from '@/lib/usStates';
 
@@ -130,4 +131,14 @@ export async function getFuelByJurisdiction(quarter) {
   };
 }
 
-export { currentQuarter, quarterDateRange };
+// One place both the review screen and the exports read the quarterly
+// numbers from, so a PDF/CSV can never disagree with what's on screen.
+export async function getQuarterlyReport(quarter) {
+  const [records, fuel] = await Promise.all([
+    getIftaMileageRecords(quarter),
+    getFuelByJurisdiction(quarter),
+  ]);
+  return { records, fuel, report: buildQuarterlyReport({ quarter, records, fuel }) };
+}
+
+export { currentQuarter, quarterDateRange, buildQuarterlyReport };
