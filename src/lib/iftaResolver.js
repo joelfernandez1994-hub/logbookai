@@ -273,6 +273,63 @@ export async function recomputeDay({
   return summary;
 }
 
+// Pure aggregation for the quarterly report / exports. Takes the raw
+// IftaJurisdictionMileage rows and fuel-by-jurisdiction summary already
+// fetched by the caller and produces one plain-data object both the PDF and
+// CSV builders and the review screen read from — so every surface always
+// shows numbers computed the exact same way. `driver_entered`/
+// `driver_confirmed` mileage is authoritative: a jurisdiction is "fully
+// confirmed" only when NONE of its rows are still an estimate.
+//
+// Taxable miles: LogbookAI does not currently distinguish non-taxable miles
+// (e.g. off-highway, personal conveyance) from the rest of a jurisdiction's
+// logged mileage, so taxableMiles intentionally equals totalMiles here —
+// never a smaller "corrected" figure we haven't actually derived. No tax-due
+// amount is computed anywhere in this module; that would require per-
+// jurisdiction tax-rate data this app does not have.
+export function buildQuarterlyReport({ quarter, records = [], fuel = { byState: [], totalGallons: 0 } }) {
+  const map = new Map();
+  for (const r of records) {
+    const j = r.jurisdiction;
+    if (!map.has(j)) map.set(j, { jurisdiction: j, totalMiles: 0, confirmedMiles: 0, estimatedMiles: 0, rows: [] });
+    const g = map.get(j);
+    const miles = Number(r.miles) || 0;
+    g.totalMiles += miles;
+    const isConfirmed = r.mileage_source === 'driver_entered' || r.mileage_source === 'driver_confirmed';
+    if (isConfirmed) g.confirmedMiles += miles; else g.estimatedMiles += miles;
+    g.rows.push(r);
+  }
+  const fuelByState = new Map((fuel.byState || []).map((f) => [f.jurisdiction, f.gallons]));
+
+  const jurisdictions = Array.from(map.values()).map((g) => ({
+    jurisdiction: g.jurisdiction,
+    totalMiles: Math.round(g.totalMiles * 10) / 10,
+    confirmedMiles: Math.round(g.confirmedMiles * 10) / 10,
+    estimatedMiles: Math.round(g.estimatedMiles * 10) / 10,
+    fullyConfirmed: g.estimatedMiles <= 0.05,
+    fuelGallons: Math.round(((fuelByState.get(g.jurisdiction) || 0)) * 100) / 100,
+    rowCount: g.rows.length,
+  })).sort((a, b) => b.totalMiles - a.totalMiles);
+
+  const totalMiles = jurisdictions.reduce((s, j) => s + j.totalMiles, 0);
+  const totalConfirmedMiles = jurisdictions.reduce((s, j) => s + j.confirmedMiles, 0);
+  const totalEstimatedMiles = jurisdictions.reduce((s, j) => s + j.estimatedMiles, 0);
+  const totalGallons = fuel.totalGallons || 0;
+  const mpg = totalGallons > 0 ? Math.round((totalMiles / totalGallons) * 100) / 100 : null;
+
+  return {
+    quarter,
+    jurisdictions,
+    totalMiles: Math.round(totalMiles * 10) / 10,
+    taxableMiles: Math.round(totalMiles * 10) / 10,
+    totalConfirmedMiles: Math.round(totalConfirmedMiles * 10) / 10,
+    totalEstimatedMiles: Math.round(totalEstimatedMiles * 10) / 10,
+    totalGallons: Math.round(totalGallons * 100) / 100,
+    mpg,
+    fullyConfirmed: jurisdictions.every((j) => j.fullyConfirmed),
+  };
+}
+
 export function currentQuarter(now = new Date()) {
   const y = now.getFullYear();
   const q = Math.floor(now.getMonth() / 3) + 1;
