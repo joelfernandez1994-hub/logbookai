@@ -9,6 +9,7 @@ import { getAllEvents } from '@/lib/driverData';
 import {
   resolveMissingDays, recomputeDay, eventsForDay, currentQuarter, quarterDateRange, IFTA_RESOLVER_VERSION,
 } from '@/lib/iftaResolver';
+import { normalizeJurisdiction } from '@/lib/usStates';
 
 export async function getIftaMileageRecords(quarter) {
   return await base44.entities.IftaJurisdictionMileage.filter({ quarter }, '-log_date', 2000) || [];
@@ -117,7 +118,7 @@ export async function getFuelByJurisdiction(quarter) {
   const byState = new Map();
   let totalGallons = 0;
   for (const r of inRange) {
-    const state = String(r.state || '').trim().toUpperCase();
+    const state = normalizeJurisdiction(r.state);
     const gallons = Number(r.gallons) || 0;
     if (!state || !gallons) continue;
     byState.set(state, (byState.get(state) || 0) + gallons);
