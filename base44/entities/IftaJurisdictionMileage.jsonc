@@ -1,0 +1,76 @@
+{
+  "name": "IftaJurisdictionMileage",
+  "type": "object",
+  "description": "One row per (log_date, jurisdiction): the IFTA-relevant mileage the driver logged in that state on that day. Fully separate from DutyStatusEvent \u2014 this entity is never written to by the canonical duty-status writer, and writing to it never touches the duty-status timeline. source_event_ids is a read-only trace back to the DutyStatusEvent rows a route-estimated value was derived from; it is for provenance display only.",
+  "properties": {
+    "log_date": {
+      "type": "string",
+      "format": "date",
+      "description": "Local calendar date (driver's log timezone) this mileage applies to."
+    },
+    "quarter": {
+      "type": "string",
+      "description": "Precomputed as 'YYYY-Qn' (e.g. '2026-Q3') for cheap quarterly querying."
+    },
+    "jurisdiction": {
+      "type": "string",
+      "description": "US state (or Canadian province) code this mileage was driven in."
+    },
+    "miles": {
+      "type": "number",
+      "default": 0
+    },
+    "mileage_source": {
+      "type": "string",
+      "enum": [
+        "driver_entered",
+        "route_estimated",
+        "odometer_derived",
+        "driver_confirmed"
+      ],
+      "default": "route_estimated",
+      "description": "Provenance of this value. route_estimated/odometer_derived are background-computed and must always be presented as estimates, never as exact fact, until the driver confirms them (driver_confirmed) or enters their own figure (driver_entered)."
+    },
+    "confirmed": {
+      "type": "boolean",
+      "default": false,
+      "description": "True only for driver_entered or driver_confirmed rows. Never set true automatically by the background resolver."
+    },
+    "unit_number": {
+      "type": "string"
+    },
+    "source_event_ids": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Read-only reference to the DutyStatusEvent ids a route-estimated value was derived from. Traceability only \u2014 never a write target."
+    },
+    "resolver_version": {
+      "type": "string",
+      "description": "Identifies which version of the background resolver produced this row, so a future resolver change can detect and recompute stale rows."
+    },
+    "notes": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "log_date",
+    "quarter",
+    "jurisdiction"
+  ],
+  "rls": {
+    "read": {
+      "created_by_id": "{{user.id}}"
+    },
+    "create": {
+      "created_by_id": "{{user.id}}"
+    },
+    "update": {
+      "created_by_id": "{{user.id}}"
+    },
+    "delete": {
+      "created_by_id": "{{user.id}}"
+    }
+  }
+}
