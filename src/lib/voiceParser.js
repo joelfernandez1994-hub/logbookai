@@ -55,6 +55,30 @@ function detectMeridian(text) {
   return null;
 }
 
+// Resolve an hour/minute + optional explicit meridian into a concrete Date on
+// refDate's calendar day. When no meridian is given for an hour in 1-11 (the
+// genuinely ambiguous range), pick whichever of the AM/PM readings lands
+// CLOSEST to `refDate` instead of a fixed hour-range guess: real-time
+// voice/typed logging is almost always about "now" or a moment shortly
+// before/after it (e.g. "off duty at 6" said at 6:05 PM should default to
+// 6 PM, not 6 AM). Still marked ambiguous so the driver reviews/confirms
+// before anything is applied — this only improves the DEFAULT guess.
+function resolveTimeOfDay(tn, mer, refDate, tz) {
+  const h = tn.h;
+  if (mer) {
+    let hh = h;
+    if (mer === 'pm' && hh < 12) hh += 12;
+    if (mer === 'am' && hh === 12) hh = 0;
+    return { date: timeOnDate(refDate, hh, tn.min, tz), ambiguous: false };
+  }
+  if (h === 12) return { date: timeOnDate(refDate, 12, tn.min, tz), ambiguous: false }; // noon default (unchanged)
+  if (h === 0 || h >= 13) return { date: timeOnDate(refDate, h, tn.min, tz), ambiguous: false }; // already unambiguous 24h-style
+  const amDate = timeOnDate(refDate, h, tn.min, tz);
+  const pmDate = timeOnDate(refDate, h + 12, tn.min, tz);
+  const closer = Math.abs(amDate.getTime() - refDate.getTime()) <= Math.abs(pmDate.getTime() - refDate.getTime()) ? amDate : pmDate;
+  return { date: closer, ambiguous: true };
+}
+
 // Parse a single time mention in context. Returns { date, ambiguous }
 function parseTime(text, refDate, tz) {
   const lower = text.toLowerCase();
@@ -64,21 +88,27 @@ function parseTime(text, refDate, tz) {
   if (!m) return null;
   const tn = parseTimeNumber(m[1]);
   if (!tn) return null;
-  let mer = m[2] ? m[2].replace(/[.\s]/g, '').toLowerCase() : detectMeridian(text);
-  let h = tn.h;
-  let ambiguous = false;
-  if (!mer) {
-    // heuristic: 1-7 likely PM for activity start, 8-11 likely AM; 12 = noon. Mark ambiguous.
-    if (h >= 1 && h <= 7) { mer = 'pm'; ambiguous = true; }
-    else if (h >= 8 && h <= 11) { mer = 'am'; ambiguous = true; }
-    else if (h === 12) { mer = 'pm'; }
-    else { mer = 'am'; }
-  }
-  if (mer === 'pm' && h < 12) h += 12;
-  if (mer === 'am' && h === 12) h = 0;
-  // Build date in tz at the given local time
-  const d = timeOnDate(refDate, h, tn.min, tz);
-  return { date: d, ambiguous };
+  const mer = m[2] ? m[2].replace(/[.\s]/g, '').toLowerCase() : detectMeridian(text);
+  return resolveTimeOfDay(tn, mer, refDate, tz);
+}
+
+// ---------------------------------------------------------------------------
+// TIME RANGE PARSING — "from 10 PM to 6 AM", "slept 11 to 7", "9 until 5".
+// Very common trucker phrasing for sleeper/off-duty periods that previously
+// silently dropped the second time (only duration, e.g. "for 8 hours", was
+// understood). Each side is resolved independently via resolveTimeOfDay, and
+// a range that lands at/before its own start (e.g. "10 PM to 6 AM") rolls
+// the end into the next calendar day.
+// ---------------------------------------------------------------------------
+function parseTimeRange(text, refDate, tz) {
+  const m = text.match(/(\d{1,2}(?::\d{2})?\s*(?:a\.?m\.?|p\.?m\.?)?)\s*(?:to|until|through|-)\s*(\d{1,2}(?::\d{2})?\s*(?:a\.?m\.?|p\.?m\.?)?)/i);
+  if (!m) return null;
+  const t1 = parseTime(m[1], refDate, tz);
+  const t2 = parseTime(m[2], refDate, tz);
+  if (!t1 || !t2) return null;
+  let end = t2.date;
+  if (end.getTime() <= t1.date.getTime()) end = new Date(end.getTime() + 24 * H);
+  return { start: t1.date, end, ambiguous: t1.ambiguous || t2.ambiguous };
 }
 
 // Set a local H:M on the same calendar day as refDate (in tz).
