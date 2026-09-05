@@ -302,7 +302,7 @@ export async function changeStatus(newStatus, details = {}, allEvents = []) {
         }
       }
       const patch = {};
-      const fillFields = ['city', 'state', 'remark', 'tractor_number', 'trailer_numbers'];
+      const fillFields = ['city', 'state', 'remark', 'tractor_number', 'trailer_numbers', 'bill_of_lading_number'];
       for (const f of fillFields) {
         const v = details[f];
         if (v != null && v !== '' && !mostRecent[f]) patch[f] = v;
@@ -333,6 +333,7 @@ export async function changeStatus(newStatus, details = {}, allEvents = []) {
     remark: details.remark || '',
     tractor_number: details.tractor_number || '',
     trailer_numbers: details.trailer_numbers || '',
+    bill_of_lading_number: details.bill_of_lading_number || '',
     carrier_name: details.carrier_name || '',
     method_of_creation: details.method_of_creation || 'Manual',
     is_current_version: true,
