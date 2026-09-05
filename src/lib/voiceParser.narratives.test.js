@@ -6,15 +6,9 @@
 // and confirms timezone/DST correctness in the underlying time resolution.
 // Nothing here calls an LLM — these are the deterministic paths only.
 // ============================================================================
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import { parseVoiceCommand } from './voiceParser';
-
-// LogAssistant.jsx transitively imports the base44 client (for its own data
-// hooks); mock it so importing the pure isMultiEventNarrative helper doesn't
-// pull in browser globals (window) that don't exist in vitest's node
-// environment. Nothing in this file exercises base44 itself.
-vi.mock('@/api/base44Client', () => ({ base44: { entities: {}, functions: { invoke: vi.fn() }, integrations: { Core: {} } } }));
-import { isMultiEventNarrative } from '../pages/LogAssistant.jsx';
+import { isMultiEventNarrative } from './narrativeClassifier';
 
 const ET = 'America/New_York';
 const CT = 'America/Chicago';
