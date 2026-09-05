@@ -214,6 +214,36 @@ export default function Today() {
           </div>
         )}
         <TimezoneIndicator tz={tz} className="mt-1" />
+
+        {/* Quick 2x2 status selector — current status highlighted, stays active
+            until another is tapped. For location/remark/equipment changes at
+            the same time, "Change Status" below still opens the full sheet. */}
+        <div className="grid grid-cols-2 gap-2 mt-3">
+          {QUICK_STATUSES.map((s) => {
+            const active = s.key === (displayStatus || current?.duty_status);
+            return (
+              <button key={s.key} type="button" onClick={() => handleQuickStatus(s.key)}
+                className={`flex items-center gap-2 rounded-lg border p-3 text-sm font-medium transition min-h-[44px] ${active ? 'border-primary bg-accent text-accent-foreground' : 'border-border text-card-foreground'}`}>
+                <span className={`w-3 h-3 rounded-full shrink-0 ${s.dot}`} />
+                {s.label}
+                {active && <span className="ml-auto text-[10px] font-semibold uppercase tracking-wide text-primary">Active</span>}
+              </button>
+            );
+          })}
+        </div>
+
+        {/* BOL / shipping doc # — metadata on the current status, saved via a
+            plain field patch (never a new duty-status event). */}
+        <div className="mt-3">
+          <label className="text-[11px] text-muted-foreground font-medium">BOL / SHIPPING DOC #</label>
+          <div className="flex gap-2 mt-1">
+            <Input value={bolDraft} onChange={(e) => setBolDraft(e.target.value)} onBlur={handleSaveBol}
+              placeholder={current ? 'e.g. BOL-48213' : 'Set a duty status first'} disabled={!current?.id} className="h-10" />
+            {bolDraft !== (current?.bill_of_lading_number || '') && (
+              <Button size="sm" className="h-10" disabled={bolSaving || !current?.id} onClick={handleSaveBol}>{bolSaving ? 'Saving...' : 'Save'}</Button>
+            )}
+          </div>
+        </div>
       </div>
 
       {!timelineValidation.valid && (
