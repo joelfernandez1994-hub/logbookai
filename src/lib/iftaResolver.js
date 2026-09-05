@@ -200,8 +200,11 @@ export function currentQuarter(now = new Date()) {
 export function quarterDateRange(quarter) {
   const [y, q] = quarter.split('-Q').map(Number);
   const startMonth = (q - 1) * 3; // 0-indexed
-  const start = new Date(y, startMonth, 1);
-  const end = new Date(y, startMonth + 3, 0); // last day of quarter
+  // Built purely with Date.UTC so the result never depends on the runtime's
+  // local timezone (a local-time Date here could shift the date by a day
+  // when the environment's offset is negative).
+  const start = new Date(Date.UTC(y, startMonth, 1));
+  const end = new Date(Date.UTC(y, startMonth + 3, 0)); // last day of quarter
   const fmt = (d) => d.toISOString().slice(0, 10);
   return { start: fmt(start), end: fmt(end) };
 }
