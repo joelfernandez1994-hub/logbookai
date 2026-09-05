@@ -4,14 +4,16 @@ import { saveDriverProfile } from '@/lib/driverData';
 import {
   getQuarterlyReport, runIftaResolverForQuarter, confirmMileageRow,
   setDriverMileage, currentQuarter, recomputeDayForQuarter,
+  findMileageRow, applyFuelEntryProposal,
 } from '@/lib/iftaData';
+import { parseIftaCommand } from '@/lib/iftaAssistant';
 import { generateIftaReportPdf } from '@/lib/iftaPdf';
 import { generateIftaCsv } from '@/lib/iftaCsv';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
-import { MapPin, Fuel, CheckCircle2, RefreshCw, ChevronDown, ChevronUp, Gauge, RotateCcw, FileDown, FileSpreadsheet } from 'lucide-react';
+import { MapPin, Fuel, CheckCircle2, RefreshCw, ChevronDown, ChevronUp, Gauge, RotateCcw, FileDown, FileSpreadsheet, Sparkles, Send } from 'lucide-react';
 
 function prevQuarters(n = 4) {
   const now = new Date();
@@ -47,6 +49,14 @@ export default function Ifta() {
   const [recalcResult, setRecalcResult] = useState(null);
 
   const [report, setReport] = useState(null);
+
+  // --- Phase 3: AI IFTA assistant state ---
+  const [aiText, setAiText] = useState('');
+  const [aiParsed, setAiParsed] = useState(null); // last parseIftaCommand() result
+  const [aiExtra, setAiExtra] = useState(null); // fetched data for summary/unconfirmed_query/mileage-correction lookups
+  const [aiBusy, setAiBusy] = useState(false);
+  const [aiMessage, setAiMessage] = useState('');
+  const [aiReplaceConfirmed, setAiReplaceConfirmed] = useState(false);
 
   const loadData = useCallback(async () => {
     if (!iftaEnabled) return;
