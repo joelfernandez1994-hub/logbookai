@@ -348,7 +348,15 @@ export function canComputeHOS(rawEvents, now = new Date()) {
 export function planInsert(existingEvents, newEvent, now = new Date()) {
   const t = now instanceof Date ? now : new Date(now);
   const ns = num(newEvent.start_timestamp);
-  const ne = newEvent.end_timestamp ? num(newEvent.end_timestamp) : (newEvent.is_ongoing ? t.getTime() : ns);
+  // An ongoing event's effective end for validity/overlap math is "now" —
+  // EXCEPT when the event's own start is itself after "now" (e.g. an AI
+  // reconstruction that cascaded a day's times later than the real current
+  // moment). Using bare `t.getTime()` there put the effective end BEFORE the
+  // start, so `ne < ns` read a perfectly valid open-ended event as "ends
+  // before it starts" and silently dropped it (invalid:true, no error
+  // surfaced). max(ns, now) keeps today's normal case identical (start is
+  // always <= now) while no longer rejecting a future-started open event.
+  const ne = newEvent.end_timestamp ? num(newEvent.end_timestamp) : (newEvent.is_ongoing ? Math.max(ns, t.getTime()) : ns);
   if (!isFinite(ns) || !isFinite(ne) || ne < ns) return { creates: [], updates: [], deletes: [], duplicate: false, invalid: true };
 
   const dup = (existingEvents || []).some(e =>
@@ -360,7 +368,7 @@ export function planInsert(existingEvents, newEvent, now = new Date()) {
     if (!ev || !ev.start_timestamp) continue;
     if (ev.id && newEvent.id && ev.id === newEvent.id) continue;
     const es = num(ev.start_timestamp);
-    const ee = ev.end_timestamp ? num(ev.end_timestamp) : (ev.is_ongoing ? t.getTime() : es);
+    const ee = ev.end_timestamp ? num(ev.end_timestamp) : (ev.is_ongoing ? Math.max(es, t.getTime()) : es);
     if (ee <= ns || es >= ne) continue;
     if (es >= ns && ee <= ne) { deletes.push(ev.id); continue; }
     if (es < ns && ee > ne) {
