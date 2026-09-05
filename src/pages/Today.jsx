@@ -72,7 +72,9 @@ export default function Today() {
   // Keep the BOL draft in sync with whichever event is currently the active
   // status — reset it whenever the underlying event (or its saved value)
   // changes, but don't fight the driver mid-edit on unrelated re-renders.
-  useEffect(() => { setBolDraft(current?.bill_of_lading_number || ''); }, [current?.id, current?.bill_of_lading_number]);
+  // (Reads hos.currentStatus directly, not the `current` const below, since
+  // that's declared after the early-return and isn't in scope up here.)
+  useEffect(() => { setBolDraft(hos.currentStatus?.bill_of_lading_number || ''); }, [hos.currentStatus?.id, hos.currentStatus?.bill_of_lading_number]);
 
   useEffect(() => { (async () => { try { setDvirs(await getDvirs(30) || []); } catch (e) {} })(); }, [reload]);
 
