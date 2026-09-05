@@ -9,7 +9,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
-import { User, Building2, Truck, Bot, FileText, Settings, LogOut, Shield, ClipboardCheck, Trash2, Sun, Moon, Monitor } from 'lucide-react';
+import { User, Building2, Truck, Bot, FileText, Settings, LogOut, Shield, ClipboardCheck, Trash2, Sun, Moon, Monitor, MapPin } from 'lucide-react';
 import LocationInput from '@/components/LocationInput';
 import TimezoneSelect from '@/components/TimezoneSelect';
 import { labelForIana } from '@/lib/timezones';
@@ -96,6 +96,7 @@ export default function More() {
     { icon: Truck, label: 'Equipment', onClick: () => setShowEquipment(true) },
     { icon: ClipboardCheck, label: 'Vehicle Inspection (DVIR)', onClick: () => navigate('/vehicle-inspection') },
     { icon: FileText, label: 'Documents', onClick: () => navigate('/documents') },
+    { icon: MapPin, label: 'IFTA Mileage', onClick: () => navigate('/ifta') },
   ];
 
   const toggleDvirReminder = async (val) => {
