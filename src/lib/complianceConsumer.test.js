@@ -123,4 +123,24 @@ describe('Compliance canonical availability consumer', () => {
     });
     expect(completedDayIssues.missingInfo.some((item) => item.message.includes('should be 24'))).toBe(true);
   });
+
+  it('still reports the driver\'s current open status even when an earlier, unrelated gap makes the day HOS-unavailable', () => {
+    // Logged this morning, then nothing for hours (a real, unaddressed gap),
+    // then an open DRIVING status starting later. The gap correctly makes
+    // numeric HOS clocks unavailable — but "what is my status right now" must
+    // NOT be swallowed by that: Today should still show DRIVING as active,
+    // not "No active status", while the HOS clock cards stay "--".
+    const morning = event(DAY_START.toISOString(), '2026-08-24T07:00:00.000Z', 'OFF_DUTY', 'morning-off');
+    // gap: nothing logged 07:00 -> 14:00
+    const openDrive = event('2026-08-24T14:00:00.000Z', null, 'DRIVING', 'evening-driving');
+    const events = [morning, openDrive];
+    const hos = computeHOS(events, CYCLE, TZ, NOW, { historyComplete: true });
+    expect(hos.calculable).toBe(false); // the gap correctly blocks numeric HOS
+    expect(hos.currentStatus).toBeTruthy(); // but current status is NOT lost
+    expect(hos.currentStatus.id).toBe('evening-driving');
+    expect(hos.currentStatus.duty_status).toBe('DRIVING');
+    // Numeric clocks remain unavailable, matching the gating contract.
+    expect(hos.driving.applicable).toBe(false);
+    expect(hos.window14.applicable).toBe(false);
+  });
 });
