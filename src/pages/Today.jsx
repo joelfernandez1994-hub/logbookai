@@ -8,6 +8,7 @@ import StatusChangeSheet from '@/components/StatusChangeSheet';
 import { changeStatus, insertEvent, updateEventFields } from '@/lib/timelineWriter';
 import { validateTimeline } from '@/lib/timelineEngine';
 import { getDvirs, saveDvir } from '@/lib/dvirData';
+import { saveDriverProfile } from '@/lib/driverData';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -59,6 +60,13 @@ export default function Today() {
   const tz = carrier?.home_terminal_timezone || 'America/Chicago';
   const cycleType = carrier?.hos_cycle || '70_8';
   const speedProfile = profile?.trip_planning_speed_profile || 'conservative';
+
+  // Default true for existing drivers (field didn't exist before this).
+  const liveTrackingEnabled = profile?.live_tracking_enabled !== false;
+  const toggleLiveTracking = async (val) => {
+    await saveDriverProfile({ ...profile, live_tracking_enabled: val }, profile);
+    reload();
+  };
 
   const historyComplete = useMemo(() => hasSufficientCycleHistory(events, cycleType, profile?.entered_prior_history, tz, now), [events, cycleType, profile, tz, now]);
   const openSafetyDefects = useMemo(() => (dvirs || []).filter(d => d.has_safety_defect && d.repair_status === 'pending'), [dvirs]);
