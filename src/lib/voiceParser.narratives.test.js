@@ -72,6 +72,7 @@ describe('Required narrative #4 — "stopped for my 30 at 1:15 and started drivi
     const now = new Date('2026-08-20T13:20:00-05:00');
     const res = parseVoiceCommand('I stopped for my 30 at 1:15 and started driving again at 1:45.', { now, timezone: CT });
     expect(res.handled).toBe(true);
+    console.log('DEBUG narrative4', JSON.stringify(res, null, 2));
     expect(res.events.length).toBeGreaterThanOrEqual(2);
     const brk = res.events.find(e => e.activity_type === '30-Minute Break');
     const drive = res.events.find(e => e.duty_status === 'DRIVING');
