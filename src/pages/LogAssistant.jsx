@@ -123,7 +123,7 @@ export default function LogAssistant() {
         date: e.start_timestamp ? e.start_timestamp.slice(0, 10) : '',
         source: type === 'voice' ? 'voice' : 'manual',
         confidence: 'high',
-        ambiguous_fields: [e._ambiguous?.time && 'start_timestamp', e._ambiguous?.location && 'state'].filter(Boolean),
+        ambiguous_fields: [e._ambiguous?.time && 'start_timestamp', e._ambiguous?.location && 'state', e._ambiguous?.duty_status && 'duty_status'].filter(Boolean),
       }));
       const prepared = await prepareProposal({
         intent: det.edit ? 'edit_events' : 'add_events',
