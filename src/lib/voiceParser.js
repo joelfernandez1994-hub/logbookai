@@ -317,22 +317,30 @@ export function parseVoiceCommand(text, ctx = {}) {
   // existing event by time. Mark as handled with a proposed change + a
   // clarification asking the driver to confirm the target.
   if (detectEdit(raw)) {
-    const t = parseTime(raw, refDate, tz);
+    const t = parseTime(raw, refDate, tz, { existingEvents: ctx.events || [] });
     const target = detectStatus(raw);
-    if (t && target) {
+    const loc = parseLocation(raw);
+    // A target status isn't required when the edit is purely about location/
+    // metadata ("change my last fuel stop to Orlando") — only require SOME
+    // identifiable target: a status/activity keyword, a new location, or both.
+    if (t && (target || loc)) {
+      const changeDesc = [
+        target ? `${labelStatus(target.status)}${target.activity ? ` (${target.activity})` : ''}` : null,
+        loc?.city ? `${loc.city}${loc.state ? `, ${loc.state}` : ''}` : null,
+      ].filter(Boolean).join(' — ');
       return {
         handled: true,
         edit: true,
         events: [{
           start_timestamp: t.date.toISOString(),
           end_timestamp: null,
-          duty_status: target.status,
-          activity_type: target.activity,
-          city: '', state: '', remark: target.activity || '',
-          _ambiguous: { time: t.ambiguous },
+          duty_status: target?.status || '',
+          activity_type: target?.activity || '',
+          city: loc?.city || '', state: loc?.state || '', remark: target?.activity || '',
+          _ambiguous: { time: t.ambiguous, location: loc?.ambiguous },
         }],
-        clarifications: [{ type: 'edit_target', question: `Change the status starting ${formatTime(t.date)} to ${labelStatus(target.status)}. Confirm which existing event this should replace.` }],
-        ambiguousFields: t.ambiguous ? ['start_timestamp'] : [],
+        clarifications: [{ type: 'edit_target', question: `Change the event around ${formatTime(t.date)} to ${changeDesc || '(review the fields below)'}. Confirm which existing event this should replace.` }],
+        ambiguousFields: [t.ambiguous && 'start_timestamp', loc?.ambiguous && 'state'].filter(Boolean),
       };
     }
   }
