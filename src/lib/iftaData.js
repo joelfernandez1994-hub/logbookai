@@ -7,7 +7,7 @@
 import { base44 } from '@/api/base44Client';
 import { getAllEvents } from '@/lib/driverData';
 import {
-  resolveMissingDays, recomputeDay, eventsForDay, buildQuarterlyReport,
+  resolveMissingDays, recomputeDay, eventsForDay, buildQuarterlyReport, quarterOf,
   currentQuarter, quarterDateRange, IFTA_RESOLVER_VERSION,
 } from '@/lib/iftaResolver';
 import { normalizeJurisdiction } from '@/lib/usStates';
@@ -81,6 +81,16 @@ export async function recomputeDayForQuarter({ logDate, quarter, timezone, repla
     resolverVersion: IFTA_RESOLVER_VERSION,
     replaceConfirmed,
   });
+}
+
+// Looks up the existing mileage row (if any) for a specific day+jurisdiction,
+// figuring out its quarter from the date. Used by the Phase 3 AI assistant to
+// show "this will replace your existing confirmed value" before applying a
+// mileage correction — never to silently overwrite it.
+export async function findMileageRow({ log_date, jurisdiction }) {
+  const quarter = quarterOf(log_date);
+  const records = await getIftaMileageRecords(quarter);
+  return { quarter, existingRow: records.find((r) => r.log_date === log_date && r.jurisdiction === jurisdiction) || null };
 }
 
 // Phase 3 AI assistant write path — used only after the driver reviews and
