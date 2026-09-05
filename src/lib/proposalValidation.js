@@ -604,21 +604,48 @@ export async function enrichProposalMileage(proposed, opts = {}) {
   };
 }
 
+// A conflicting leg is only a HARD blocker when the AI may have guessed one of
+// the two endpoint times (start or end marked "inferred", or provenance not
+// recorded at all — treated conservatively as not-yet-confirmed). When the
+// DRIVER explicitly stated BOTH the start and end time, LogbookAI must never
+// hard-block or silently move that fact just because route physics find it
+// unusual — the route estimate is a plausibility check, not the authoritative
+// record of how long the trip actually took. Those legs instead require an
+// explicit driver acknowledgment (see ProposalReview.jsx) before Apply unlocks.
+function isFullyExplicitLeg(leg) {
+  const fp = leg?.event?.field_provenance;
+  return fp?.start_time === 'explicit' && fp?.end_time === 'explicit';
+}
+
 export async function addRouteWarning(proposed, { routingProvider = fetchRoute, speedProfile = DEFAULT_SPEED_PROFILE, now = new Date(), isFuture = true, legs: providedLegs = null } = {}) {
   const legs = providedLegs || await inspectProposalRoutes(proposed, { routingProvider, speedProfile, now });
   if (!legs.length) return null;
   const conflicts = legs.filter(leg => leg.evaluation?.conflict);
+  // Split conflicts by provenance: fully-explicit legs get a review-and-
+  // acknowledge treatment; anything involving an inferred endpoint stays a
+  // hard blocker (the AI may have guessed wrong — "Fix route timing" or a
+  // manual edit is the correct remedy there, never a silent driver-fact change).
+  const blockingConflicts = conflicts.filter(leg => !isFullyExplicitLeg(leg));
+  const explicitConflictLegs = conflicts.filter(isFullyExplicitLeg);
   const details = legs.map(leg => `${leg.origin || 'Unknown'} → ${leg.destination || 'Unknown'}: ${leg.evaluation?.known ? leg.evaluation.note : 'Road route unavailable; mileage will be labeled as an estimate.'}`);
+  const title = blockingConflicts.length ? 'ROUTE / TRAVEL-TIME CONFLICT — REVIEW'
+    : explicitConflictLegs.length ? 'ROUTE TIMING LOOKS UNUSUAL'
+      : 'ROUTE VALIDATION';
   return {
     type: 'route_reasonableness',
-    severity: conflicts.length ? 'blocking' : 'review',
-    title: conflicts.length ? 'ROUTE / TRAVEL-TIME CONFLICT — REVIEW' : 'ROUTE VALIDATION',
+    severity: blockingConflicts.length ? 'blocking' : 'review',
+    title,
     message: details.join(' '),
     isFuture,
     legs,
-    note: conflicts.length
+    blockingConflicts,
+    explicitConflictLegs,
+    requiresAcknowledgment: explicitConflictLegs.length > 0,
+    note: blockingConflicts.length
       ? 'Routing is a reasonableness check only. Review the factual times and locations, then confirm if correct. Estimated mileage is clearly labeled.'
-      : 'Every proposed driving segment was checked against its road route.',
+      : explicitConflictLegs.length
+        ? 'These times were provided by you. Route calculations are a plausibility check, not an authoritative record of exactly how long the trip took.'
+        : 'Every proposed driving segment was checked against its road route.',
   };
 }
 
