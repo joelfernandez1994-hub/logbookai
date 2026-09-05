@@ -111,18 +111,41 @@ function parseTimeRange(text, refDate, tz) {
   return { start: t1.date, end, ambiguous: t1.ambiguous || t2.ambiguous };
 }
 
-// Set a local H:M on the same calendar day as refDate (in tz).
+// tz offset (ms to ADD to a UTC instant to get local wall-clock) at `date`,
+// in `tz`. Self-contained (mirrors timelineEngine.js's tzOffsetMs) to avoid
+// a heavy import cycle — this file must stay independent of the timeline
+// engine per the module header.
+function tzOffsetMs(date, tz) {
+  const dtf = new Intl.DateTimeFormat('en-US', {
+    timeZone: tz, hour12: false,
+    year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', second: '2-digit',
+  });
+  const parts = dtf.formatToParts(date);
+  const map = {};
+  parts.forEach(p => { if (p.type !== 'literal') map[p.type] = p.value; });
+  let h = Number(map.hour);
+  if (map.hour === '24') h = 0;
+  const asIfUtc = Date.UTC(Number(map.year), Number(map.month) - 1, Number(map.day), h, Number(map.minute), Number(map.second));
+  return asIfUtc - date.getTime();
+}
+
+// Set a local H:M on the same calendar day as refDate, correctly converted
+// from `tz` wall-clock time to a UTC instant (was previously stamping h/min
+// straight onto Date.UTC with NO offset correction — e.g. "6 PM Chicago"
+// came out as 18:00 UTC instead of 23:00 UTC, silently off by the carrier's
+// UTC offset on every AI-proposed event until the driver caught it in
+// review). Two-pass like timelineEngine's startOfDayInTz: build a UTC guess
+// on the right calendar day, read the offset AT that guess, then correct.
 function timeOnDate(refDate, h, min, tz) {
-  // Use tz start-of-day then add. We rely on hosEngine.startOfDayInTz.
-  // To avoid a heavy import cycle we compute via Intl formatting of refDate.
   const fmt = new Intl.DateTimeFormat('en-CA', { timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit' });
   const parts = fmt.formatToParts(refDate);
   const y = Number(parts.find(p => p.type === 'year').value);
   const mo = Number(parts.find(p => p.type === 'month').value) - 1;
   const dd = Number(parts.find(p => p.type === 'day').value);
-  // local wall time -> approximate ISO by using Date.UTC then no offset correction
-  // (we accept minor tz skew for a proposal; driver reviews the datetime-local field)
-  return new Date(Date.UTC(y, mo, dd, h, min));
+  const utcGuess = Date.UTC(y, mo, dd, h, min);
+  const offset = tzOffsetMs(new Date(utcGuess), tz);
+  return new Date(utcGuess - offset);
 }
 
 // ---------------------------------------------------------------------------
