@@ -955,8 +955,20 @@ export function fmtHoursShort(ms) {
 export function computeHOS(rawEvents, cycleType, timezone, now = new Date(), opts = {}) {
   const validity = validateTimeline(rawEvents, { now, dateStr: dateKeyInTz(now, timezone), timezone });
   if (!validity.valid) {
+    // A gap or conflict ANYWHERE in the day makes the numeric HOS clocks
+    // untrustworthy (correctly kept unavailable below) — but "what is my
+    // status right now" is a much weaker question that doesn't depend on the
+    // whole day being gap-free. Resolve it independently from the normalized
+    // segments so Today still shows the driver's actual open status (e.g.
+    // DRIVING since this morning) instead of "No active status" just because
+    // an earlier, unrelated stretch of the day was never logged.
+    const segs = normalizedSegments(rawEvents, now);
+    let openStatus = null;
+    for (let i = segs.length - 1; i >= 0; i--) {
+      if (segs[i].start <= now) { openStatus = segs[i]; break; }
+    }
     return {
-      calculable: false, validity, currentStatus: null,
+      calculable: false, validity, currentStatus: openStatus,
       governing: { type: 'none', referenceTime: null, split: { status: 'none', note: 'Timeline correction required.' } },
       driving: { applicable: false, drivingUsedMs: 0, drivingRemainingMs: 0, expiresAt: null, tourStart: null },
       window14: { applicable: false, windowStart: null, elapsedMs: 0, remainingMs: 0, expiresAt: null },
