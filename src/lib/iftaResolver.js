@@ -18,7 +18,7 @@ import { normalizeJurisdiction } from './usStates';
 
 export const IFTA_RESOLVER_VERSION = 'v1';
 
-function quarterOf(dateStr) {
+export function quarterOf(dateStr) {
   const [y, m] = dateStr.split('-').map(Number);
   const q = Math.floor((m - 1) / 3) + 1;
   return `${y}-Q${q}`;
