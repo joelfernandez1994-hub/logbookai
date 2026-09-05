@@ -246,6 +246,22 @@ function parseLocation(text) {
   return { city, state, ambiguous: !state };
 }
 
+// Status/duty-status words that must never be mistaken for a city name after
+// "to" in an edit command ("change my status to Sleeper").
+const STATUS_WORD_RE = /^(off duty|sleeper|sleeper berth|driving|on duty)$/i;
+
+// "change my last fuel stop TO Orlando" — edit commands describe a new
+// location with "to <City>" rather than "in <City>". Only used by the edit
+// branch (not the general clause parser) to avoid misreading an ordinary
+// "drove to Orlando" narrative clause as a location-only edit.
+function parseLocationAfterTo(text) {
+  const m = text.match(/\bto\s+([A-Z][a-zA-Z]+(?:\s[A-Z][a-zA-Z]+)?)\s*,?\s*([A-Z]{2})?\b/);
+  if (!m || STATUS_WORD_RE.test(m[1])) return null;
+  const city = m[1];
+  const state = m[2] || '';
+  return { city, state, ambiguous: !state };
+}
+
 // ---------------------------------------------------------------------------
 // STATUS DETECTION
 // ---------------------------------------------------------------------------
@@ -319,7 +335,7 @@ export function parseVoiceCommand(text, ctx = {}) {
   if (detectEdit(raw)) {
     const t = parseTime(raw, refDate, tz, { existingEvents: ctx.events || [] });
     const target = detectStatus(raw);
-    const loc = parseLocation(raw);
+    const loc = parseLocation(raw) || parseLocationAfterTo(raw);
     // A target status isn't required when the edit is purely about location/
     // metadata ("change my last fuel stop to Orlando") — only require SOME
     // identifiable target: a status/activity keyword, a new location, or both.
