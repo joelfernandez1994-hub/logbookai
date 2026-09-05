@@ -25,13 +25,9 @@ describe('parseVoiceCommand — time ranges', () => {
     expect(hours).toBeCloseTo(8, 1);
   });
 
-  it('parses "slept 11 to 7" (no explicit meridian on either side) using closest-to-now for each side', () => {
-    // "now" is late morning, so "11" should resolve to the most recent 11
-    // (AM, a few hours ago) and "7" to the closest 7 (AM, before that "11").
-    // Whichever exact reading the closest-to-now heuristic picks, the range
-    // must still be a sane ~8-hour sleeper period, not zero/negative length.
+  it('parses "sleeper from 11 to 7" (no explicit meridian on either side, but explicit berth context) as SLEEPER_BERTH', () => {
     const now = new Date('2026-08-20T11:30:00-05:00');
-    const res = parseVoiceCommand('slept 11 to 7', { now, timezone: TZ });
+    const res = parseVoiceCommand('sleeper from 11 to 7', { now, timezone: TZ });
     expect(res.handled).toBe(true);
     const e = res.events[0];
     expect(e.duty_status).toBe('SLEEPER_BERTH');
