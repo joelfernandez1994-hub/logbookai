@@ -165,6 +165,72 @@ export default function Ifta() {
     }
   };
 
+  // --- Phase 3: AI IFTA assistant handlers ---
+  // Interpretation is deterministic (parseIftaCommand) and never writes
+  // anything by itself. A write only ever happens from handleAiApply, after
+  // the driver has seen the exact proposal and tapped Apply.
+  const handleAiAsk = async () => {
+    const text = aiText.trim();
+    if (!text) return;
+    setAiBusy(true);
+    setAiMessage('');
+    setAiExtra(null);
+    setAiReplaceConfirmed(false);
+    try {
+      const parsed = parseIftaCommand(text, { now: new Date(), quarter });
+      setAiParsed(parsed);
+      if (parsed.type === 'summary') {
+        const data = await getQuarterlyReport(parsed.quarter);
+        setAiExtra(data);
+      } else if (parsed.type === 'unconfirmed_query') {
+        const data = await getQuarterlyReport(parsed.quarter);
+        const unconfirmed = data.records.filter((r) => r.mileage_source === 'route_estimated' || r.mileage_source === 'odometer_derived');
+        setAiExtra({ ...data, unconfirmed });
+      } else if (parsed.type === 'mileage_correction') {
+        const { existingRow } = await findMileageRow(parsed.proposal);
+        setAiExtra({ existingRow });
+      }
+    } catch (e) {
+      setAiMessage(e?.message || 'Could not process that request right now. Your log is unaffected.');
+    } finally {
+      setAiBusy(false);
+    }
+  };
+
+  const clearAi = () => { setAiText(''); setAiParsed(null); setAiExtra(null); setAiMessage(''); setAiReplaceConfirmed(false); };
+
+  const handleAiApply = async () => {
+    if (!aiParsed) return;
+    setAiBusy(true);
+    setAiMessage('');
+    try {
+      if (aiParsed.type === 'fuel_entry') {
+        await applyFuelEntryProposal(aiParsed.proposal);
+        setAiMessage(`Logged ${aiParsed.proposal.gallons} gal in ${aiParsed.proposal.city}, ${aiParsed.proposal.state}.`);
+      } else if (aiParsed.type === 'mileage_correction') {
+        const existingRow = aiExtra?.existingRow || null;
+        const isConfirmed = existingRow && (existingRow.mileage_source === 'driver_entered' || existingRow.mileage_source === 'driver_confirmed');
+        if (isConfirmed && !aiReplaceConfirmed) {
+          setAiMessage('This would replace a previously confirmed value — check the box below to confirm you want to replace it.');
+          setAiBusy(false);
+          return;
+        }
+        await setDriverMileage({ existingRow, ...aiParsed.proposal });
+        setAiMessage(`Set ${aiParsed.proposal.jurisdiction} mileage for ${aiParsed.proposal.log_date} to ${aiParsed.proposal.miles} mi.`);
+      } else if (aiParsed.type === 'recalculate_day') {
+        const summary = await recomputeDayForQuarter({ logDate: aiParsed.proposal.log_date, quarter: quarterOf(aiParsed.proposal.log_date), timezone, replaceConfirmed: aiReplaceConfirmed });
+        setAiMessage(`Recalculated ${aiParsed.proposal.log_date}: ${summary.updated.length} updated, ${summary.preserved.length} preserved.`);
+      }
+      await loadData();
+      setAiParsed(null);
+      setAiExtra(null);
+    } catch (e) {
+      setAiMessage(e?.message || 'Could not apply that right now. Your log is unaffected.');
+    } finally {
+      setAiBusy(false);
+    }
+  };
+
   // Rows for the day open in the "Recalculate day" dialog, across ALL
   // jurisdictions — a day can touch more than one state, and recomputing it
   // should refresh every jurisdiction for that date together.
