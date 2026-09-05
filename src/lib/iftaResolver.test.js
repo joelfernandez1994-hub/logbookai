@@ -7,7 +7,7 @@
 // ============================================================================
 import { describe, it, expect, vi } from 'vitest';
 import {
-  deriveDayLegs, resolveDayMileage, resolveMissingDays, groupEventsByDay,
+  deriveDayLegs, resolveDayMileage, resolveMissingDays, recomputeDay, groupEventsByDay, eventsForDay,
   currentQuarter, quarterDateRange, IFTA_RESOLVER_VERSION,
 } from './iftaResolver';
 
@@ -165,6 +165,127 @@ describe('resolveMissingDays — provenance rules', () => {
     const upsertFn = vi.fn().mockRejectedValue(new Error('db unavailable'));
     const summary = await resolveMissingDays({ events, timezone: 'America/New_York', existingRecords: [], routeSplitFn, upsertFn });
     expect(summary.errors.length).toBeGreaterThan(0);
+  });
+});
+
+describe('recomputeDay — manual "Recalculate day" action', () => {
+  it('refreshes a route_estimated row after the underlying trip/location data changed (FL-only became FL -> GA)', async () => {
+    // Driver originally logged a Florida-only trip (resolved once, giving a
+    // stale FL-only row), then edited the log to add a stop in Georgia.
+    const day = [
+      ev({ id: 'a', duty_status: 'ON_DUTY', city: 'Jacksonville', state: 'FL', start_timestamp: '2026-07-01T09:00:00.000Z' }),
+      ev({ id: 'b', duty_status: 'DRIVING', start_timestamp: '2026-07-01T10:00:00.000Z' }),
+      ev({ id: 'c', duty_status: 'OFF_DUTY', city: 'Valdosta', state: 'GA', start_timestamp: '2026-07-01T13:00:00.000Z' }),
+    ];
+    const existingRecords = [
+      { id: 'r1', log_date: '2026-07-01', jurisdiction: 'FL', miles: 230, mileage_source: 'route_estimated', resolver_version: IFTA_RESOLVER_VERSION },
+    ];
+    const routeSplitFn = vi.fn().mockResolvedValue({
+      totalMiles: 130,
+      segments: [{ state: 'FL', miles: 42 }, { state: 'GA', miles: 88 }],
+    });
+    const upsertFn = vi.fn().mockResolvedValue({});
+    const summary = await recomputeDay({ dayEvents: day, logDate: '2026-07-01', existingRecords, routeSplitFn, upsertFn });
+
+    expect(summary.errors).toHaveLength(0);
+    expect(summary.updated).toEqual(expect.arrayContaining([
+      { jurisdiction: 'FL', miles: 42 },
+      { jurisdiction: 'GA', miles: 88 },
+    ]));
+    // The stale FL row (existingRow) was updated in place, not left at 230.
+    expect(upsertFn).toHaveBeenCalledWith(expect.objectContaining({ jurisdiction: 'FL', miles: 42, existingRow: existingRecords[0] }));
+    expect(upsertFn).toHaveBeenCalledWith(expect.objectContaining({ jurisdiction: 'GA', miles: 88 }));
+  });
+
+  it('preserves a driver_confirmed row by default and reports it as preserved, not updated', async () => {
+    const day = [
+      ev({ id: 'a', duty_status: 'ON_DUTY', city: 'Miami', state: 'FL', start_timestamp: '2026-07-01T09:00:00.000Z' }),
+      ev({ id: 'b', duty_status: 'DRIVING', start_timestamp: '2026-07-01T10:00:00.000Z' }),
+      ev({ id: 'c', duty_status: 'OFF_DUTY', city: 'Orlando', state: 'FL', start_timestamp: '2026-07-01T13:00:00.000Z' }),
+    ];
+    const existingRecords = [
+      { id: 'r1', log_date: '2026-07-01', jurisdiction: 'FL', miles: 999, mileage_source: 'driver_confirmed' },
+    ];
+    const routeSplitFn = vi.fn().mockResolvedValue({ totalMiles: 230, segments: [{ state: 'FL', miles: 230 }] });
+    const upsertFn = vi.fn();
+    const summary = await recomputeDay({ dayEvents: day, logDate: '2026-07-01', existingRecords, routeSplitFn, upsertFn });
+
+    expect(upsertFn).not.toHaveBeenCalled();
+    expect(summary.updated).toEqual([]);
+    expect(summary.preserved).toEqual([{ jurisdiction: 'FL', miles: 999, mileage_source: 'driver_confirmed' }]);
+  });
+
+  it('replaces a driver_confirmed row only when replaceConfirmed is explicitly true', async () => {
+    const day = [
+      ev({ id: 'a', duty_status: 'ON_DUTY', city: 'Miami', state: 'FL', start_timestamp: '2026-07-01T09:00:00.000Z' }),
+      ev({ id: 'b', duty_status: 'DRIVING', start_timestamp: '2026-07-01T10:00:00.000Z' }),
+      ev({ id: 'c', duty_status: 'OFF_DUTY', city: 'Orlando', state: 'FL', start_timestamp: '2026-07-01T13:00:00.000Z' }),
+    ];
+    const existingRecords = [
+      { id: 'r1', log_date: '2026-07-01', jurisdiction: 'FL', miles: 999, mileage_source: 'driver_confirmed' },
+    ];
+    const routeSplitFn = vi.fn().mockResolvedValue({ totalMiles: 230, segments: [{ state: 'FL', miles: 230 }] });
+    const upsertFn = vi.fn().mockResolvedValue({});
+    const summary = await recomputeDay({ dayEvents: day, logDate: '2026-07-01', existingRecords, routeSplitFn, upsertFn, replaceConfirmed: true });
+
+    expect(upsertFn).toHaveBeenCalledWith(expect.objectContaining({ jurisdiction: 'FL', miles: 230, mileage_source: 'route_estimated', confirmed: false }));
+    expect(summary.updated).toEqual([{ jurisdiction: 'FL', miles: 230 }]);
+    expect(summary.preserved).toEqual([]);
+  });
+
+  it('refreshes a jurisdiction down to zero when its trip no longer exists (deleted/rerouted), without touching a sibling confirmed jurisdiction', async () => {
+    // Only a Georgia leg remains today; the old Florida leg was removed from
+    // the log. The stale FL route_estimated row should be refreshed to 0, but
+    // a separately driver_confirmed GA row from a different day is untouched
+    // (out of scope for this log_date) and this day's GA figure is fresh.
+    const day = [
+      ev({ id: 'a', duty_status: 'ON_DUTY', city: 'Valdosta', state: 'GA', start_timestamp: '2026-07-01T09:00:00.000Z' }),
+      ev({ id: 'b', duty_status: 'DRIVING', start_timestamp: '2026-07-01T10:00:00.000Z' }),
+      ev({ id: 'c', duty_status: 'OFF_DUTY', city: 'Macon', state: 'GA', start_timestamp: '2026-07-01T12:00:00.000Z' }),
+    ];
+    const existingRecords = [
+      { id: 'r1', log_date: '2026-07-01', jurisdiction: 'FL', miles: 230, mileage_source: 'route_estimated', resolver_version: IFTA_RESOLVER_VERSION },
+    ];
+    const routeSplitFn = vi.fn().mockResolvedValue({ totalMiles: 90, segments: [{ state: 'GA', miles: 90 }] });
+    const upsertFn = vi.fn().mockResolvedValue({});
+    const summary = await recomputeDay({ dayEvents: day, logDate: '2026-07-01', existingRecords, routeSplitFn, upsertFn });
+
+    expect(upsertFn).toHaveBeenCalledWith(expect.objectContaining({ jurisdiction: 'FL', miles: 0, existingRow: existingRecords[0] }));
+    expect(upsertFn).toHaveBeenCalledWith(expect.objectContaining({ jurisdiction: 'GA', miles: 90 }));
+  });
+
+  it('never throws when the route provider fails, and captures the failure in summary.errors', async () => {
+    const day = [
+      ev({ id: 'a', duty_status: 'ON_DUTY', city: 'Miami', state: 'FL', start_timestamp: '2026-07-01T09:00:00.000Z' }),
+      ev({ id: 'b', duty_status: 'DRIVING', start_timestamp: '2026-07-01T10:00:00.000Z' }),
+      ev({ id: 'c', duty_status: 'OFF_DUTY', city: 'Orlando', state: 'FL', start_timestamp: '2026-07-01T13:00:00.000Z' }),
+    ];
+    const routeSplitFn = vi.fn().mockRejectedValue(new Error('route provider down'));
+    const upsertFn = vi.fn();
+    const summary = await recomputeDay({ dayEvents: day, logDate: '2026-07-01', existingRecords: [], routeSplitFn, upsertFn });
+
+    expect(summary.errors.length).toBeGreaterThan(0);
+    expect(upsertFn).not.toHaveBeenCalled();
+  });
+
+  it('is a no-op for a day with no DRIVING events', async () => {
+    const day = [ev({ id: 'a', duty_status: 'ON_DUTY', city: 'Miami', state: 'FL' })];
+    const routeSplitFn = vi.fn();
+    const upsertFn = vi.fn();
+    const summary = await recomputeDay({ dayEvents: day, logDate: '2026-07-01', existingRecords: [], routeSplitFn, upsertFn });
+    expect(routeSplitFn).not.toHaveBeenCalled();
+    expect(summary).toEqual({ updated: [], preserved: [], errors: [] });
+  });
+});
+
+describe('eventsForDay', () => {
+  it('filters a full event list down to one calendar day, feeding recomputeDay for a single-day recalculation', () => {
+    const events = [
+      ev({ id: 'a', start_timestamp: '2026-07-01T13:00:00.000Z' }),
+      ev({ id: 'b', start_timestamp: '2026-07-02T13:00:00.000Z' }),
+    ];
+    const day1 = eventsForDay(events, '2026-07-01', 'America/New_York');
+    expect(day1.map((e) => e.id)).toEqual(['a']);
   });
 });
 
