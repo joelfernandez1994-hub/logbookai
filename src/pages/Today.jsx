@@ -254,6 +254,29 @@ export default function Today() {
       <TimelineGapNotice events={events} dateStr={todayKey} tz={tz} now={now} />
       <DailyMilesCard events={events} dateStr={todayKey} tz={tz} speedProfile={speedProfile} />
 
+      {/* Daily DVIR — quick status + one-tap access for TODAY only; the full
+          history stays on the dedicated Vehicle Inspection page. */}
+      <div className="rounded-xl border border-border bg-card p-3 mb-3">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2 text-sm font-semibold text-card-foreground">
+            <ClipboardCheck className="w-4 h-4" /> Daily DVIR
+          </div>
+          <Button size="sm" variant="outline" onClick={() => setDvirDialogOpen(true)}>
+            <Plus className="w-3.5 h-3.5 mr-1" /> {todayDvirs.length > 0 ? 'Add Another' : 'Start Inspection'}
+          </Button>
+        </div>
+        {latestTodayDvir ? (
+          <div className="text-xs text-muted-foreground mt-1.5">
+            Latest today: <span className={latestTodayDvir.inspection_result === 'defects' ? 'text-error font-medium' : 'text-success font-medium'}>
+              {latestTodayDvir.inspection_result === 'defects' ? 'Defects reported' : 'No defects'}
+            </span> · Tractor {latestTodayDvir.tractor_number}
+          </div>
+        ) : (
+          <div className="text-xs text-muted-foreground mt-1.5">No inspection report logged today yet.</div>
+        )}
+        <button type="button" onClick={() => navigate('/vehicle-inspection')} className="text-[11px] text-muted-foreground underline mt-1">View inspection history →</button>
+      </div>
+
       <div className="grid grid-cols-2 gap-2 mb-3">
         <ClockCard label="Driving Remaining" value={timelineValidation.valid ? fmtDur(hos.driving.drivingRemainingMs) : '--'}
           sublabel={timelineValidation.valid ? (hos.driving.expiresAt ? `expires ${fmtClock(hos.driving.expiresAt, tz)}` : '11-hr limit') : 'Unavailable until timeline is valid'}
@@ -374,6 +397,20 @@ export default function Today() {
         drivingStart={pendingStatus ? new Date() : null}
         defaultCity={pendingStatus?.city} defaultState={pendingStatus?.state}
         onConfirm={handlePretripConfirm} />
+
+      <Dialog open={dvirDialogOpen} onOpenChange={setDvirDialogOpen}>
+        <DialogContent className="max-w-md max-h-[85vh] overflow-y-auto">
+          <DialogHeader><DialogTitle>Daily Vehicle Inspection</DialogTitle></DialogHeader>
+          <DvirForm
+            defaultSignature={profile?.signature_data?.startsWith('data:') ? profile.signature_data : ''}
+            defaultSignatureName={profile?.signature_type === 'typed' ? profile?.signature_data : profile?.legal_name}
+            defaultTractor={equipment?.find(e => e.type === 'tractor')?.unit_number}
+            defaultTrailer={equipment?.find(e => e.type === 'trailer')?.unit_number}
+            onSave={handleSaveDvir}
+            onCancel={() => setDvirDialogOpen(false)}
+          />
+        </DialogContent>
+      </Dialog>
     </PullToRefresh>
   );
 }
