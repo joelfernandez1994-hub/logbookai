@@ -5,12 +5,15 @@ import { computeHOS, fmtDur, fmtClock, dateKeyInTz, hasSufficientCycleHistory } 
 import LogGraph from '@/components/LogGraph';
 import ClockCard from '@/components/ClockCard';
 import StatusChangeSheet from '@/components/StatusChangeSheet';
-import { changeStatus, insertEvent } from '@/lib/timelineWriter';
+import { changeStatus, insertEvent, updateEventFields } from '@/lib/timelineWriter';
 import { validateTimeline } from '@/lib/timelineEngine';
-import { getDvirs } from '@/lib/dvirData';
+import { getDvirs, saveDvir } from '@/lib/dvirData';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import DvirForm from '@/components/dvir/DvirForm';
 import PreTripDialog from '@/components/PreTripDialog';
-import { Truck, Clock, Coffee, RotateCcw, AlertTriangle, MapPin, Bot, ClipboardList, ClipboardCheck, Gauge, Moon, HelpCircle, ShieldCheck } from 'lucide-react';
+import { Truck, Clock, Coffee, RotateCcw, AlertTriangle, MapPin, Bot, ClipboardList, ClipboardCheck, Gauge, Moon, HelpCircle, ShieldCheck, FileText, Plus } from 'lucide-react';
 import DailyMilesCard from '@/components/DailyMilesCard';
 import TimezoneIndicator from '@/components/TimezoneIndicator';
 import TimelineGapNotice from '@/components/TimelineGapNotice';
@@ -22,6 +25,15 @@ const STATUS_LABELS = {
   DRIVING: 'DRIVING',
   ON_DUTY: 'ON DUTY',
 };
+
+// Quick 2x2 selector: fixed order, each with a distinct dot color matching
+// StatusChangeSheet's palette so the two status pickers stay visually consistent.
+const QUICK_STATUSES = [
+  { key: 'OFF_DUTY', label: 'Off Duty', dot: 'bg-slate-500' },
+  { key: 'SLEEPER_BERTH', label: 'Sleeper', dot: 'bg-violet-600' },
+  { key: 'DRIVING', label: 'Driving', dot: 'bg-blue-600' },
+  { key: 'ON_DUTY', label: 'On Duty', dot: 'bg-orange-600' },
+];
 
 function clockStatus(ms) {
   if (ms == null) return 'normal';
