@@ -14,6 +14,7 @@
 // ============================================================================
 
 import { dateKeyInTz } from './hosEngine';
+import { normalizeJurisdiction } from './usStates';
 
 export const IFTA_RESOLVER_VERSION = 'v1';
 
@@ -24,7 +25,11 @@ function quarterOf(dateStr) {
 }
 
 function locOf(ev) {
-  return { city: String(ev?.city || '').trim(), state: String(ev?.state || '').trim().toUpperCase() };
+  // Normalized so a GPS-captured full state name ("Georgia") and a manually
+  // typed 2-letter code ("GA") on two different events are recognized as the
+  // same place — both for the sameLocation short-circuit below and so the
+  // origin/destination string sent to the route splitter is consistent.
+  return { city: String(ev?.city || '').trim(), state: normalizeJurisdiction(ev?.state) };
 }
 function usable(loc) {
   return !!(loc.city && loc.state);
@@ -114,8 +119,9 @@ export async function resolveDayMileage(dayEvents, { timezone, routeSplitFn }) {
     }
     if (leg.event.id) sourceEventIds.add(leg.event.id);
     for (const seg of result.segments) {
-      if (!seg?.state || !(seg.miles > 0)) continue;
-      jurisdictionMiles.set(seg.state, (jurisdictionMiles.get(seg.state) || 0) + seg.miles);
+      const jurisdiction = normalizeJurisdiction(seg?.state);
+      if (!jurisdiction || !(seg.miles > 0)) continue;
+      jurisdictionMiles.set(jurisdiction, (jurisdictionMiles.get(jurisdiction) || 0) + seg.miles);
     }
   }
 
