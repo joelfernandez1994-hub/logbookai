@@ -69,6 +69,61 @@ describe('getDrivingLegs — Midwest destination-on-Driving convention', () => {
   });
 });
 
+describe('addRouteWarning — explicit vs inferred conflict severity', () => {
+  // A driving leg whose stated duration implies an unrealistic average speed
+  // for the route (150 mi in 1 h). Both variants use the exact same route/
+  // timing shape — only field_provenance differs — to isolate severity policy.
+  const conflictProvider = vi.fn(async () => ({ miles: 150, hours: 2.5 }));
+
+  function conflictFixture(provenance) {
+    return [
+      { duty_status: 'OFF_DUTY', start_timestamp: iso(0), end_timestamp: iso(6), city: 'Homestead', state: 'FL', field_provenance: { start_time: 'explicit', end_time: 'explicit' } },
+      { duty_status: 'DRIVING', start_timestamp: iso(6), end_timestamp: iso(7), city: 'Fort Pierce', state: 'FL', field_provenance: provenance },
+      { duty_status: 'ON_DUTY', start_timestamp: iso(7), end_timestamp: iso(7.5), city: 'Fort Pierce', state: 'FL', activity_type: 'Fuel', field_provenance: { start_time: 'explicit', end_time: 'explicit' } },
+    ];
+  }
+
+  it('a conflict on a FULLY EXPLICIT leg is severity "review" with requiresAcknowledgment, never blocking', async () => {
+    const events = conflictFixture({ start_time: 'explicit', end_time: 'explicit' });
+    const warning = await addRouteWarning(events, { routingProvider: conflictProvider, speedProfile: 'conservative', now: base });
+    expect(warning.severity).toBe('review');
+    expect(warning.requiresAcknowledgment).toBe(true);
+    expect(warning.blockingConflicts).toHaveLength(0);
+    expect(warning.explicitConflictLegs).toHaveLength(1);
+    expect(warning.title).toBe('ROUTE TIMING LOOKS UNUSUAL');
+  });
+
+  it('the identical conflict on an INFERRED leg stays a hard blocker', async () => {
+    const events = conflictFixture({ start_time: 'inferred', end_time: 'inferred' });
+    const warning = await addRouteWarning(events, { routingProvider: conflictProvider, speedProfile: 'conservative', now: base });
+    expect(warning.severity).toBe('blocking');
+    expect(warning.blockingConflicts).toHaveLength(1);
+    expect(warning.explicitConflictLegs).toHaveLength(0);
+    expect(warning.title).toBe('ROUTE / TRAVEL-TIME CONFLICT — REVIEW');
+  });
+
+  it('a conflict with only ONE endpoint explicit is treated as needing a fix, not an acknowledgment', async () => {
+    const events = conflictFixture({ start_time: 'explicit', end_time: 'inferred' });
+    const warning = await addRouteWarning(events, { routingProvider: conflictProvider, speedProfile: 'conservative', now: base });
+    expect(warning.severity).toBe('blocking');
+    expect(warning.explicitConflictLegs).toHaveLength(0);
+  });
+
+  it('overall severity is blocking when a proposal mixes an explicit-conflict leg with an inferred-conflict leg', async () => {
+    const mixed = [
+      { duty_status: 'OFF_DUTY', start_timestamp: iso(0), end_timestamp: iso(6), city: 'Homestead', state: 'FL', field_provenance: { start_time: 'explicit', end_time: 'explicit' } },
+      { duty_status: 'DRIVING', start_timestamp: iso(6), end_timestamp: iso(7), city: 'Fort Pierce', state: 'FL', field_provenance: { start_time: 'explicit', end_time: 'explicit' } },
+      { duty_status: 'ON_DUTY', start_timestamp: iso(7), end_timestamp: iso(7.5), city: 'Fort Pierce', state: 'FL', activity_type: 'Fuel', field_provenance: { start_time: 'explicit', end_time: 'explicit' } },
+      { duty_status: 'DRIVING', start_timestamp: iso(7.5), end_timestamp: iso(8.5), city: 'Melbourne', state: 'FL', field_provenance: { start_time: 'inferred', end_time: 'inferred' } },
+      { duty_status: 'ON_DUTY', start_timestamp: iso(8.5), end_timestamp: iso(9), city: 'Melbourne', state: 'FL', activity_type: 'Break', field_provenance: { start_time: 'explicit', end_time: 'explicit' } },
+    ];
+    const warning = await addRouteWarning(mixed, { routingProvider: conflictProvider, speedProfile: 'conservative', now: base });
+    expect(warning.severity).toBe('blocking');
+    expect(warning.blockingConflicts).toHaveLength(1);
+    expect(warning.explicitConflictLegs).toHaveLength(1);
+  });
+});
+
 describe('inspectProposalRoutes — tripEstimate invoked for real legs only', () => {
   it('calls the routing provider exactly 3 times with the three real pairs', async () => {
     mockProvider.mockClear();
