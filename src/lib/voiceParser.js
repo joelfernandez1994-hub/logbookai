@@ -67,15 +67,69 @@ function detectMeridian(text) {
   return null;
 }
 
+// Phrases that imply a meridian even without an explicit AM/PM. This is the
+// FIRST (strongest) disambiguation tier for an hour with no explicit AM/PM.
+// "Last night"/"tonight" don't shift the calendar day here (that would need
+// a separate relative-date feature) — they only bias the meridian guess.
+function detectContextMeridian(text) {
+  const lower = text.toLowerCase();
+  if (/\b(this morning|early this morning|woke up|got up)\b/.test(lower)) return 'am';
+  if (/\b(this afternoon)\b/.test(lower)) return 'pm';
+  if (/\b(this evening|tonight|last night)\b/.test(lower)) return 'pm';
+  return null;
+}
+
+// Resolve a genuinely ambiguous hour (1-11, no explicit AM/PM) using, in
+// priority order:
+//   1. an explicit context phrase in the clause ("this morning", "tonight")
+//   2. chronological consistency with the previous event in THIS narrative
+//      (prefer whichever reading keeps moving forward, within one shift)
+//   3. continuity with an existing logged event near this time (a new entry
+//      usually picks up within ~2h of where the log left off)
+//   4. closest-to-"now" — final fallback for a bare, context-free mention
+// Always still marked ambiguous: this only improves the DEFAULT the driver
+// reviews, it never skips that review.
+function resolveAmbiguousHour(h, min, refDate, tz, opts = {}) {
+  const amDate = timeOnDate(refDate, h, min, tz);
+  const pmDate = timeOnDate(refDate, h + 12, min, tz);
+
+  if (opts.contextMeridian === 'am') return { date: amDate, ambiguous: true, resolvedBy: 'context' };
+  if (opts.contextMeridian === 'pm') return { date: pmDate, ambiguous: true, resolvedBy: 'context' };
+
+  if (opts.anchor instanceof Date) {
+    const anchorMs = opts.anchor.getTime();
+    const forward = [amDate, pmDate].filter(d => d.getTime() >= anchorMs && d.getTime() - anchorMs <= 20 * H);
+    if (forward.length === 1) return { date: forward[0], ambiguous: true, resolvedBy: 'chronology' };
+    if (forward.length === 2) {
+      const closer = Math.abs(forward[0].getTime() - anchorMs) <= Math.abs(forward[1].getTime() - anchorMs) ? forward[0] : forward[1];
+      return { date: closer, ambiguous: true, resolvedBy: 'chronology' };
+    }
+  }
+
+  if (opts.existingEvents?.length) {
+    const boundaries = [];
+    for (const e of opts.existingEvents) {
+      if (e?.start_timestamp) boundaries.push(new Date(e.start_timestamp).getTime());
+      if (e?.end_timestamp) boundaries.push(new Date(e.end_timestamp).getTime());
+    }
+    if (boundaries.length) {
+      const distTo = (d) => Math.min(...boundaries.map(b => Math.abs(b - d.getTime())));
+      const amDist = distTo(amDate), pmDist = distTo(pmDate);
+      const NEIGHBOR_THRESHOLD_MS = 2 * H;
+      if (amDist <= NEIGHBOR_THRESHOLD_MS || pmDist <= NEIGHBOR_THRESHOLD_MS) {
+        return { date: amDist <= pmDist ? amDate : pmDate, ambiguous: true, resolvedBy: 'neighbor' };
+      }
+    }
+  }
+
+  const closer = Math.abs(amDate.getTime() - refDate.getTime()) <= Math.abs(pmDate.getTime() - refDate.getTime()) ? amDate : pmDate;
+  return { date: closer, ambiguous: true, resolvedBy: 'closest_to_now' };
+}
+
 // Resolve an hour/minute + optional explicit meridian into a concrete Date on
-// refDate's calendar day. When no meridian is given for an hour in 1-11 (the
-// genuinely ambiguous range), pick whichever of the AM/PM readings lands
-// CLOSEST to `refDate` instead of a fixed hour-range guess: real-time
-// voice/typed logging is almost always about "now" or a moment shortly
-// before/after it (e.g. "off duty at 6" said at 6:05 PM should default to
-// 6 PM, not 6 AM). Still marked ambiguous so the driver reviews/confirms
-// before anything is applied — this only improves the DEFAULT guess.
-function resolveTimeOfDay(tn, mer, refDate, tz) {
+// refDate's calendar day. An explicit meridian (or an hour outside 1-11) is
+// unambiguous; otherwise delegates to resolveAmbiguousHour's tiered guess.
+function resolveTimeOfDay(tn, mer, refDate, tz, opts = {}) {
   const h = tn.h;
   if (mer) {
     let hh = h;
@@ -85,14 +139,13 @@ function resolveTimeOfDay(tn, mer, refDate, tz) {
   }
   if (h === 12) return { date: timeOnDate(refDate, 12, tn.min, tz), ambiguous: false }; // noon default (unchanged)
   if (h === 0 || h >= 13) return { date: timeOnDate(refDate, h, tn.min, tz), ambiguous: false }; // already unambiguous 24h-style
-  const amDate = timeOnDate(refDate, h, tn.min, tz);
-  const pmDate = timeOnDate(refDate, h + 12, tn.min, tz);
-  const closer = Math.abs(amDate.getTime() - refDate.getTime()) <= Math.abs(pmDate.getTime() - refDate.getTime()) ? amDate : pmDate;
-  return { date: closer, ambiguous: true };
+  return resolveAmbiguousHour(h, tn.min, refDate, tz, opts);
 }
 
-// Parse a single time mention in context. Returns { date, ambiguous }
-function parseTime(text, refDate, tz) {
+// Parse a single time mention in context. Returns { date, ambiguous } or null.
+// `opts.anchor` (a Date) and `opts.existingEvents` feed tiers 2-3 of the
+// ambiguous-hour resolution; `text` itself is checked for a context phrase.
+function parseTime(text, refDate, tz, opts = {}) {
   const lower = text.toLowerCase();
   // relative "now"
   if (/\bnow\b/.test(lower)) return { date: new Date(refDate.getTime()), ambiguous: false };
@@ -101,7 +154,8 @@ function parseTime(text, refDate, tz) {
   const tn = parseTimeNumber(m[1]);
   if (!tn) return null;
   const mer = m[2] ? m[2].replace(/[.\s]/g, '').toLowerCase() : detectMeridian(text);
-  return resolveTimeOfDay(tn, mer, refDate, tz);
+  const contextMeridian = mer ? null : (opts.contextMeridian ?? detectContextMeridian(text));
+  return resolveTimeOfDay(tn, mer, refDate, tz, { ...opts, contextMeridian });
 }
 
 // ---------------------------------------------------------------------------
