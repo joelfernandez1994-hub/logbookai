@@ -209,6 +209,16 @@ export default function Ifta() {
             </Button>
           </div>
 
+          <div className="flex items-center gap-2 mb-4">
+            <Button size="sm" variant="outline" onClick={downloadPdf} disabled={!report}>
+              <FileDown className="w-3.5 h-3.5 mr-1" /> Export PDF
+            </Button>
+            <Button size="sm" variant="outline" onClick={downloadCsv} disabled={!report}>
+              <FileSpreadsheet className="w-3.5 h-3.5 mr-1" /> Export CSV
+            </Button>
+          </div>
+          {exportErr && <div className="text-xs text-warning mb-3">{exportErr}</div>}
+
           {loadErr && <div className="text-xs text-warning mb-3">{loadErr}</div>}
           {resolveSummary && (
             <div className="text-[11px] text-muted-foreground mb-3">
