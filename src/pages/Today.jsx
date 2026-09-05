@@ -52,6 +52,9 @@ export default function Today() {
   const [dvirs, setDvirs] = useState([]);
   const [optimisticStatus, setOptimisticStatus] = useState(null);
   const [optimisticSince, setOptimisticSince] = useState(null);
+  const [dvirDialogOpen, setDvirDialogOpen] = useState(false);
+  const [bolDraft, setBolDraft] = useState('');
+  const [bolSaving, setBolSaving] = useState(false);
 
   const tz = carrier?.home_terminal_timezone || 'America/Chicago';
   const cycleType = carrier?.hos_cycle || '70_8';
@@ -65,6 +68,11 @@ export default function Today() {
     [events, cycleType, tz, now, historyComplete]);
 
   useEffect(() => { const t = setTimeout(() => setNow(new Date()), 30000); return () => clearTimeout(t); }, [now]);
+
+  // Keep the BOL draft in sync with whichever event is currently the active
+  // status — reset it whenever the underlying event (or its saved value)
+  // changes, but don't fight the driver mid-edit on unrelated re-renders.
+  useEffect(() => { setBolDraft(current?.bill_of_lading_number || ''); }, [current?.id, current?.bill_of_lading_number]);
 
   useEffect(() => { (async () => { try { setDvirs(await getDvirs(30) || []); } catch (e) {} })(); }, [reload]);
 
@@ -81,6 +89,8 @@ export default function Today() {
   const current = hos.currentStatus;
   const displayStatus = optimisticStatus || current?.duty_status;
   const displaySince = optimisticStatus ? optimisticSince : current?.start;
+  const todayDvirs = (dvirs || []).filter(d => d.log_date === todayKey);
+  const latestTodayDvir = todayDvirs[0];
 
   const tourStart = hos.driving.tourStart;
   const hasPretripInTour = tourStart ? events.some(e =>
