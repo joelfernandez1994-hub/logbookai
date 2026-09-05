@@ -154,6 +154,17 @@ export async function editEvent(allEvents, eventId, editedEvent, opts = {}) {
   return { ...res, ops };
 }
 
+// Canonical metadata-only patch: updates fields (e.g. bill_of_lading_number,
+// remark) on an existing event WITHOUT touching start/end/duty_status, so it
+// never needs to run overlap/split planning. Still routes through
+// applyTimelineOps so certification invalidation stays consistent with every
+// other write. Use this instead of editEvent when time/status aren't changing.
+export async function updateEventFields(allEvents, eventId, patch, opts = {}) {
+  const ops = { creates: [], updates: [{ id: eventId, data: patch }], deletes: [] };
+  const res = await applyTimelineOps(ops, allEvents, opts);
+  return { ...res, ops };
+}
+
 // Canonical batch insert for AI Apply (multiple proposed events). Each event is
 // planInserted against a working copy that mirrors the post-op state, so later
 // proposed events see earlier ones (preventing overlaps/duplicates among the
