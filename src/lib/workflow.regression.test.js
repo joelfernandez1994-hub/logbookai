@@ -86,7 +86,7 @@ beforeEach(() => {
 
 describe('Quick status (Today.jsx 2x2 selector → handleChangeStatus → changeStatus)', () => {
   it('runs the full OFF_DUTY → ON_DUTY → DRIVING → re-tap DRIVING → ON_DUTY sequence correctly', async () => {
-    const T0 = '2026-08-20T06:00:00.000Z';
+    const T0 = '2026-08-20T00:00:00.000Z'; // midnight — full current-day coverage from dayStart
     const T1 = '2026-08-20T07:00:00.000Z';
     const T2 = '2026-08-20T07:30:00.000Z';
     const T2b = '2026-08-20T09:00:00.000Z'; // re-tapping DRIVING later
