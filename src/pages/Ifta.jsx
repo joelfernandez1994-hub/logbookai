@@ -2,14 +2,16 @@ import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useDriverData } from '@/hooks/useDriverData';
 import { saveDriverProfile } from '@/lib/driverData';
 import {
-  getIftaMileageRecords, runIftaResolverForQuarter, confirmMileageRow,
-  setDriverMileage, getFuelByJurisdiction, currentQuarter, recomputeDayForQuarter,
+  getQuarterlyReport, runIftaResolverForQuarter, confirmMileageRow,
+  setDriverMileage, currentQuarter, recomputeDayForQuarter,
 } from '@/lib/iftaData';
+import { generateIftaReportPdf } from '@/lib/iftaPdf';
+import { generateIftaCsv } from '@/lib/iftaCsv';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
-import { MapPin, Fuel, CheckCircle2, RefreshCw, ChevronDown, ChevronUp, Gauge, RotateCcw } from 'lucide-react';
+import { MapPin, Fuel, CheckCircle2, RefreshCw, ChevronDown, ChevronUp, Gauge, RotateCcw, FileDown, FileSpreadsheet } from 'lucide-react';
 
 function prevQuarters(n = 4) {
   const now = new Date();
@@ -25,7 +27,7 @@ function prevQuarters(n = 4) {
 }
 
 export default function Ifta() {
-  const { profile, reload } = useDriverData(9);
+  const { profile, carrier, reload } = useDriverData(9);
   const iftaEnabled = !!profile?.ifta_tracking_enabled;
   const timezone = profile?.home_terminal_timezone || 'America/Chicago';
 
@@ -44,17 +46,17 @@ export default function Ifta() {
   const [recalcRunning, setRecalcRunning] = useState(false);
   const [recalcResult, setRecalcResult] = useState(null);
 
+  const [report, setReport] = useState(null);
+
   const loadData = useCallback(async () => {
     if (!iftaEnabled) return;
     setLoading(true);
     setLoadErr('');
     try {
-      const [recs, fuelSummary] = await Promise.all([
-        getIftaMileageRecords(quarter),
-        getFuelByJurisdiction(quarter),
-      ]);
+      const { records: recs, fuel: fuelSummary, report: rep } = await getQuarterlyReport(quarter);
       setRecords(recs);
       setFuel(fuelSummary);
+      setReport(rep);
     } catch (e) {
       setLoadErr(e?.message || 'Could not load IFTA data right now.');
     } finally {
