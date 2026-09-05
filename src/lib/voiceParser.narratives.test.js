@@ -72,7 +72,6 @@ describe('Required narrative #4 — "stopped for my 30 at 1:15 and started drivi
     const now = new Date('2026-08-20T13:20:00-05:00');
     const res = parseVoiceCommand('I stopped for my 30 at 1:15 and started driving again at 1:45.', { now, timezone: CT });
     expect(res.handled).toBe(true);
-    console.log('DEBUG narrative4', JSON.stringify(res, null, 2));
     expect(res.events.length).toBeGreaterThanOrEqual(2);
     const brk = res.events.find(e => e.activity_type === '30-Minute Break');
     const drive = res.events.find(e => e.duty_status === 'DRIVING');
@@ -120,17 +119,22 @@ describe('Ambiguous-AM/PM priority order (context > chronology > neighboring eve
     expect(new Date(driving.start_timestamp).getTime()).toBeGreaterThan(new Date(onDuty.start_timestamp).getTime());
   });
 
-  it('tier 3: proximity to an existing logged event wins when there is no narrative anchor', () => {
-    // A single-clause command (no chronological anchor within the narrative
-    // itself) with an existing event ending at 5 PM CT Aug 20. "6" should
-    // resolve to 6 PM (close to that boundary), even though "now" (6:10 AM
-    // the next day) alone would push closest-to-now toward 6 AM instead.
-    const now = new Date('2026-08-21T06:10:00-05:00');
-    const existing = [{ id: 'prev', start_timestamp: '2026-08-20T21:00:00.000Z', end_timestamp: '2026-08-20T22:00:00.000Z' }];
+  it('tier 3: proximity to an existing logged event overrides what closest-to-now alone would pick', () => {
+    // now = 7 AM CT Aug 20. Closest-to-now ALONE would pick 6 AM (1h before
+    // now) over 6 PM (11h after now). But an existing event ends at 5:30 PM
+    // CT the SAME day — 30 min from the 6 PM reading — so tier 3 (neighbor
+    // continuity) must override tier 4 and pick 6 PM instead.
+    const now = new Date('2026-08-20T07:00:00-05:00');
+    const existing = [{ id: 'prev', start_timestamp: '2026-08-20T21:00:00.000Z', end_timestamp: '2026-08-20T22:30:00.000Z' }]; // ends 5:30 PM CT
     const res = parseVoiceCommand('on duty at 6', { now, timezone: CT, events: existing });
     const e = res.events[0];
     const hourUTC = new Date(e.start_timestamp).getUTCHours();
-    expect(hourUTC).toBe(23); // 6 PM CT Aug 20 = 23:00 UTC
+    expect(hourUTC).toBe(23); // 6 PM CT Aug 20 = 23:00 UTC (not 6 AM = 11:00 UTC)
+
+    // Sanity check: WITHOUT the existing event, the same command at the same
+    // "now" falls through to tier 4 and picks the opposite (6 AM).
+    const withoutNeighbor = parseVoiceCommand('on duty at 6', { now, timezone: CT });
+    expect(new Date(withoutNeighbor.events[0].start_timestamp).getUTCHours()).toBe(11);
   });
 
   it('tier 4: falls back to closest-to-now only when no context/chronology/neighbor signal exists', () => {
