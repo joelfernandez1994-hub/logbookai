@@ -18,7 +18,7 @@ const MIN = 60000;
 const STATUS_KEYWORDS = {
   DRIVING: ['driving', 'drive', 'drove', 'drove off', 'left', 'heading out', 'on the road'],
   ON_DUTY: ['on duty', 'on-duty', 'onduty', 'fuel', 'fueled', 'fueling', 'loading', 'loaded', 'unloading', 'unloaded', 'pre-trip', 'pretrip', 'pre trip', 'post-trip', 'post trip', 'posttrip', 'inspection', 'drop', 'hook', 'bobtail', 'yard move', 'equipment change'],
-  SLEEPER_BERTH: ['sleeper', 'sleeper berth', 'in the bunk', 'berth'],
+  SLEEPER_BERTH: ['sleeper', 'sleeper berth', 'in the bunk', 'berth', 'slept', 'sleep', 'sleeping'],
   OFF_DUTY: ['off duty', 'off-duty', 'offduty', 'off', 'done for the day', 'done', 'rest'],
 };
 
