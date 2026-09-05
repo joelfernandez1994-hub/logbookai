@@ -69,6 +69,41 @@
         "provider"
       ],
       "default": "conservative"
+    },
+    "ifta_tracking_enabled": {
+      "type": "boolean",
+      "default": false,
+      "description": "Optional, off by default. When true, a background resolver estimates state-by-state mileage from existing trip/location/fuel/odometer data and a separate Reports > IFTA screen appears. Never creates or alters DutyStatusEvent rows and never affects HOS, DVIR, BOL, or normal logging."
+    },
+    "ifta_base_jurisdiction": {
+      "type": "string",
+      "description": "Driver's IFTA base jurisdiction (state), for the quarterly report header only. Not required unless IFTA tracking is enabled."
+    },
+    "ifta_account_number": {
+      "type": "string"
+    },
+    "ifta_fuel_type": {
+      "type": "string",
+      "enum": [
+        "diesel",
+        "gasoline",
+        "propane",
+        "other"
+      ],
+      "default": "diesel"
+    },
+    "ifta_default_unit_number": {
+      "type": "string"
+    },
+    "ifta_odometer_preference": {
+      "type": "string",
+      "enum": [
+        "manual",
+        "derived",
+        "none"
+      ],
+      "default": "none",
+      "description": "How the driver prefers odometer data to factor into IFTA mileage. 'none' means route-estimated mileage is used as-is until the driver confirms or corrects it."
     }
   },
   "required": [
