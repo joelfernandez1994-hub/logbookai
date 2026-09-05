@@ -7,7 +7,7 @@
 export const VALID_ROUTES = [
   '/', '/logs', '/trip', '/inspection', '/more',
   '/compliance', '/assistant', '/documents', '/engine-tests',
-  '/vehicle-inspection', '/log-assistant',
+  '/vehicle-inspection', '/log-assistant', '/ifta',
   '/onboarding', '/login', '/register', '/forgot-password', '/reset-password',
 ];
 
@@ -22,6 +22,7 @@ const PARENT_MAP = {
   '/documents': '/more',
   '/vehicle-inspection': '/more',
   '/engine-tests': '/more',
+  '/ifta': '/more',
 };
 
 export function isValidRoute(route) {
