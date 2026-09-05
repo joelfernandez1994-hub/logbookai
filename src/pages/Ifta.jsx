@@ -101,10 +101,12 @@ export default function Ifta() {
     return Array.from(map.values()).sort((a, b) => b.totalMiles - a.totalMiles);
   }, [records]);
 
-  const totalMiles = byJurisdiction.reduce((s, g) => s + g.totalMiles, 0);
-  const totalConfirmed = byJurisdiction.reduce((s, g) => s + g.confirmedMiles, 0);
-  const totalGallons = fuel.totalGallons || 0;
-  const mpg = totalGallons > 0 ? totalMiles / totalGallons : null;
+  // Read straight from the same report object the PDF/CSV exports use, so
+  // the numbers on screen can never drift from what gets exported.
+  const totalMiles = report?.totalMiles ?? 0;
+  const totalConfirmed = report?.totalConfirmedMiles ?? 0;
+  const totalGallons = report?.totalGallons ?? (fuel.totalGallons || 0);
+  const mpg = report?.mpg ?? null;
 
   const sourceLabel = (s) => ({
     driver_entered: 'Driver entered',
@@ -122,6 +124,36 @@ export default function Ifta() {
     loadData();
   };
   const confirmRow = async (row) => { await confirmMileageRow(row); loadData(); };
+
+  const [exportErr, setExportErr] = useState('');
+  const downloadPdf = () => {
+    if (!report) return;
+    setExportErr('');
+    try {
+      const doc = generateIftaReportPdf(report, { driver: profile, carrier });
+      doc.save(`LogbookAI_IFTA_${quarter}.pdf`);
+    } catch (e) {
+      setExportErr('Could not build the PDF right now.');
+    }
+  };
+  const downloadCsv = () => {
+    if (!report) return;
+    setExportErr('');
+    try {
+      const csv = generateIftaCsv({ quarter, records, fuel, report });
+      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `LogbookAI_IFTA_${quarter}.csv`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      setExportErr('Could not build the CSV right now.');
+    }
+  };
 
   // Rows for the day open in the "Recalculate day" dialog, across ALL
   // jurisdictions — a day can touch more than one state, and recomputing it
