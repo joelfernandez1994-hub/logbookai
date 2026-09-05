@@ -191,6 +191,75 @@ export async function resolveMissingDays({
   return summary;
 }
 
+// Force-recompute ONE calendar day, ignoring the resolver-version staleness
+// check that resolveMissingDays uses (that check is what makes background
+// resolution idempotent; this deliberately bypasses it). Use this when the
+// driver has edited a past trip/log after IFTA mileage for that day was
+// already resolved, and taps an explicit "Recalculate day" action.
+//
+// - Only route_estimated / odometer_derived rows are ever refreshed.
+// - driver_entered / driver_confirmed rows are left untouched UNLESS the
+//   caller passes replaceConfirmed:true (the driver explicitly opted in).
+// - A jurisdiction that no longer appears in the freshly-derived legs (e.g.
+//   the driver deleted or rerouted a trip) has its non-driver-provided row
+//   refreshed to the new (possibly zero) mileage rather than left stale.
+// - Only ever reads DutyStatusEvent (via the caller-supplied dayEvents) and
+//   never writes it; never throws — every failure lands in summary.errors,
+//   so this can never affect HOS or logging.
+export async function recomputeDay({
+  dayEvents,
+  logDate,
+  existingRecords = [],
+  routeSplitFn,
+  upsertFn,
+  resolverVersion = IFTA_RESOLVER_VERSION,
+  replaceConfirmed = false,
+}) {
+  const summary = { updated: [], preserved: [], errors: [] };
+  const hasDriving = (dayEvents || []).some((e) => e.duty_status === 'DRIVING');
+  if (!hasDriving) return summary;
+
+  const { jurisdictionMiles, sourceEventIds, errors } = await resolveDayMileage(dayEvents, { routeSplitFn });
+  if (errors.length) summary.errors.push(...errors);
+
+  const quarter = quarterOf(logDate);
+  const freshByJurisdiction = new Map(jurisdictionMiles.map((j) => [j.jurisdiction, j.miles]));
+  // Union of jurisdictions with fresh mileage now, and jurisdictions that had
+  // a stored (non-driver-provided) row before — so a trip that disappeared
+  // (deleted/rerouted) gets its stale estimate refreshed down, not left behind.
+  const jurisdictions = new Set(freshByJurisdiction.keys());
+  for (const r of existingRecords) jurisdictions.add(r.jurisdiction);
+
+  for (const jurisdiction of jurisdictions) {
+    const existingRow = existingRecords.find((r) => r.jurisdiction === jurisdiction);
+    const isDriverProvided = existingRow && (existingRow.mileage_source === 'driver_entered' || existingRow.mileage_source === 'driver_confirmed');
+    if (isDriverProvided && !replaceConfirmed) {
+      summary.preserved.push({ jurisdiction, miles: existingRow.miles, mileage_source: existingRow.mileage_source });
+      continue;
+    }
+    const miles = freshByJurisdiction.has(jurisdiction) ? freshByJurisdiction.get(jurisdiction) : 0;
+    if (!existingRow && miles <= 0) continue; // nothing to create for a jurisdiction with no mileage and no prior row
+    try {
+      await upsertFn({
+        existingRow,
+        log_date: logDate,
+        quarter,
+        jurisdiction,
+        miles,
+        mileage_source: 'route_estimated',
+        confirmed: false,
+        source_event_ids: sourceEventIds,
+        resolver_version: resolverVersion,
+      });
+      summary.updated.push({ jurisdiction, miles });
+    } catch (e) {
+      summary.errors.push({ reason: `Could not save mileage for ${jurisdiction}: ${e?.message || e}` });
+    }
+  }
+
+  return summary;
+}
+
 export function currentQuarter(now = new Date()) {
   const y = now.getFullYear();
   const q = Math.floor(now.getMonth() / 3) + 1;
