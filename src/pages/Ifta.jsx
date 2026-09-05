@@ -232,6 +232,9 @@ export default function Ifta() {
                               <Button size="sm" variant="outline" className="h-7 px-2 text-[11px]" onClick={() => confirmRow(r)}>Confirm</Button>
                             )}
                             <Button size="sm" variant="ghost" className="h-7 px-2 text-[11px]" onClick={() => openEdit(r)}>Edit</Button>
+                            <Button size="sm" variant="ghost" className="h-7 px-2 text-[11px]" title="Recalculate this day from your current log" onClick={() => openRecalc(r.log_date)}>
+                              <RotateCcw className="w-3 h-3" />
+                            </Button>
                           </div>
                         </div>
                       ))}
@@ -263,6 +266,42 @@ export default function Ifta() {
           </div>
         </>
       )}
+
+      <Dialog open={!!recalcDate} onOpenChange={(o) => !o && setRecalcDate(null)}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader><DialogTitle>Recalculate {recalcDate}</DialogTitle></DialogHeader>
+          <div className="space-y-3 text-sm">
+            <p className="text-muted-foreground">Re-derives this day's mileage from your current trip and location data — useful if you edited a past log entry after mileage was already resolved. This never changes your duty-status log, HOS, or DVIR.</p>
+            {recalcConfirmedCount > 0 && (
+              <div className="rounded-lg border border-warning/40 bg-warning/10 p-2 text-xs text-warning">
+                {recalcConfirmedCount} jurisdiction{recalcConfirmedCount > 1 ? 's' : ''} for this day {recalcConfirmedCount > 1 ? 'are' : 'is'} driver entered or confirmed. By default {recalcConfirmedCount > 1 ? 'those will' : 'that will'} NOT be changed — only route-estimated/odometer-derived mileage is refreshed.
+              </div>
+            )}
+            <label className="flex items-start gap-2 text-xs text-card-foreground">
+              <input type="checkbox" className="mt-0.5 w-4 h-4" checked={recalcReplaceConfirmed}
+                onChange={(e) => setRecalcReplaceConfirmed(e.target.checked)} disabled={recalcConfirmedCount === 0} />
+              <span>Also replace driver-entered/confirmed mileage for this day with the fresh estimate{recalcConfirmedCount === 0 ? ' (nothing confirmed for this day)' : ''}.</span>
+            </label>
+            {recalcResult && (
+              <div className="text-[11px] space-y-1">
+                {recalcResult.updated.length > 0 && (
+                  <p className="text-card-foreground">Updated: {recalcResult.updated.map((u) => `${u.jurisdiction} ${u.miles.toFixed(1)} mi`).join(', ')}</p>
+                )}
+                {recalcResult.preserved.length > 0 && (
+                  <p className="text-muted-foreground">Preserved (unchanged): {recalcResult.preserved.map((p) => `${p.jurisdiction} ${p.miles} mi`).join(', ')}</p>
+                )}
+                {recalcResult.errors.length > 0 && (
+                  <p className="text-warning">{recalcResult.errors.length} issue(s) — your log is unaffected; try again later.</p>
+                )}
+              </div>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setRecalcDate(null)}>Close</Button>
+            <Button onClick={runRecalc} disabled={recalcRunning}>{recalcRunning ? 'Recalculating…' : 'Recalculate day'}</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={!!editRow} onOpenChange={(o) => !o && setEditRow(null)}>
         <DialogContent className="max-w-sm">
