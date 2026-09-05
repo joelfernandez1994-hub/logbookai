@@ -164,9 +164,20 @@ export default function ProposalReview({ existing, proposed, cycleType, tz, onAp
     if (applying || blocking) return;
     setApplying(true);
     try {
+      // Keep the flagged discrepancy + the driver's acknowledgment on the
+      // record itself — the log should make it clear LogbookAI flagged this
+      // and the driver confirmed the stated times, not silently drop the flag.
+      const eventsToApply = needsRouteAck && routeAcknowledged
+        ? events.map((e, idx) => {
+            const leg = explicitConflictLegs.find(l => l.eventIndex === idx);
+            if (!leg) return e;
+            const note = `Route timing reviewed & confirmed by driver — logged ${fmtHoursMinutes(leg.evaluation?.requestedDrivingHours)}, ~${fmtHoursMinutes(leg.evaluation?.requiredTruckTime)} estimated.`;
+            return { ...e, remark: e.remark ? `${e.remark} [${note}]` : note };
+          })
+        : events;
       const ok = isReplaceDay
-        ? await onApplyReplace?.(events, { mileageEdited, dailyMileage })
-        : await onApply(events, { mileageEdited, dailyMileage });
+        ? await onApplyReplace?.(eventsToApply, { mileageEdited, dailyMileage })
+        : await onApply(eventsToApply, { mileageEdited, dailyMileage });
       if (ok === false) setApplying(false);
     } catch (e) {
       setApplying(false);
