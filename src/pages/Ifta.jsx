@@ -3,13 +3,13 @@ import { useDriverData } from '@/hooks/useDriverData';
 import { saveDriverProfile } from '@/lib/driverData';
 import {
   getIftaMileageRecords, runIftaResolverForQuarter, confirmMileageRow,
-  setDriverMileage, getFuelByJurisdiction, currentQuarter,
+  setDriverMileage, getFuelByJurisdiction, currentQuarter, recomputeDayForQuarter,
 } from '@/lib/iftaData';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
-import { MapPin, Fuel, CheckCircle2, RefreshCw, ChevronDown, ChevronUp, Gauge } from 'lucide-react';
+import { MapPin, Fuel, CheckCircle2, RefreshCw, ChevronDown, ChevronUp, Gauge, RotateCcw } from 'lucide-react';
 
 function prevQuarters(n = 4) {
   const now = new Date();
@@ -39,6 +39,10 @@ export default function Ifta() {
   const [expanded, setExpanded] = useState(null);
   const [editRow, setEditRow] = useState(null);
   const [editMiles, setEditMiles] = useState('');
+  const [recalcDate, setRecalcDate] = useState(null);
+  const [recalcReplaceConfirmed, setRecalcReplaceConfirmed] = useState(false);
+  const [recalcRunning, setRecalcRunning] = useState(false);
+  const [recalcResult, setRecalcResult] = useState(null);
 
   const loadData = useCallback(async () => {
     if (!iftaEnabled) return;
@@ -116,6 +120,27 @@ export default function Ifta() {
     loadData();
   };
   const confirmRow = async (row) => { await confirmMileageRow(row); loadData(); };
+
+  // Rows for the day open in the "Recalculate day" dialog, across ALL
+  // jurisdictions — a day can touch more than one state, and recomputing it
+  // should refresh every jurisdiction for that date together.
+  const recalcDayRows = useMemo(() => records.filter((r) => r.log_date === recalcDate), [records, recalcDate]);
+  const recalcConfirmedCount = recalcDayRows.filter((r) => r.mileage_source === 'driver_entered' || r.mileage_source === 'driver_confirmed').length;
+
+  const openRecalc = (logDate) => { setRecalcDate(logDate); setRecalcReplaceConfirmed(false); setRecalcResult(null); };
+  const runRecalc = async () => {
+    setRecalcRunning(true);
+    setRecalcResult(null);
+    try {
+      const summary = await recomputeDayForQuarter({ logDate: recalcDate, quarter, timezone, replaceConfirmed: recalcReplaceConfirmed });
+      setRecalcResult(summary);
+      await loadData();
+    } catch (e) {
+      setRecalcResult({ updated: [], preserved: [], errors: [{ reason: e?.message || 'Could not recalculate this day right now. Your log is unaffected.' }] });
+    } finally {
+      setRecalcRunning(false);
+    }
+  };
 
   return (
     <div className="px-4 pt-6 pb-6">
