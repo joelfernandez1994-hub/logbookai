@@ -1,5 +1,4 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.40';
-import { secrets } from 'base44:runtime';
 
 // ============================================================================
 // LogbookAI Manual Log Assistant — OpenAI-backed interpretation layer.
@@ -20,8 +19,6 @@ import { secrets } from 'base44:runtime';
 // no usage is consumed and the client keeps the driver's typed request.
 // ============================================================================
 
-const OPENAI_MODEL = 'gpt-5.4-mini';
-const OPENAI_URL = 'https://api.openai.com/v1/chat/completions';
 const UNAVAILABLE_MSG = 'LogbookAI is temporarily unavailable. Your request has not been applied.';
 
 function eventSummary(events) {
@@ -117,6 +114,75 @@ const INTERPRET_SCHEMA = {
     },
   },
   required: ['intent', 'target_date', 'requires_clarification', 'clarification_question', 'summary', 'refuses_fabrication', 'pretrip_ask', 'proposed_events', 'clarifications', 'location_confirmations'],
+};
+
+// Response shapes for make_legal_past / make_legal_future, matching the JSON
+// shape each prompt already describes to the model (see buildPastPrompt /
+// buildFuturePrompt below). Passed as response_json_schema to InvokeLLM.
+const PAST_SCHEMA = {
+  type: 'object',
+  properties: {
+    analysis: { type: 'string' },
+    factual_corrections: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: {
+          description: { type: 'string' },
+          evidence: { type: 'string' },
+          before_event: { type: 'string' },
+          after_event: { type: 'string' },
+          resolves_violation: { type: 'boolean' },
+          question_for_driver: { type: 'string' },
+          event_index: { type: 'number' },
+          proposed_event: {
+            type: 'object',
+            properties: {
+              start_timestamp: { type: 'string' },
+              end_timestamp: { type: 'string' },
+              duty_status: { type: 'string' },
+              city: { type: 'string' },
+              state: { type: 'string' },
+              remark: { type: 'string' },
+              activity_type: { type: 'string' },
+            },
+          },
+        },
+      },
+    },
+    violations_remain: {
+      type: 'array',
+      items: { type: 'object', properties: { rule: { type: 'string' }, message: { type: 'string' } } },
+    },
+    refuses_fabrication: { type: 'boolean' },
+  },
+};
+
+const FUTURE_SCHEMA = {
+  type: 'object',
+  properties: {
+    plan: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: {
+          sequence: { type: 'number' },
+          type: { type: 'string' },
+          start_offset_min: { type: 'number' },
+          duration_min: { type: 'number' },
+          duty_status: { type: 'string' },
+          label: { type: 'string' },
+          city: { type: 'string' },
+          state: { type: 'string' },
+        },
+      },
+    },
+    feasibility: { type: 'string' },
+    departure_time: { type: 'string' },
+    earliest_eta: { type: 'string' },
+    notes: { type: 'string' },
+    refuses_fabrication: { type: 'boolean' },
+  },
 };
 
 function buildInterpretSystem() {
@@ -419,60 +485,35 @@ export default async function(req) {
       requestedArrival: body.requestedArrival || '',
     };
 
-    let messages, responseFormat, maxTokens;
+    // Route through Base44's own managed LLM integration — same mechanism
+    // aiAssistant/entry.ts and extractDocument/entry.ts already use — instead
+    // of a raw OpenAI fetch requiring a manually-configured OPENAI_API_KEY
+    // secret (and a hardcoded, non-existent model id). No secret to provision;
+    // InvokeLLM picks the model and returns an already-parsed JS object.
+    let prompt, responseSchema;
     if (mode === 'make_legal_past') {
-      messages = [
-        { role: 'system', content: 'You are LogbookAI. Respond ONLY with a single JSON object, no prose.' },
-        { role: 'user', content: buildPastPrompt(input, ctx) },
-      ];
-      responseFormat = { type: 'json_object' };
-      maxTokens = 2000;
+      prompt = buildPastPrompt(input, ctx);
+      responseSchema = PAST_SCHEMA;
     } else if (mode === 'make_legal_future') {
-      messages = [
-        { role: 'system', content: 'You are LogbookAI. Respond ONLY with a single JSON object, no prose.' },
-        { role: 'user', content: buildFuturePrompt(input, ctx) },
-      ];
-      responseFormat = { type: 'json_object' };
-      maxTokens = 2000;
+      prompt = buildFuturePrompt(input, ctx);
+      responseSchema = FUTURE_SCHEMA;
     } else {
-      messages = [
-        { role: 'system', content: buildInterpretSystem() },
-        { role: 'user', content: buildInterpretUser(input, ctx) },
-      ];
-      responseFormat = { type: 'json_schema', json_schema: { name: 'logbook_interpret', strict: true, schema: INTERPRET_SCHEMA } };
-      maxTokens = 1600;
+      prompt = `${buildInterpretSystem()}\n\n${buildInterpretUser(input, ctx)}`;
+      responseSchema = INTERPRET_SCHEMA;
     }
 
-    const apiKey = secrets.get('OPENAI_API_KEY');
-    if (!apiKey) {
-      return Response.json({ error: UNAVAILABLE_MSG, unavailable: true }, { status: 503 });
-    }
-
-    const oaResp = await fetch(OPENAI_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
-      body: JSON.stringify({
-        model: OPENAI_MODEL,
-        messages,
-        response_format: responseFormat,
-        temperature: 0.2,
-        max_completion_tokens: maxTokens,
-      }),
-    });
-    if (!oaResp.ok) {
-      const dbg = await oaResp.text().catch(() => '');
-      console.log('OPENAI_HTTP', oaResp.status, String(dbg).slice(0, 500));
-      return Response.json({ error: UNAVAILABLE_MSG, unavailable: true }, { status: 503 });
-    }
-    const oaData = await oaResp.json();
-    const content = oaData?.choices?.[0]?.message?.content;
-    if (!content) {
-      return Response.json({ error: UNAVAILABLE_MSG, unavailable: true }, { status: 503 });
-    }
     let parsed;
     try {
-      parsed = JSON.parse(content);
-    } catch {
+      parsed = await base44.asServiceRole.integrations.Core.InvokeLLM({
+        prompt,
+        response_json_schema: responseSchema,
+        model: 'automatic',
+      });
+    } catch (e) {
+      console.log('INVOKE_LLM_ERROR', String(e?.message || e).slice(0, 500));
+      return Response.json({ error: UNAVAILABLE_MSG, unavailable: true }, { status: 503 });
+    }
+    if (!parsed || typeof parsed !== 'object') {
       return Response.json({ error: UNAVAILABLE_MSG, unavailable: true }, { status: 503 });
     }
 
