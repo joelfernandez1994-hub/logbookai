@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useDriverData } from '@/hooks/useDriverData';
 import { base44 } from '@/api/base44Client';
+import { insertEvent } from '@/lib/timelineWriter';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -52,11 +53,14 @@ export default function Documents() {
     const time = ex.receipt_time || '12:00';
     const start = new Date(`${date}T${time}:00`);
     const end = new Date(start.getTime() + 15 * 60000);
-    await base44.entities.DutyStatusEvent.create({
+    // Route through the canonical writer (same as every other RODS write) so a
+    // fuel stop logged over an existing event splits/truncates it correctly
+    // instead of silently overlapping, and certification invalidation runs.
+    await insertEvent(events, {
       log_date: date, start_timestamp: start.toISOString(), end_timestamp: end.toISOString(),
       duty_status: 'ON_DUTY', city: ex.city || '', state: ex.state || '', remark: 'Fuel',
-      carrier_name: carrier?.carrier_name, method_of_creation: 'Receipt Import', is_ongoing: false, is_current_version: true,
-    });
+      is_ongoing: false,
+    }, { carrierName: carrier?.carrier_name, methodOfCreation: 'Receipt Import', reason: 'Log fuel stop from receipt' });
     await saveFuel();
     reload();
   };
