@@ -209,8 +209,13 @@ function tzOffsetMs(date, tz) {
 // straight onto Date.UTC with NO offset correction — e.g. "6 PM Chicago"
 // came out as 18:00 UTC instead of 23:00 UTC, silently off by the carrier's
 // UTC offset on every AI-proposed event until the driver caught it in
-// review). Two-pass like timelineEngine's startOfDayInTz: build a UTC guess
-// on the right calendar day, read the offset AT that guess, then correct.
+// review). Build a UTC guess on the right calendar day, then correct using
+// the offset TWICE: the first correction can land on the wrong side of a DST
+// transition (its offset was sampled at the pre-correction guess, not the
+// real target instant), so a second pass re-samples the offset at the
+// corrected instant and re-applies it. Verified empirically against the
+// 2026-03-08 US spring-forward transition, where a single pass is off by a
+// full hour for any local time after 3 AM that day.
 function timeOnDate(refDate, h, min, tz) {
   const fmt = new Intl.DateTimeFormat('en-CA', { timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit' });
   const parts = fmt.formatToParts(refDate);
@@ -218,8 +223,8 @@ function timeOnDate(refDate, h, min, tz) {
   const mo = Number(parts.find(p => p.type === 'month').value) - 1;
   const dd = Number(parts.find(p => p.type === 'day').value);
   const utcGuess = Date.UTC(y, mo, dd, h, min);
-  const offset = tzOffsetMs(new Date(utcGuess), tz);
-  return new Date(utcGuess - offset);
+  const firstPass = new Date(utcGuess - tzOffsetMs(new Date(utcGuess), tz));
+  return new Date(utcGuess - tzOffsetMs(firstPass, tz));
 }
 
 // ---------------------------------------------------------------------------
