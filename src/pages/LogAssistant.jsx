@@ -26,7 +26,7 @@ const TABS = [
 
 // Detects narratives that describe more than one event/activity and should go
 // straight to the AI instead of the deterministic single-intent parser.
-function isMultiEventNarrative(text) {
+export function isMultiEventNarrative(text) {
   const t = String(text || '').toLowerCase();
   if (!t) return false;
   if (/\bdrove\s+from\b/.test(t) || /\bcontinued\s+to\b/.test(t) || /\bcontinued\s+driving\b/.test(t)) return true;
