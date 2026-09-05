@@ -113,7 +113,10 @@ export default function LogAssistant() {
     if (isMultiEventNarrative(text)) {
       return callAssistant('interpret', text, { source: type });
     }
-    const det = parseVoiceCommand(text, { now: new Date(), timezone: tz });
+    // Pass the driver's actual logged events so ambiguous-hour resolution
+    // can prefer continuity with a neighboring real event (tier 3 of the
+    // AM/PM disambiguation) when narrative chronology alone isn't decisive.
+    const det = parseVoiceCommand(text, { now: new Date(), timezone: tz, events });
     if (det.handled) {
       const detEvents = (det.events || []).map((e) => ({
         ...e,
