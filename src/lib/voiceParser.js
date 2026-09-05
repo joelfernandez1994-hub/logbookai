@@ -236,16 +236,28 @@ export function parseVoiceCommand(text, ctx = {}) {
   for (let i = 0; i < clauses.length; i++) {
     const clause = clauses[i];
     const status = detectStatus(clause);
-    const t = parseTime(clause, refDate, tz);
-    if (!status || !t) continue;
-    const dur = parseDuration(clause);
-    let start = t.date;
-    let end = dur ? new Date(start.getTime() + dur) : null;
-    // If "left at" / "then" implies previous event ends at this start
-    if (prevEnd && !dur) {
-      // previous event with no end ends here
-      const prev = events[events.length - 1];
-      if (prev && !prev.end_timestamp) prev.end_timestamp = start.toISOString();
+    if (!status) continue;
+
+    // Try a two-time range first ("off duty from 10 PM to 6 AM") — common
+    // trucker phrasing for sleeper/off-duty periods that a single time +
+    // duration can't express. Falls back to single-time + optional duration.
+    const range = parseTimeRange(clause, refDate, tz);
+    let start, end, timeAmbiguous;
+    if (range) {
+      start = range.start; end = range.end; timeAmbiguous = range.ambiguous;
+    } else {
+      const t = parseTime(clause, refDate, tz);
+      if (!t) continue;
+      const dur = parseDuration(clause);
+      start = t.date;
+      end = dur ? new Date(start.getTime() + dur) : null;
+      timeAmbiguous = t.ambiguous;
+      // If "left at" / "then" implies previous event ends at this start
+      if (prevEnd && !dur) {
+        // previous event with no end ends here
+        const prev = events[events.length - 1];
+        if (prev && !prev.end_timestamp) prev.end_timestamp = start.toISOString();
+      }
     }
     const loc = parseLocation(clause) || parseLocation(raw);
     events.push({
@@ -256,9 +268,9 @@ export function parseVoiceCommand(text, ctx = {}) {
       city: loc?.city || '',
       state: loc?.state || '',
       remark: status.activity || '',
-      _ambiguous: { time: t.ambiguous, location: loc?.ambiguous },
+      _ambiguous: { time: timeAmbiguous, location: loc?.ambiguous },
     });
-    if (t.ambiguous) ambiguousFields.push(`event_${i + 1}:start_timestamp`);
+    if (timeAmbiguous) ambiguousFields.push(`event_${i + 1}:start_timestamp`);
     // A bare city without a state is NOT blocking — the state is left
     // blank/inferred for the driver to review. Only simple single-intent
     // commands reach this parser, so a bare city never stops the flow.
