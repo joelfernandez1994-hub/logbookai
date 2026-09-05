@@ -268,36 +268,20 @@ export default function Today() {
         </div>
       </div>
 
+      {/* Today's 24-Hour Log — moved directly under the current-status /
+          quick-status section (layout-order change only; graph/timeline/HOS
+          logic below is untouched). */}
+      <div className="rounded-xl border border-border bg-card p-3 mb-4">
+        <div className="flex items-center justify-between mb-2"><div className="text-sm font-semibold text-card-foreground">Today's 24-Hour Log</div><TimezoneIndicator tz={tz} /></div>
+        <LogGraph events={events} dateStr={todayKey} timezone={tz} />
+      </div>
+
       {!timelineValidation.valid && (
         <div className="rounded-xl border border-error/40 bg-error-surface p-3 mb-3 text-xs text-error-surface-foreground flex gap-2">
           <AlertTriangle className="w-4 h-4 shrink-0" /> Timeline correction required. HOS calculations are unavailable until elapsed coverage is continuous and conflict-free.
         </div>
       )}
       <TimelineGapNotice events={events} dateStr={todayKey} tz={tz} now={now} />
-      <DailyMilesCard events={events} dateStr={todayKey} tz={tz} speedProfile={speedProfile} />
-
-      {/* Daily DVIR — quick status + one-tap access for TODAY only; the full
-          history stays on the dedicated Vehicle Inspection page. */}
-      <div className="rounded-xl border border-border bg-card p-3 mb-3">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2 text-sm font-semibold text-card-foreground">
-            <ClipboardCheck className="w-4 h-4" /> Daily DVIR
-          </div>
-          <Button size="sm" variant="outline" onClick={() => setDvirDialogOpen(true)}>
-            <Plus className="w-3.5 h-3.5 mr-1" /> {todayDvirs.length > 0 ? 'Add Another' : 'Start Inspection'}
-          </Button>
-        </div>
-        {latestTodayDvir ? (
-          <div className="text-xs text-muted-foreground mt-1.5">
-            Latest today: <span className={latestTodayDvir.inspection_result === 'defects' ? 'text-error font-medium' : 'text-success font-medium'}>
-              {latestTodayDvir.inspection_result === 'defects' ? 'Defects reported' : 'No defects'}
-            </span> · Tractor {latestTodayDvir.tractor_number}
-          </div>
-        ) : (
-          <div className="text-xs text-muted-foreground mt-1.5">No inspection report logged today yet.</div>
-        )}
-        <button type="button" onClick={() => navigate('/vehicle-inspection')} className="text-[11px] text-muted-foreground underline mt-1">View inspection history →</button>
-      </div>
 
       <div className="grid grid-cols-2 gap-2 mb-3">
         <ClockCard label="Driving Remaining" value={timelineValidation.valid ? fmtDur(hos.driving.drivingRemainingMs) : '--'}
@@ -379,10 +363,30 @@ export default function Today() {
         </div>
       )}
 
-      <div className="rounded-xl border border-border bg-card p-3 mb-4">
-        <div className="flex items-center justify-between mb-2"><div className="text-sm font-semibold text-card-foreground">Today's 24-Hour Log</div><TimezoneIndicator tz={tz} /></div>
-        <LogGraph events={events} dateStr={todayKey} timezone={tz} />
+      {/* Daily DVIR — quick status + one-tap access for TODAY only; the full
+          history stays on the dedicated Vehicle Inspection page. */}
+      <div className="rounded-xl border border-border bg-card p-3 mb-3">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2 text-sm font-semibold text-card-foreground">
+            <ClipboardCheck className="w-4 h-4" /> Daily DVIR
+          </div>
+          <Button size="sm" variant="outline" onClick={() => setDvirDialogOpen(true)}>
+            <Plus className="w-3.5 h-3.5 mr-1" /> {todayDvirs.length > 0 ? 'Add Another' : 'Start Inspection'}
+          </Button>
+        </div>
+        {latestTodayDvir ? (
+          <div className="text-xs text-muted-foreground mt-1.5">
+            Latest today: <span className={latestTodayDvir.inspection_result === 'defects' ? 'text-error font-medium' : 'text-success font-medium'}>
+              {latestTodayDvir.inspection_result === 'defects' ? 'Defects reported' : 'No defects'}
+            </span> · Tractor {latestTodayDvir.tractor_number}
+          </div>
+        ) : (
+          <div className="text-xs text-muted-foreground mt-1.5">No inspection report logged today yet.</div>
+        )}
+        <button type="button" onClick={() => navigate('/vehicle-inspection')} className="text-[11px] text-muted-foreground underline mt-1">View inspection history →</button>
       </div>
+
+      <DailyMilesCard events={events} dateStr={todayKey} tz={tz} speedProfile={speedProfile} />
 
       {/* Primary action */}
       <Button className="w-full h-14 text-base font-semibold mb-3" disabled={!liveTrackingEnabled} onClick={() => setStatusOpen(true)}>
