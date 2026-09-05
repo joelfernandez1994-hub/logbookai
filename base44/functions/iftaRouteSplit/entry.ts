@@ -1,5 +1,6 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.40';
 import { geocode, drivingRoute, reverseGeocode, pointAtMiles } from '../../shared/routing.ts';
+import { normalizeJurisdiction } from '../../shared/usStates.ts';
 
 // iftaRouteSplit — REAL ROAD ROUTING (OSRM + OpenStreetMap Nominatim).
 // Background IFTA helper only: splits one driving leg's route into
@@ -57,7 +58,7 @@ export default async function(req) {
       if (!pt) continue;
       let rg = null;
       try { rg = await reverseGeocode(pt.point[1], pt.point[0]); } catch (e) { rg = null; }
-      samples.push({ miles: pt.milesFromOrigin, state: rg?.state || null });
+      samples.push({ miles: pt.milesFromOrigin, state: rg?.state ? normalizeJurisdiction(rg.state) : null });
     }
     if (!samples.length) {
       return Response.json({ error: 'Could not identify jurisdictions along this route right now.' }, { status: 502 });
@@ -78,7 +79,7 @@ export default async function(req) {
           if (!pt) break;
           let rg = null;
           try { rg = await reverseGeocode(pt.point[1], pt.point[0]); } catch (e) { rg = null; }
-          if (rg?.state === loState) lo = mid; else hi = mid;
+          if (normalizeJurisdiction(rg?.state) === loState) lo = mid; else hi = mid;
         }
         refined.push({ miles: hi, state: cur.state });
       } else {
