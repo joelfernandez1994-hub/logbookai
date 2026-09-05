@@ -125,6 +125,7 @@ export function planEdit(dayEvents, eventId, editedEvent) {
       remark: editedEvent.remark || '',
       tractor_number: editedEvent.tractor_number || '',
       trailer_numbers: editedEvent.trailer_numbers || '',
+      bill_of_lading_number: editedEvent.bill_of_lading_number || '',
     },
   };
   if (editedEvent.field_provenance) update.data.field_provenance = editedEvent.field_provenance;
