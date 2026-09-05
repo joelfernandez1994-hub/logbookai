@@ -9,6 +9,7 @@ const SUBPAGE_OWNER = {
   '/vehicle-inspection': '/more',
   '/documents': '/more',
   '/engine-tests': '/more',
+  '/ifta': '/more',
   '/compliance': '/',
   '/assistant': '/',
   '/log-assistant': '/',
