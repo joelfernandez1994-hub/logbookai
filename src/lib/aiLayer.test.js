@@ -87,6 +87,40 @@ describe('explicit fact guard', () => {
     expect(guard.droppedExplicitEvents.some(issue => issue.type === 'status')).toBe(true);
   });
 
+  it('does NOT block when a status word is restated for the same leg ("started driving" + "I drove from X to Y")', () => {
+    // Regression: a real full-day narrative naturally says "driving" 6 times
+    // (once as "started driving", again moments later as "I drove from A to
+    // B" describing the SAME leg) while the proposal correctly contains only
+    // 5 DRIVING events. The old per-mention 1:1 matcher treated this as a
+    // dropped fact and silently blocked Apply for a completely valid,
+    // complete proposal — this is the exact bug from the live Sept 4 report.
+    const manyStatusFacts = {
+      times: [],
+      locations: [],
+      statuses: [
+        { raw: 'off duty', status: 'OFF_DUTY' }, { raw: 'off duty', status: 'OFF_DUTY' },
+        { raw: 'on duty', status: 'ON_DUTY' }, { raw: 'on duty', status: 'ON_DUTY' }, { raw: 'on duty', status: 'ON_DUTY' },
+        { raw: 'driving', status: 'DRIVING' }, { raw: 'drove', status: 'DRIVING' }, { raw: 'driving', status: 'DRIVING' },
+      ],
+    };
+    const mk = (status) => ({ ...baseEvent, duty_status: status, field_provenance: { ...baseEvent.field_provenance, status: 'explicit' } });
+    // Only ONE explicit event per status type — far fewer than the 8 word
+    // mentions above — must still pass, because every TYPE is covered.
+    const events = [mk('OFF_DUTY'), mk('ON_DUTY'), mk('DRIVING')];
+    const guard = detectExplicitFactAlterations(events, manyStatusFacts);
+    expect(guard.blocking).toBe(false);
+    expect(guard.droppedExplicitEvents).toHaveLength(0);
+  });
+
+  it('still blocks when an ENTIRE status type is missing (the real failure mode this guard exists for)', () => {
+    const facts2 = { times: [], locations: [], statuses: [{ raw: 'driving', status: 'DRIVING' }, { raw: 'driving', status: 'DRIVING' }] };
+    const events = [{ ...baseEvent, duty_status: 'OFF_DUTY', field_provenance: { ...baseEvent.field_provenance, status: 'explicit' } }];
+    const guard = detectExplicitFactAlterations(events, facts2);
+    expect(guard.blocking).toBe(true);
+    expect(guard.droppedExplicitEvents).toHaveLength(1); // one issue per missing TYPE, not per mention
+    expect(guard.droppedExplicitEvents[0].type).toBe('status');
+  });
+
   it('withholds Apply while clarification is required', () => {
     expect(shouldOfferApply({ intent: 'clarification', requires_clarification: true, proposed_events: [] })).toBe(false);
   });
