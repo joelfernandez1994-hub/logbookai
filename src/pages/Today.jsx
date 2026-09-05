@@ -122,6 +122,43 @@ export default function Today() {
     setOptimisticSince(null);
   };
 
+  // Quick 2x2 selector: tap a status to switch to it right now, carrying
+  // forward the current location/equipment/BOL (the common case — status
+  // changes rarely mean "and I also teleported"). Still routes through the
+  // exact same handleChangeStatus → changeStatus canonical writer as the
+  // "Change Status" sheet, so the pre-trip gate and dedupe/fill-blank logic
+  // apply identically either way.
+  const handleQuickStatus = (key) => {
+    if (key === (displayStatus || current?.duty_status)) return; // already active
+    handleChangeStatus({
+      duty_status: key,
+      city: current?.city || '', state: current?.state || '',
+      remark: '',
+      tractor_number: current?.tractor_number || equipment?.[0]?.unit_number || '',
+      trailer_numbers: current?.trailer_numbers || equipment?.find(e => e.type === 'trailer')?.unit_number || '',
+      bill_of_lading_number: current?.bill_of_lading_number || '',
+    });
+  };
+
+  // BOL / shipping doc # is metadata on the current open status — a plain
+  // in-place field patch, never a new duty-status event.
+  const handleSaveBol = async () => {
+    if (!current?.id || bolDraft === (current?.bill_of_lading_number || '')) return;
+    setBolSaving(true);
+    try {
+      await updateEventFields(events, current.id, { bill_of_lading_number: bolDraft }, { reason: 'Update BOL / shipping doc #' });
+      await reload();
+    } finally {
+      setBolSaving(false);
+    }
+  };
+
+  const handleSaveDvir = async (data) => {
+    await saveDvir(data);
+    setDvirDialogOpen(false);
+    try { setDvirs(await getDvirs(30) || []); } catch (e) {}
+  };
+
   const handlePretripConfirm = async ({ start_timestamp, duration_min, city, state, alreadySatisfied }) => {
     if (alreadySatisfied) {
       setPretripOpen(false);
