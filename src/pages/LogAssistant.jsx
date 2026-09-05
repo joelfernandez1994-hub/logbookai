@@ -10,6 +10,7 @@ import { saveProposalMiles } from '@/lib/tripSync';
 import { insertEventsBatch, editEvent, replaceRangeEvents } from '@/lib/timelineWriter';
 import { parseVoiceCommand } from '@/lib/voiceParser';
 import { validateInterpretResult, isQuestionIntent, shouldOfferApply, replaceDayRange } from '@/lib/aiLayer';
+import { isMultiEventNarrative } from '@/lib/narrativeClassifier';
 import AssistantInput from '@/components/logAssistant/AssistantInput';
 import ProposalReview from '@/components/logAssistant/ProposalReview';
 import WhatCanIDoPanel from '@/components/logAssistant/WhatCanIDoPanel';
@@ -23,22 +24,6 @@ const TABS = [
   { id: 'makeLegal', label: 'HOS Check', icon: Gavel },
   { id: 'whatCanIDo', label: 'What Can I Do?', icon: HelpCircle },
 ];
-
-// Detects narratives that describe more than one event/activity and should go
-// straight to the AI instead of the deterministic single-intent parser.
-export function isMultiEventNarrative(text) {
-  const t = String(text || '').toLowerCase();
-  if (!t) return false;
-  if (/\bdrove\s+from\b/.test(t) || /\bcontinued\s+to\b/.test(t) || /\bcontinued\s+driving\b/.test(t)) return true;
-  if (/\brest of (?:the )?day\b/.test(t) || /\bdone for the day\b/.test(t) || /\bend of (?:the )?day\b/.test(t)) return true;
-  const hasDriving = /\b(driv|drove|drive)\b/.test(t);
-  const hasOtherActivity = /\b(fuel|fueled|load|loaded|unload|unloaded|lunch|post[-\s]?trip|pre[-\s]?trip|sleeper|break|inspection|drop|hook)\b/.test(t);
-  if (hasDriving && hasOtherActivity) return true;
-  const concepts = ['driving', 'drove', 'fuel', 'fueled', 'load', 'loaded', 'unload', 'unloaded', 'pre-trip', 'pretrip', 'post-trip', 'posttrip', 'sleeper', 'off duty', 'off-duty', 'on duty', 'on-duty', 'lunch', 'break', 'inspection'];
-  let distinct = 0;
-  for (const c of concepts) if (new RegExp(`\\b${c}\\b`).test(t)) distinct++;
-  return distinct >= 2;
-}
 
 export default function LogAssistant() {
   const { profile, carrier, equipment, events, loading, reload } = useDriverData();
