@@ -18,9 +18,17 @@ const MIN = 60000;
 const STATUS_KEYWORDS = {
   DRIVING: ['driving', 'drive', 'drove', 'drove off', 'left', 'heading out', 'on the road'],
   ON_DUTY: ['on duty', 'on-duty', 'onduty', 'fuel', 'fueled', 'fueling', 'loading', 'loaded', 'unloading', 'unloaded', 'pre-trip', 'pretrip', 'pre trip', 'post-trip', 'post trip', 'posttrip', 'inspection', 'drop', 'hook', 'bobtail', 'yard move', 'equipment change'],
-  SLEEPER_BERTH: ['sleeper', 'sleeper berth', 'in the bunk', 'berth', 'slept', 'sleep', 'sleeping'],
+  SLEEPER_BERTH: ['sleeper', 'sleeper berth', 'in the bunk', 'berth'],
   OFF_DUTY: ['off duty', 'off-duty', 'offduty', 'off', 'done for the day', 'done', 'rest'],
 };
+
+// Rest verbs that DON'T by themselves say where the driver rested. "Slept"/
+// "napped" could mean the truck's sleeper berth OR simply off-duty (a motel,
+// a lounge, etc.) — never guess; only classify as SLEEPER_BERTH when the
+// clause also names the berth/cab/truck. Otherwise surface it as genuinely
+// ambiguous between OFF_DUTY and SLEEPER_BERTH for driver confirmation.
+const AMBIGUOUS_REST_KEYWORDS = ['slept', 'sleep', 'sleeping', 'napped', 'napping', 'rested', 'resting'];
+const BERTH_CONTEXT_RE = /\b(sleeper|berth|bunk|cab|truck)\b/i;
 
 // Map an activity phrase to { duty_status, activity_type }
 const ACTIVITY_MAP = [
