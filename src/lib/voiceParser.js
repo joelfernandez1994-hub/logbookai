@@ -40,6 +40,10 @@ const ACTIVITY_MAP = [
   { re: /\bdrop(?:ped)?\b.*\bhook\b|\bhook(?:ed)?\b.*\bdrop\b|\bequipment change\b/i, status: 'ON_DUTY', activity: 'Equipment Change' },
   { re: /\bbobtail/i, status: 'ON_DUTY', activity: 'Equipment Change' },
   { re: /\byard move\b/i, status: 'ON_DUTY', activity: 'Yard Move' },
+  // The mandatory 30-minute break — extremely common trucker phrasing
+  // ("stopped for my 30", "took my 30") that previously matched no keyword
+  // at all and silently dropped the whole clause.
+  { re: /\bmy 30\b|\btook (?:my )?30\b|\bstopped for (?:my )?30\b|\b30[-\s]?min(?:ute)?s?\s*break\b/i, status: 'OFF_DUTY', activity: '30-Minute Break' },
 ];
 
 const US_STATES = ['AL','AK','AZ','AR','CA','CO','CT','DE','FL','GA','HI','ID','IL','IN','IA','KS','KY','LA','ME','MD','MA','MI','MN','MS','MO','MT','NE','NV','NH','NJ','NM','NY','NC','ND','OH','OK','OR','PA','RI','SC','SD','TN','TX','UT','VT','VA','WA','WV','WI','WY'];
@@ -195,6 +199,17 @@ function detectStatus(text) {
   for (const s of Object.keys(STATUS_KEYWORDS)) {
     for (const kw of STATUS_KEYWORDS[s]) {
       if (lower.includes(kw)) return { status: s, activity: '' };
+    }
+  }
+  // Ambiguous rest verb ("slept", "rested") with no berth/cab/truck context —
+  // never silently assume the sleeper berth. Default to OFF_DUTY (the more
+  // common real-world meaning: a motel, a rest area, etc.) but flag it so the
+  // caller surfaces a clarification and the driver picks between OFF_DUTY and
+  // SLEEPER_BERTH before anything is applied.
+  for (const kw of AMBIGUOUS_REST_KEYWORDS) {
+    if (lower.includes(kw)) {
+      if (BERTH_CONTEXT_RE.test(text)) return { status: 'SLEEPER_BERTH', activity: '' };
+      return { status: 'OFF_DUTY', activity: '', statusAmbiguous: true, statusCandidates: ['OFF_DUTY', 'SLEEPER_BERTH'] };
     }
   }
   return null;
