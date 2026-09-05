@@ -168,8 +168,13 @@ export default function ProposalReview({ existing, proposed, cycleType, tz, onAp
       // record itself — the log should make it clear LogbookAI flagged this
       // and the driver confirmed the stated times, not silently drop the flag.
       const eventsToApply = needsRouteAck && routeAcknowledged
-        ? events.map((e, idx) => {
-            const leg = explicitConflictLegs.find(l => l.eventIndex === idx);
+        ? events.map((e) => {
+            // Match by content (start time + status), not array index — the
+            // route warning's legs were computed against the proposal as first
+            // generated, and `events` may have since been reordered (e.g. a
+            // pre-trip prepended via "Add Pre-Trip").
+            const leg = explicitConflictLegs.find(l =>
+              l.event?.start_timestamp === e.start_timestamp && l.event?.duty_status === e.duty_status);
             if (!leg) return e;
             const note = `Route timing reviewed & confirmed by driver — logged ${fmtHoursMinutes(leg.evaluation?.requestedDrivingHours)}, ~${fmtHoursMinutes(leg.evaluation?.requiredTruckTime)} estimated.`;
             return { ...e, remark: e.remark ? `${e.remark} [${note}]` : note };
