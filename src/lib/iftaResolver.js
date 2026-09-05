@@ -43,6 +43,13 @@ export function groupEventsByDay(events, timezone) {
   return byDay;
 }
 
+// Filter a full event list down to one calendar day (driver's log timezone).
+// Small convenience for the single-day "Recalculate day" action so callers
+// don't need to build the whole groupEventsByDay map just for one date.
+export function eventsForDay(events, logDate, timezone) {
+  return (events || []).filter((e) => e?.start_timestamp && dateKeyInTz(e.start_timestamp, timezone) === logDate);
+}
+
 // Derive same-day driving legs from a single day's events. Mirrors the
 // neighbor-based origin/destination convention used elsewhere in the app
 // (proposalValidation.getDrivingLegs) but kept local/lightweight and scoped to
