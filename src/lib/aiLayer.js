@@ -94,14 +94,31 @@ export function detectExplicitFactAlterations(events = [], deterministicFacts = 
     });
     if (!preserved) droppedExplicitEvents.push({ type: 'location', value: fact.raw, reason: 'Explicit location was dropped, changed silently, or tagged inferred.' });
   }
-  const availableStatuses = events.map((event, eventIndex) => ({ event, eventIndex, used: false }));
+  // Status facts are matched by TYPE COVERAGE, not per-mention count. The
+  // backend extracts one fact per literal word occurrence ("driving",
+  // "drove", "on duty", ...), but ordinary narration routinely restates the
+  // same activity in different words within one sentence ("...and started
+  // driving. I drove from Homestead to Fort Pierce..." describes ONE leg,
+  // yet contributes two "DRIVING" word-mentions). Per-mention 1:1 matching
+  // therefore blocks completely ordinary full-day narratives. What this
+  // guard actually needs to catch is the AI silently converting or erasing
+  // an ENTIRE status the driver described (e.g. turning all driving into
+  // off-duty to hide a violation) — which "is there at least one explicit
+  // event of this status?" still catches, without the false-positive rate.
+  const explicitStatusTypes = new Set(
+    events.filter(event => event.field_provenance?.status === 'explicit').map(event => event.duty_status)
+  );
+  const statusFactsByType = new Map();
   for (const fact of (deterministicFacts.statuses || [])) {
-    const match = availableStatuses.find(item => !item.used && (
-      (item.event.duty_status === fact.status && item.event.field_provenance?.status === 'explicit')
-      || adjustmentMatches(item.event, 'status', fact.raw)
-    ));
-    if (match) match.used = true;
-    else droppedExplicitEvents.push({ type: 'status', value: fact.raw, reason: 'Explicit duty status was dropped, changed silently, or tagged inferred.' });
+    if (!statusFactsByType.has(fact.status)) statusFactsByType.set(fact.status, []);
+    statusFactsByType.get(fact.status).push(fact);
+  }
+  for (const [status, statusFacts] of statusFactsByType) {
+    const covered = explicitStatusTypes.has(status)
+      || statusFacts.some(fact => events.some(event => adjustmentMatches(event, 'status', fact.raw)));
+    if (!covered) {
+      droppedExplicitEvents.push({ type: 'status', value: statusFacts[0].raw, reason: 'Explicit duty status was dropped, changed silently, or tagged inferred.' });
+    }
   }
 
   return {
