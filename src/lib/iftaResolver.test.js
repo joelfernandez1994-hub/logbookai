@@ -68,6 +68,32 @@ describe('resolveDayMileage — Florida to Georgia trip', () => {
   });
 });
 
+describe('jurisdiction normalization — full state names vs 2-letter codes', () => {
+  it('normalizes a GPS-captured full state name on an event to a 2-letter code for the route-split call', () => {
+    const day = [
+      ev({ id: 'a', duty_status: 'ON_DUTY', city: 'Jacksonville', state: 'Florida', start_timestamp: '2026-07-01T09:00:00.000Z' }),
+      ev({ id: 'b', duty_status: 'DRIVING', start_timestamp: '2026-07-01T10:00:00.000Z' }),
+      ev({ id: 'c', duty_status: 'OFF_DUTY', city: 'Valdosta', state: 'GA', start_timestamp: '2026-07-01T13:00:00.000Z' }),
+    ];
+    const legs = deriveDayLegs(day);
+    expect(legs[0].origin).toEqual({ city: 'Jacksonville', state: 'FL' });
+    expect(legs[0].destination).toEqual({ city: 'Valdosta', state: 'GA' });
+  });
+
+  it('normalizes a full state name returned in a route-split segment to a 2-letter code so it matches manually-entered jurisdictions', async () => {
+    const day = [
+      ev({ id: 'a', duty_status: 'ON_DUTY', city: 'Miami', state: 'FL', start_timestamp: '2026-07-01T09:00:00.000Z' }),
+      ev({ id: 'b', duty_status: 'DRIVING', start_timestamp: '2026-07-01T10:00:00.000Z' }),
+      ev({ id: 'c', duty_status: 'OFF_DUTY', city: 'Orlando', state: 'FL', start_timestamp: '2026-07-01T13:00:00.000Z' }),
+    ];
+    // Simulates the real backend, which reverse-geocodes via Nominatim and
+    // returns a full state name before normalization.
+    const routeSplitFn = vi.fn().mockResolvedValue({ totalMiles: 230, segments: [{ state: 'Florida', miles: 230 }] });
+    const { jurisdictionMiles } = await resolveDayMileage(day, { routeSplitFn });
+    expect(jurisdictionMiles).toEqual([{ jurisdiction: 'FL', miles: 230 }]);
+  });
+});
+
 describe('resolveDayMileage — missing location / route failure never throws', () => {
   it('records an error and skips the leg when origin/destination is missing', async () => {
     const day = [
