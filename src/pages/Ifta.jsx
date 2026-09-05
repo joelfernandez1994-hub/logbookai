@@ -7,6 +7,7 @@ import {
   findMileageRow, applyFuelEntryProposal,
 } from '@/lib/iftaData';
 import { parseIftaCommand } from '@/lib/iftaAssistant';
+import { quarterOf } from '@/lib/iftaResolver';
 import { generateIftaReportPdf } from '@/lib/iftaPdf';
 import { generateIftaCsv } from '@/lib/iftaCsv';
 import { Button } from '@/components/ui/button';
