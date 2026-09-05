@@ -83,6 +83,15 @@ export async function recomputeDayForQuarter({ logDate, quarter, timezone, repla
   });
 }
 
+// Phase 3 AI assistant write path — used only after the driver reviews and
+// taps Apply on a proposal built from parseIftaCommand() in iftaAssistant.js.
+// Reuses the existing FuelReceipt entity so fuel data stays in one place and
+// is automatically picked up by getFuelByJurisdiction() next time it's read.
+// Never touches DutyStatusEvent.
+export async function applyFuelEntryProposal({ gallons, city, state, receipt_date, vendor = 'Fuel stop (via IFTA assistant)' }) {
+  return await base44.entities.FuelReceipt.create({ vendor, receipt_date, city, state, gallons });
+}
+
 // Driver confirms an estimated/derived row as-is.
 export async function confirmMileageRow(row) {
   return await base44.entities.IftaJurisdictionMileage.update(row.id, {
