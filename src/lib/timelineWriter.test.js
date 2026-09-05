@@ -35,7 +35,7 @@ vi.mock('@/api/base44Client', () => ({
 
 // Import AFTER the mock is registered.
 import { applyTimelineOps, insertEvent, editEvent, deleteEventById, clearDayEvents, changeStatus, insertEventsBatch, updateEventFields } from './timelineWriter';
-import { planReplaceRange } from './timelineEngine';
+import { planReplaceRange, planInsert } from './timelineEngine';
 
 const TZ = 'America/New_York';
 const DAY = '2026-08-20';
@@ -250,6 +250,28 @@ describe('updateEventFields (Today: BOL / metadata patch)', () => {
   });
 });
 
+describe('planInsert — open-ended event whose start is after "now"', () => {
+  // Regression: route-aware reconstruction can legitimately cascade a day's
+  // events later than the real current moment (e.g. a full-day narrative
+  // tested mid-morning whose driving legs push into the afternoon). The final
+  // open-ended status ("off duty for the rest of the day") must not be
+  // rejected as "ends before it starts" just because its start is after now.
+  it('does not mark a future-started is_ongoing event as invalid', () => {
+    const future = new Date(Date.now() + 4 * 3600000).toISOString(); // 4h from now
+    const ops = planInsert([], { start_timestamp: future, end_timestamp: null, duty_status: 'OFF_DUTY', is_ongoing: true });
+    expect(ops.invalid).toBe(false);
+    expect(ops.creates).toHaveLength(1);
+    expect(ops.creates[0].end_timestamp).toBeFalsy();
+    expect(ops.creates[0].is_ongoing).toBe(true);
+  });
+
+  it('a genuinely invalid event (real end before start) is still rejected', () => {
+    const ops = planInsert([], { start_timestamp: iso(10), end_timestamp: iso(8), duty_status: 'DRIVING' });
+    expect(ops.invalid).toBe(true);
+    expect(ops.creates).toHaveLength(0);
+  });
+});
+
 describe('insertEventsBatch (AI Apply)', () => {
   it('inserts multiple proposed events canonically (no overlap among the proposed set)', async () => {
     const existing = [ev('OFF_DUTY', 0, 24, { id: 'a' })];
@@ -265,5 +287,28 @@ describe('insertEventsBatch (AI Apply)', () => {
     expect(drives[0].start_timestamp).toBe(iso(3));
     expect(drives[0].end_timestamp).toBe(iso(4));
     expect(calls.create.some(c => c.duty_status === 'ON_DUTY' && c.start_timestamp === iso(4))).toBe(true);
+  });
+
+  it('does NOT silently drop a final open-ended event whose start is after real "now" (the exact Sept 5 bug)', async () => {
+    const future = new Date(Date.now() + 4 * 3600000).toISOString();
+    const proposed = [
+      { log_date: DAY, start_timestamp: iso(0), end_timestamp: iso(5.5), duty_status: 'OFF_DUTY', city: 'Chicago', state: 'IL' },
+      { log_date: DAY, start_timestamp: future, end_timestamp: null, duty_status: 'OFF_DUTY', city: 'Detroit', state: 'MI', is_ongoing: true },
+    ];
+    const res = await insertEventsBatch([], proposed, { carrierName: 'Carrier' });
+    expect(res.invalid).toBe(false);
+    expect(res.error).toBeUndefined();
+    expect(calls.create.some(c => c.city === 'Detroit' && c.is_ongoing === true)).toBe(true);
+  });
+
+  it('surfaces a real error (not a silent success) when an event in the batch is genuinely invalid', async () => {
+    const proposed = [
+      { log_date: DAY, start_timestamp: iso(0), end_timestamp: iso(5), duty_status: 'OFF_DUTY' },
+      { log_date: DAY, start_timestamp: iso(10), end_timestamp: iso(8), duty_status: 'DRIVING' }, // end before start
+    ];
+    const res = await insertEventsBatch([], proposed, { carrierName: 'Carrier' });
+    expect(res.invalid).toBe(true);
+    expect(res.error).toBeTruthy();
+    expect(calls.create.some(c => c.duty_status === 'DRIVING')).toBe(false);
   });
 });
