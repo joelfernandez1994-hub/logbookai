@@ -37,7 +37,12 @@ export default function ProposalReview({ existing, proposed, cycleType, tz, onAp
   const [fixedRouteWarning, setFixedRouteWarning] = useState(null);
   const [manualReview, setManualReview] = useState(null);
   const [fixing, setFixing] = useState(false);
-  useEffect(() => { setEvents(proposed); setMileageEdited(false); setFixedRouteWarning(null); setManualReview(null); }, [proposed]);
+  // Explicit-time route-timing conflicts never hard-block (route physics is a
+  // plausibility check, not the authoritative record) — they require this
+  // acknowledgment instead. Reset whenever the proposal changes so a fresh
+  // proposal (or a re-fetched one) always needs a fresh confirmation.
+  const [routeAcknowledged, setRouteAcknowledged] = useState(false);
+  useEffect(() => { setEvents(proposed); setMileageEdited(false); setFixedRouteWarning(null); setManualReview(null); setRouteAcknowledged(false); }, [proposed]);
 
   const evalNow = useMemo(() => {
     let t = new Date();
