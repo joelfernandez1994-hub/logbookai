@@ -442,10 +442,16 @@ export function parseVoiceCommand(text, ctx = {}) {
 }
 
 function splitClauses(text) {
-  // Split on "then", "after that", "and then", "left at", commas, "and".
+  // Split on "then", "after that", "and then", "left at", commas, and "and"
+  // when immediately followed by a new-activity verb ("and started driving",
+  // "and stopped"). Deliberately excludes "and got/woke up" — that phrase is
+  // the connector for a same-clause sleep RANGE (parseTimeRange), not a new
+  // clause, and a bare "and" is never split (too easy to misfire on plain
+  // descriptive text, e.g. "Miami and Fort Lauderdale").
   return text
     .replace(/\bthen\b|\bafter that\b/gi, '|')
     .replace(/,\s*(?=(?:left|fueled|drove|started|stopped|on duty|off duty|driving|sleeper|fuel|pre-trip))/gi, '|')
+    .replace(/\band\s+(?=(?:started|left|drove|stopped|resumed|continued|went)\b)/gi, '|')
     .split('|')
     .map(s => s.trim())
     .filter(Boolean);
