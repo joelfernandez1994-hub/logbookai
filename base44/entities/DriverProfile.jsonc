@@ -54,6 +54,11 @@
       "type": "boolean",
       "default": false
     },
+    "live_tracking_enabled": {
+      "type": "boolean",
+      "default": true,
+      "description": "When false, Today's quick 2x2 status selector and Change Status button are paused (greyed out) so the driver can log a day purely via Ask LogbookAI or manual Logs edits without a live real-time status change colliding with it."
+    },
     "trip_planning_speed_profile": {
       "type": "string",
       "enum": [
