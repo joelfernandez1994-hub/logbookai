@@ -166,12 +166,16 @@ function parseTime(text, refDate, tz, opts = {}) {
 // a range that lands at/before its own start (e.g. "10 PM to 6 AM") rolls
 // the end into the next calendar day.
 // ---------------------------------------------------------------------------
-function parseTimeRange(text, refDate, tz) {
+function parseTimeRange(text, refDate, tz, opts = {}) {
   const m = text.match(/(\d{1,2}(?::\d{2})?\s*(?:a\.?m\.?|p\.?m\.?)?)\s*(?:to|until|through|-)\s*(\d{1,2}(?::\d{2})?\s*(?:a\.?m\.?|p\.?m\.?)?)/i);
   if (!m) return null;
-  const t1 = parseTime(m[1], refDate, tz);
-  const t2 = parseTime(m[2], refDate, tz);
-  if (!t1 || !t2) return null;
+  const t1 = parseTime(m[1], refDate, tz, opts);
+  if (!t1) return null;
+  // The end side inherits the start's context AND a chronological anchor of
+  // the resolved start — "11 to 7" should pick the "7" reading that comes
+  // AFTER "11", same as any other chronological-consistency case.
+  const t2 = parseTime(m[2], refDate, tz, { ...opts, anchor: t1.date });
+  if (!t2) return null;
   let end = t2.date;
   if (end.getTime() <= t1.date.getTime()) end = new Date(end.getTime() + 24 * H);
   return { start: t1.date, end, ambiguous: t1.ambiguous || t2.ambiguous };
@@ -340,21 +344,27 @@ export function parseVoiceCommand(text, ctx = {}) {
   const clarifications = [];
   const ambiguousFields = [];
   let prevEnd = null;
+  // Chronological anchor for ambiguous-hour resolution (tier 2): the START of
+  // the most recently resolved event in THIS narrative. Existing logged
+  // events (tier 3) are constant across the whole narrative.
+  let anchor = null;
+  const existingEvents = ctx.events || [];
 
   for (let i = 0; i < clauses.length; i++) {
     const clause = clauses[i];
     const status = detectStatus(clause);
     if (!status) continue;
 
+    const timeOpts = { anchor, existingEvents };
     // Try a two-time range first ("off duty from 10 PM to 6 AM") — common
     // trucker phrasing for sleeper/off-duty periods that a single time +
     // duration can't express. Falls back to single-time + optional duration.
-    const range = parseTimeRange(clause, refDate, tz);
+    const range = parseTimeRange(clause, refDate, tz, timeOpts);
     let start, end, timeAmbiguous;
     if (range) {
       start = range.start; end = range.end; timeAmbiguous = range.ambiguous;
     } else {
-      const t = parseTime(clause, refDate, tz);
+      const t = parseTime(clause, refDate, tz, timeOpts);
       if (!t) continue;
       const dur = parseDuration(clause);
       start = t.date;
@@ -376,7 +386,7 @@ export function parseVoiceCommand(text, ctx = {}) {
       city: loc?.city || '',
       state: loc?.state || '',
       remark: status.activity || '',
-      _ambiguous: { time: timeAmbiguous, location: loc?.ambiguous },
+      _ambiguous: { time: timeAmbiguous, location: loc?.ambiguous, duty_status: !!status.statusAmbiguous },
     });
     if (timeAmbiguous) ambiguousFields.push(`event_${i + 1}:start_timestamp`);
     // A bare city without a state is NOT blocking — the state is left
@@ -385,6 +395,14 @@ export function parseVoiceCommand(text, ctx = {}) {
     if (loc?.ambiguous) {
       ambiguousFields.push(`event_${i + 1}:state`);
     }
+    if (status.statusAmbiguous) {
+      ambiguousFields.push(`event_${i + 1}:duty_status`);
+      clarifications.push({
+        type: 'status_ambiguous',
+        question: `Was "${clause.trim()}" resting in the sleeper berth, or off duty (e.g. a motel/rest area)? Confirm before applying.`,
+      });
+    }
+    anchor = start;
     prevEnd = end;
   }
 
