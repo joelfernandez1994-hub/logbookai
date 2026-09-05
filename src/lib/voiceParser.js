@@ -167,7 +167,11 @@ function parseTime(text, refDate, tz, opts = {}) {
 // the end into the next calendar day.
 // ---------------------------------------------------------------------------
 function parseTimeRange(text, refDate, tz, opts = {}) {
-  const m = text.match(/(\d{1,2}(?::\d{2})?\s*(?:a\.?m\.?|p\.?m\.?)?)\s*(?:to|until|through|-)\s*(\d{1,2}(?::\d{2})?\s*(?:a\.?m\.?|p\.?m\.?)?)/i);
+  // "to/until/through/-" for explicit ranges, plus the common "went to sleep
+  // at 10 and got/woke up at 6" idiom, whose connector is "and (got|woke) up"
+  // rather than "to" — narrow phrasing (not a bare "and") so it doesn't
+  // misfire on two genuinely separate events joined with "and".
+  const m = text.match(/(\d{1,2}(?::\d{2})?\s*(?:a\.?m\.?|p\.?m\.?)?)\s*(?:to|until|through|-|and\s+(?:got|woke)\s+up(?:\s+at)?)\s*(\d{1,2}(?::\d{2})?\s*(?:a\.?m\.?|p\.?m\.?)?)/i);
   if (!m) return null;
   const t1 = parseTime(m[1], refDate, tz, opts);
   if (!t1) return null;
