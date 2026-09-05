@@ -200,9 +200,9 @@ export default function ProposalReview({ existing, proposed, cycleType, tz, onAp
       )}
 
       {/* Mandatory validation warnings */}
-      {warnings.length > 0 && (
+      {displayWarnings.length > 0 && (
         <div className="space-y-2 mb-2">
-          {warnings.map((w, i) => (
+          {displayWarnings.map((w, i) => (
             <div key={i} className={`rounded-lg border p-2 flex items-start gap-2 ${w.severity === 'blocking' ? 'border-error/40 bg-error-surface' : 'border-warning/50 bg-warning-surface'}`}>
               <AlertTriangle className={`w-4 h-4 mt-0.5 shrink-0 ${w.severity === 'blocking' ? 'text-error' : 'text-warning'}`} />
               <div className="text-xs flex-1 text-warning-surface-foreground">
@@ -237,6 +237,36 @@ export default function ProposalReview({ existing, proposed, cycleType, tz, onAp
               </div>
             </div>
           ))}
+        </div>
+      )}
+
+      {/* Explicit-time route-timing conflicts: never auto-changed, never a hard
+          blocker — the driver reviews the exact discrepancy per leg and must
+          explicitly acknowledge before Apply unlocks. Route calculations are a
+          plausibility check, not the authoritative record of trip duration. */}
+      {needsRouteAck && (
+        <div className="rounded-lg border border-error/40 bg-error-surface p-2 mb-2">
+          <div className="flex items-start gap-2">
+            <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0 text-error" />
+            <div className="text-xs flex-1 text-error-surface-foreground">
+              <div className="font-semibold mb-1">Route timing looks unusual</div>
+              <div className="space-y-1.5">
+                {explicitConflictLegs.map((leg, i) => (
+                  <div key={i} className="rounded border border-error/30 bg-card px-2 py-1">
+                    <div className="font-medium text-card-foreground">{leg.origin || 'Unknown'} → {leg.destination || 'Unknown'}</div>
+                    <div>Logged: {fmtHoursMinutes(leg.evaluation?.requestedDrivingHours)}</div>
+                    <div>Estimated truck travel time: ~{fmtHoursMinutes(leg.evaluation?.requiredTruckTime)}</div>
+                  </div>
+                ))}
+              </div>
+              <div className="mt-1.5">These times were provided by you. Please verify they are correct before applying.</div>
+              <label className="flex items-start gap-2 mt-2 cursor-pointer">
+                <input type="checkbox" className="mt-0.5 w-4 h-4" checked={routeAcknowledged}
+                  onChange={(e) => setRouteAcknowledged(e.target.checked)} />
+                <span className="font-medium">I reviewed these times and confirm they are accurate</span>
+              </label>
+            </div>
+          </div>
         </div>
       )}
 
