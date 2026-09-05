@@ -14,6 +14,16 @@ import TimezoneIndicator from '@/components/TimezoneIndicator';
 const STATUS_LABELS = { OFF_DUTY: 'Off Duty', SLEEPER_BERTH: 'Sleeper', DRIVING: 'Driving', ON_DUTY: 'On Duty' };
 const STATUSES = ['OFF_DUTY', 'SLEEPER_BERTH', 'DRIVING', 'ON_DUTY'];
 
+// "2 hr 30 min" / "3 hr" (omits "0 min") — matches the route-conflict card copy.
+function fmtHoursMinutes(hours) {
+  if (hours == null || !Number.isFinite(hours)) return '--';
+  const totalMin = Math.round(hours * 60);
+  const h = Math.floor(totalMin / 60);
+  const m = totalMin % 60;
+  if (h === 0) return `${m} min`;
+  return m === 0 ? `${h} hr` : `${h} hr ${m} min`;
+}
+
 export default function ProposalReview({ existing, proposed, cycleType, tz, onApply, onApplyReplace, onCancel, interpretation, clarifications, onResolveClarification, routeWarning, reconstructionConflicts = [], intent, targetDate, explicitGuard, narrative, provenance, enteredPriorHistory }) {
   const isReplaceDay = intent === 'replace_day';
   const validationExisting = useMemo(() => {
