@@ -209,7 +209,19 @@ export default function Today() {
       </div>
 
       <div className="rounded-xl border border-border bg-card p-4 mb-3">
-        <div className="text-xs text-muted-foreground font-medium">CURRENT DUTY STATUS</div>
+        <div className="flex items-center justify-between">
+          <div className="text-xs text-muted-foreground font-medium">CURRENT DUTY STATUS</div>
+          <label className="flex items-center gap-1.5 text-[11px] text-muted-foreground cursor-pointer">
+            Live tracking
+            <input type="checkbox" role="switch" aria-checked={liveTrackingEnabled} checked={liveTrackingEnabled}
+              onChange={(e) => toggleLiveTracking(e.target.checked)} className="w-4 h-4" />
+          </label>
+        </div>
+        {!liveTrackingEnabled && (
+          <div className="text-[11px] text-warning-surface-foreground bg-warning-surface border border-warning/50 rounded-md px-2 py-1 mt-1.5">
+            Live status tracking is paused. Quick status changes below are disabled — log this period via <button type="button" className="underline font-medium" onClick={() => navigate('/log-assistant')}>Ask LogbookAI</button> or <button type="button" className="underline font-medium" onClick={() => navigate('/logs')}>Logs</button> instead.
+          </div>
+        )}
         {(displayStatus || current) ? (
           <div className="flex items-baseline gap-2 mt-1">
             <span className="text-2xl font-bold text-card-foreground">{STATUS_LABELS[displayStatus || current.duty_status]}</span>
@@ -228,12 +240,12 @@ export default function Today() {
         {/* Quick 2x2 status selector — current status highlighted, stays active
             until another is tapped. For location/remark/equipment changes at
             the same time, "Change Status" below still opens the full sheet. */}
-        <div className="grid grid-cols-2 gap-2 mt-3">
+        <div className={`grid grid-cols-2 gap-2 mt-3 ${!liveTrackingEnabled ? 'opacity-40' : ''}`}>
           {QUICK_STATUSES.map((s) => {
             const active = s.key === (displayStatus || current?.duty_status);
             return (
-              <button key={s.key} type="button" onClick={() => handleQuickStatus(s.key)}
-                className={`flex items-center gap-2 rounded-lg border p-3 text-sm font-medium transition min-h-[44px] ${active ? 'border-primary bg-accent text-accent-foreground' : 'border-border text-card-foreground'}`}>
+              <button key={s.key} type="button" disabled={!liveTrackingEnabled} onClick={() => handleQuickStatus(s.key)}
+                className={`flex items-center gap-2 rounded-lg border p-3 text-sm font-medium transition min-h-[44px] disabled:cursor-not-allowed ${active ? 'border-primary bg-accent text-accent-foreground' : 'border-border text-card-foreground'}`}>
                 <span className={`w-3 h-3 rounded-full shrink-0 ${s.dot}`} />
                 {s.label}
                 {active && <span className="ml-auto text-[10px] font-semibold uppercase tracking-wide text-primary">Active</span>}
@@ -373,7 +385,7 @@ export default function Today() {
       </div>
 
       {/* Primary action */}
-      <Button className="w-full h-14 text-base font-semibold mb-3" onClick={() => setStatusOpen(true)}>
+      <Button className="w-full h-14 text-base font-semibold mb-3" disabled={!liveTrackingEnabled} onClick={() => setStatusOpen(true)}>
         Change Status
       </Button>
 
