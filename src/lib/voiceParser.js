@@ -142,18 +142,41 @@ function resolveTimeOfDay(tn, mer, refDate, tz, opts = {}) {
   return resolveAmbiguousHour(h, tn.min, refDate, tz, opts);
 }
 
-// Parse a single time mention in context. Returns { date, ambiguous } or null.
+// Parse an ISOLATED, already-extracted time token (e.g. "10 PM", "6", "1:15")
+// with no surrounding sentence context to check against — used by
+// parseTimeRange, which only ever hands this a substring its own regex
+// already shaped like a time. A bare number is accepted here (unlike the
+// full-clause parseTime below) because the caller already established this
+// exact substring IS the time mention, not a number floating in prose.
+function parseTimeToken(tok, refDate, tz, opts = {}) {
+  const m = tok.trim().match(/^(\d{1,2}(?::\d{2})?)\s*(a\.?m\.?|p\.?m\.?)?$/i);
+  if (!m) return null;
+  const tn = parseTimeNumber(m[1]);
+  if (!tn) return null;
+  const mer = m[2] ? m[2].replace(/[.\s]/g, '').toLowerCase() : null;
+  return resolveTimeOfDay(tn, mer, refDate, tz, opts);
+}
+
+// Parse a time mention within a full clause/sentence. Returns { date,
+// ambiguous } or null. A bare 1-2 digit number is ONLY treated as a time
+// when it has real time context — preceded by "at ", written with a colon
+// ("1:15"), or followed by an explicit meridian ("6 PM") — never a bare
+// number floating in prose (e.g. "my 30" in "stopped for my 30", the 30-
+// minute break, must NOT be misread as "30 o'clock" and swallow the real
+// time mentioned later in the same clause).
 // `opts.anchor` (a Date) and `opts.existingEvents` feed tiers 2-3 of the
 // ambiguous-hour resolution; `text` itself is checked for a context phrase.
 function parseTime(text, refDate, tz, opts = {}) {
   const lower = text.toLowerCase();
   // relative "now"
   if (/\bnow\b/.test(lower)) return { date: new Date(refDate.getTime()), ambiguous: false };
-  const m = lower.match(/(?:^|\s|at\s)(\d{1,2}(?::\d{2})?)\s*(a\.?m\.?|p\.?m\.?)?/);
+  const m = lower.match(/\bat\s+(\d{1,2}(?::\d{2})?)\s*(a\.?m\.?|p\.?m\.?)?\b|(\d{1,2}:\d{2})\s*(a\.?m\.?|p\.?m\.?)?|(\d{1,2})\s*(a\.?m\.?|p\.?m\.?)\b/i);
   if (!m) return null;
-  const tn = parseTimeNumber(m[1]);
+  const tok = m[1] || m[3] || m[5];
+  const merTok = m[2] || m[4] || m[6];
+  const tn = parseTimeNumber(tok);
   if (!tn) return null;
-  const mer = m[2] ? m[2].replace(/[.\s]/g, '').toLowerCase() : detectMeridian(text);
+  const mer = merTok ? merTok.replace(/[.\s]/g, '').toLowerCase() : detectMeridian(text);
   const contextMeridian = mer ? null : (opts.contextMeridian ?? detectContextMeridian(text));
   return resolveTimeOfDay(tn, mer, refDate, tz, { ...opts, contextMeridian });
 }
@@ -173,12 +196,12 @@ function parseTimeRange(text, refDate, tz, opts = {}) {
   // misfire on two genuinely separate events joined with "and".
   const m = text.match(/(\d{1,2}(?::\d{2})?\s*(?:a\.?m\.?|p\.?m\.?)?)\s*(?:to|until|through|-|and\s+(?:got|woke)\s+up(?:\s+at)?)\s*(\d{1,2}(?::\d{2})?\s*(?:a\.?m\.?|p\.?m\.?)?)/i);
   if (!m) return null;
-  const t1 = parseTime(m[1], refDate, tz, opts);
+  const t1 = parseTimeToken(m[1], refDate, tz, opts);
   if (!t1) return null;
   // The end side inherits the start's context AND a chronological anchor of
   // the resolved start — "11 to 7" should pick the "7" reading that comes
   // AFTER "11", same as any other chronological-consistency case.
-  const t2 = parseTime(m[2], refDate, tz, { ...opts, anchor: t1.date });
+  const t2 = parseTimeToken(m[2], refDate, tz, { ...opts, anchor: t1.date });
   if (!t2) return null;
   let end = t2.date;
   if (end.getTime() <= t1.date.getTime()) end = new Date(end.getTime() + 24 * H);
