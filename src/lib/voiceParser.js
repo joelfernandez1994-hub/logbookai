@@ -191,8 +191,16 @@ export function parseVoiceCommand(text, ctx = {}) {
   if (!raw) return { handled: false, reason: 'empty' };
 
   const lower = raw.toLowerCase();
+  // The per-clause loop below (plus the new time-range support) already
+  // handles an arbitrary number of simple single-status clauses, so this cap
+  // only needs to catch genuinely complex multi-leg narratives (several
+  // distinct stops/activities woven together) and defer those to the AI
+  // rather than risk misreading one. Raised from 2 → 4 so everyday sequences
+  // like "off duty at 6, pre-trip at 6:15, driving at 6:30" or a single
+  // sleeper/off-duty time RANGE (which alone counts as 2 explicit mentions)
+  // resolve deterministically instead of always burning AI quota.
   const explicitTimes = raw.match(/\b\d{1,2}:\d{2}\s*(?:a\.?m\.?|p\.?m\.?)\b/gi) || [];
-  if (explicitTimes.length > 2) {
+  if (explicitTimes.length > 4) {
     return { handled: false, reason: 'complex_timeline', fallback: 'ai' };
   }
 
