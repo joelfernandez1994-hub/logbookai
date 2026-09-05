@@ -76,6 +76,7 @@ export default function ProposalReview({ existing, proposed, cycleType, tz, onAp
       const gaps = (conflicts || []).filter((c) => c.type === 'route_time_gap');
       if (gaps.length) { setManualReview(gaps); return; }
       setEvents(corrected);
+      setRouteAcknowledged(false);
       // Re-evaluate the route warning on the corrected events (cached routes) so
       // the card reflects the resolved — or still-open — conflict accurately.
       const freshLegs = await inspectProposalRoutes(corrected, { now: evalNow });
