@@ -197,7 +197,13 @@ export async function insertEventsBatch(allEvents, newEvents, opts = {}) {
     merged.deletes.push(...ops.deletes);
   }
   const res = await applyTimelineOps(merged, allEvents, opts);
-  return { ...res, ops: merged, duplicate: dupHit, invalid: invalidHit };
+  // A dropped-as-invalid event (e.g. an open-ended final status whose end
+  // computed before its start) must never look like a clean success — the
+  // caller needs a real error to show the driver, not a silent partial apply.
+  const error = invalidHit
+    ? 'One or more proposed events could not be applied (invalid time range) and were skipped. Review the proposal and try again.'
+    : undefined;
+  return { ...res, ops: merged, duplicate: dupHit, invalid: invalidHit, error };
 }
 
 // Canonical delete of a single event.
