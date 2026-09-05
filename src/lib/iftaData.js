@@ -7,7 +7,7 @@
 import { base44 } from '@/api/base44Client';
 import { getAllEvents } from '@/lib/driverData';
 import {
-  resolveMissingDays, currentQuarter, quarterDateRange, IFTA_RESOLVER_VERSION,
+  resolveMissingDays, recomputeDay, eventsForDay, currentQuarter, quarterDateRange, IFTA_RESOLVER_VERSION,
 } from '@/lib/iftaResolver';
 
 export async function getIftaMileageRecords(quarter) {
@@ -54,6 +54,30 @@ export async function runIftaResolverForQuarter(quarter, timezone) {
     routeSplitFn: routeSplit,
     upsertFn: upsertMileageRow,
     resolverVersion: IFTA_RESOLVER_VERSION,
+  });
+}
+
+// Manual "Recalculate day" action: re-derives one calendar day's mileage from
+// the driver's current (possibly just-edited) trip/location data. Only
+// route_estimated/odometer_derived rows are refreshed; driver_entered /
+// driver_confirmed rows are preserved unless `replaceConfirmed` is true (the
+// driver explicitly opted in). Never touches DutyStatusEvent.
+export async function recomputeDayForQuarter({ logDate, quarter, timezone, replaceConfirmed = false }) {
+  const [allEvents, existingForQuarter] = await Promise.all([
+    getAllEvents(),
+    getIftaMileageRecords(quarter),
+  ]);
+  const dayEvents = eventsForDay(allEvents, logDate, timezone);
+  const existingRecords = existingForQuarter.filter((r) => r.log_date === logDate);
+
+  return await recomputeDay({
+    dayEvents,
+    logDate,
+    existingRecords,
+    routeSplitFn: routeSplit,
+    upsertFn: upsertMileageRow,
+    resolverVersion: IFTA_RESOLVER_VERSION,
+    replaceConfirmed,
   });
 }
 
