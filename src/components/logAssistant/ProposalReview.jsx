@@ -96,7 +96,18 @@ export default function ProposalReview({ existing, proposed, cycleType, tz, onAp
     return ws;
   }, [validation.warnings, effectiveRouteWarning, reconstructionConflicts, fixedRouteWarning]);
 
-  const blocking = hasBlocking(warnings);
+  // Route-timing conflicts on FULLY EXPLICIT (driver-stated) times are never a
+  // hard blocker — route physics is a plausibility check, not the log itself.
+  // They still gate Apply, but through an explicit acknowledgment rather than
+  // an unconditional lock (see the dedicated card below).
+  const explicitConflictLegs = effectiveRouteWarning?.explicitConflictLegs || [];
+  const needsRouteAck = explicitConflictLegs.length > 0;
+  const blocking = hasBlocking(warnings) || (needsRouteAck && !routeAcknowledged);
+  // The generic warning list below already covers the route_reasonableness
+  // entry when it has real BLOCKING (inferred-time) conflicts; a PURE explicit-
+  // only conflict gets its own clearer, per-leg card instead of the generic
+  // aggregated one, so it isn't shown twice.
+  const displayWarnings = warnings.filter(w => !(w.type === 'route_reasonableness' && w.requiresAcknowledgment && !w.blockingConflicts?.length));
   const violations = validation.violations;
   const hos = validation.hos;
   const isFuture = validation.isFuture;
