@@ -3,6 +3,7 @@ import {
   getDriverProfile, getCarrierProfile, getEquipment,
 } from '@/lib/driverData';
 import { getTimelineEvents } from '@/lib/timelineData';
+import { setAppLanguage } from '@/i18n';
 
 export function useDriverData(daysBack = 9) {
   const [profile, setProfile] = useState(null);
@@ -19,6 +20,10 @@ export function useDriverData(daysBack = 9) {
         getDriverProfile(), getCarrierProfile(), getEquipment(), getTimelineEvents(daysBack),
       ]);
       setProfile(p);
+      // Central sync point: every page using this hook picks up the driver's
+      // saved display-language preference without each page wiring it up
+      // itself. Presentation only — never touches stored duty-status data.
+      if (p?.language) setAppLanguage(p.language);
       setCarrier(c);
       setEquipment(eq || []);
       setEvents(ev || []);
