@@ -1,5 +1,7 @@
 import { useState, useMemo } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useNavigate, useLocation } from 'react-router-dom';
+import { dutyStatusLabel } from '@/i18n';
 import { useDriverData } from '@/hooks/useDriverData';
 import { computeCycle, dateKeyInTz, fmtHours } from '@/lib/hosEngine';
 import { getDisplayGrid } from '@/lib/timelineDisplay';
@@ -28,6 +30,7 @@ const STATUS_LABELS = { OFF_DUTY: 'Off Duty', SLEEPER_BERTH: 'Sleeper', DRIVING:
 const STATUSES = ['OFF_DUTY', 'SLEEPER_BERTH', 'DRIVING', 'ON_DUTY'];
 
 export default function Logs() {
+  const { t } = useTranslation();
   const { profile, carrier, equipment, events, loading, reload } = useDriverData(9);
   const navigate = useNavigate();
   const location = useLocation();
@@ -118,7 +121,7 @@ export default function Logs() {
       if (location.search) navigate('/logs', { replace: true });
       await reload(); await loadCerts();
     } catch (e) {
-      setSaveError(e?.message || 'Failed to save event. Please try again.');
+      setSaveError(e?.message || t('logs.saveEventError'));
     } finally {
       setSaving(false);
     }
@@ -138,7 +141,7 @@ export default function Logs() {
       setConfirmClear(false);
       await reload(); await loadCerts();
     } catch (e) {
-      setSaveError(e?.message || 'Failed to clear day. Please try again.');
+      setSaveError(e?.message || t('logs.clearDayError'));
     } finally {
       setClearing(false);
     }
@@ -146,7 +149,7 @@ export default function Logs() {
 
   return (
     <PullToRefresh onRefresh={reload} className="px-4 pt-6" data-client-version="logs-canonical-timeline-v3">
-      <h1 data-client-version="logs-canonical-timeline-v3" className="text-xl font-bold mb-3 text-foreground">Daily Logs</h1>
+      <h1 data-client-version="logs-canonical-timeline-v3" className="text-xl font-bold mb-3 text-foreground">{t('logs.title')}</h1>
 
       <div className="flex gap-2 overflow-x-auto no-scrollbar pb-2 mb-3">
         {dayKeys.map((dk) => {
@@ -169,8 +172,8 @@ export default function Logs() {
         <div className="text-center">
           <div className="font-semibold text-foreground">{selectedDate.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric', timeZone: tz })}</div>
           {isCertified
-            ? <span className="text-xs text-success font-medium">✓ Certified</span>
-            : <span className="text-xs text-warning font-medium">Needs Certification</span>}
+            ? <span className="text-xs text-success font-medium">✓ {t('logs.certified')}</span>
+            : <span className="text-xs text-warning font-medium">{t('logs.needsCertification')}</span>}
         </div>
         <Button variant="ghost" size="sm" onClick={() => shiftDay(1)}><ChevronRight className="w-4 h-4" /></Button>
       </div>
@@ -185,21 +188,21 @@ export default function Logs() {
       </div>
 
       <div className="rounded-xl border border-border bg-card p-3 mb-3 text-sm">
-        <div className="font-semibold mb-1 text-card-foreground">{cycle.cycleLimit}-Hour / {cycle.cycleDays}-Day Recap</div>
+        <div className="font-semibold mb-1 text-card-foreground">{t('logs.cycleRecap', { limit: cycle.cycleLimit, days: cycle.cycleDays })}</div>
         <div className="grid grid-cols-2 gap-1 text-xs text-muted-foreground">
-          <div>Today: {fmtHours(cycle.dailyTotals[cycle.dailyTotals.length - 1]?.onDutyHours || 0)}</div>
-          <div>Last {cycle.cycleDays} days: {fmtHours(cycle.cycleUsedHours)}</div>
-          <div>Available: {fmtHours(cycle.cycleRemainingHours)}</div>
-          <div>Returning tomorrow: {fmtHours(cycle.returningTomorrowHours)}</div>
+          <div>{t('logs.today')}: {fmtHours(cycle.dailyTotals[cycle.dailyTotals.length - 1]?.onDutyHours || 0)}</div>
+          <div>{t('logs.lastNDays', { days: cycle.cycleDays })}: {fmtHours(cycle.cycleUsedHours)}</div>
+          <div>{t('logs.available')}: {fmtHours(cycle.cycleRemainingHours)}</div>
+          <div>{t('logs.returningTomorrow')}: {fmtHours(cycle.returningTomorrowHours)}</div>
         </div>
       </div>
 
       <div className="rounded-xl border border-border bg-card p-3 mb-3">
         <div className="flex items-center justify-between mb-2">
-          <div className="font-semibold text-sm text-card-foreground">Events</div>
+          <div className="font-semibold text-sm text-card-foreground">{t('logs.events')}</div>
           <div className="flex gap-1">
-            <Button size="sm" variant="outline" onClick={() => navigate('/log-assistant', { state: { returnTo: '/logs' } })}><Bot className="w-3.5 h-3.5 mr-1" /> Assistant</Button>
-            <Button size="sm" variant="outline" onClick={() => { setPrefill(null); setAdding(true); }}><Plus className="w-3.5 h-3.5 mr-1" /> Add Event</Button>
+            <Button size="sm" variant="outline" onClick={() => navigate('/log-assistant', { state: { returnTo: '/logs' } })}><Bot className="w-3.5 h-3.5 mr-1" /> {t('logs.assistant')}</Button>
+            <Button size="sm" variant="outline" onClick={() => { setPrefill(null); setAdding(true); }}><Plus className="w-3.5 h-3.5 mr-1" /> {t('logs.addEvent')}</Button>
           </div>
         </div>
         <div className="space-y-1">
@@ -208,7 +211,7 @@ export default function Logs() {
               <span className="font-mono text-xs text-muted-foreground w-14 shrink-0">
                 {r.time.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', timeZone: tz })}
               </span>
-              <span className="font-semibold text-xs text-card-foreground">{STATUS_LABELS[r.status]}</span>
+              <span className="font-semibold text-xs text-card-foreground">{dutyStatusLabel(r.status)}</span>
               <span className="text-xs text-muted-foreground flex-1 truncate">
                 {[r.city, r.state].filter(Boolean).join(', ')}{r.remark ? ` — ${r.remark}` : ''}
               </span>
@@ -216,15 +219,15 @@ export default function Logs() {
               <button onClick={() => removeEvent(r.id)} className="inline-flex items-center justify-center min-h-[44px] min-w-[44px] text-error hover:opacity-80"><Trash2 className="w-3.5 h-3.5" /></button>
             </div>
           ))}
-          {grid.remarks.length === 0 && <div className="text-xs text-muted-foreground text-center py-4">No events recorded.</div>}
+          {grid.remarks.length === 0 && <div className="text-xs text-muted-foreground text-center py-4">{t('logs.noEventsRecorded')}</div>}
         </div>
       </div>
 
       <Button className="w-full mb-2" onClick={certify} disabled={isCertified}>
-        {isCertified ? 'Certified ✓' : 'Certify Log'}
+        {isCertified ? t('logs.certifiedCheck') : t('logs.certifyLog')}
       </Button>
       <Button variant="outline" className="w-full mb-2 text-error border-error/40 hover:bg-error-surface" disabled={clearing} onClick={() => setConfirmClear(true)}>
-        <Eraser className="w-4 h-4 mr-2" /> {clearing ? 'Clearing…' : 'Clear Day Log'}
+        <Eraser className="w-4 h-4 mr-2" /> {clearing ? t('logs.clearing') : t('logs.clearDayLog')}
       </Button>
 
       <EventEditor open={!!editing || adding} event={editing} prefill={prefill} saving={saving} saveError={saveError}
@@ -245,15 +248,15 @@ export default function Logs() {
 
       <Dialog open={confirmClear} onOpenChange={(o) => !clearing && setConfirmClear(o)}>
         <DialogContent className="max-w-md">
-          <DialogHeader><DialogTitle className="flex items-center gap-2"><AlertTriangle className="w-5 h-5 text-error" /> Clear {selectedDate.toLocaleDateString('en-US', { month: 'long', day: 'numeric', timeZone: tz })} Log?</DialogTitle></DialogHeader>
+          <DialogHeader><DialogTitle className="flex items-center gap-2"><AlertTriangle className="w-5 h-5 text-error" /> {t('logs.clearDayTitle', { date: selectedDate.toLocaleDateString('en-US', { month: 'long', day: 'numeric', timeZone: tz }) })}</DialogTitle></DialogHeader>
           <div className="text-sm text-muted-foreground space-y-2">
-            <p>This will permanently remove all log events for <b>{selectedDate.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric', timeZone: tz })}</b>.</p>
-            <p>Events that cross midnight into an adjacent day are split — the adjacent day's records are preserved. Certification for this day is invalidated, and the graph, totals, mileage, HOS, and cycle recap recalculate automatically.</p>
-            <p className="text-error font-medium">This cannot be undone.</p>
+            <p>{t('logs.clearDayBody1', { date: selectedDate.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric', timeZone: tz }) })}</p>
+            <p>{t('logs.clearDayBody2')}</p>
+            <p className="text-error font-medium">{t('logs.clearDayBody3')}</p>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setConfirmClear(false)} disabled={clearing}>Cancel</Button>
-            <Button variant="destructive" onClick={doClearDay} disabled={clearing}>{clearing ? 'Clearing…' : 'Clear Entire Day'}</Button>
+            <Button variant="outline" onClick={() => setConfirmClear(false)} disabled={clearing}>{t('common.cancel')}</Button>
+            <Button variant="destructive" onClick={doClearDay} disabled={clearing}>{clearing ? t('logs.clearing') : t('logs.clearEntireDay')}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -262,6 +265,7 @@ export default function Logs() {
 }
 
 function EventEditor({ open, event, prefill, onClose, onSave, tz, carrier, equipment, isCertified, saving, saveError, dateStr }) {
+  const { t } = useTranslation();
   const pfStart = prefill?.start_timestamp ? isoToWallTime(prefill.start_timestamp, tz) : '';
   const pfEnd = prefill?.end_timestamp ? isoToWallTime(prefill.end_timestamp, tz) : '';
   const [status, setStatus] = useState(event?.duty_status || 'DRIVING');
@@ -282,12 +286,12 @@ function EventEditor({ open, event, prefill, onClose, onSave, tz, carrier, equip
 
   const save = () => {
     setLocalError('');
-    if (!start) { setLocalError('Start time is required.'); return; }
+    if (!start) { setLocalError(t('logs.startTimeRequired')); return; }
     const startIso = wallTimeToIso(start, tz);
     const endIso = end ? wallTimeToIso(end, tz) : null;
     const startMs = startIso ? new Date(startIso).getTime() : NaN;
     const endMs = endIso ? new Date(endIso).getTime() : null;
-    if (endMs != null && endMs <= startMs) { setLocalError('End time must be after the start time.'); return; }
+    if (endMs != null && endMs <= startMs) { setLocalError(t('logs.endAfterStart')); return; }
     const data = {
       duty_status: status,
       start_timestamp: startIso,
@@ -303,11 +307,11 @@ function EventEditor({ open, event, prefill, onClose, onSave, tz, carrier, equip
   return (
     <Dialog open={open} onOpenChange={(o) => { if (!o && !saving) onClose(); }}>
       <DialogContent className="max-w-md">
-        <DialogHeader><DialogTitle>{event ? 'Edit Event' : 'Add Event'}</DialogTitle></DialogHeader>
+        <DialogHeader><DialogTitle>{event ? t('logs.editEvent') : t('logs.addEvent')}</DialogTitle></DialogHeader>
         <TimezoneIndicator tz={tz} className="mb-1" />
         {isCertified && event && (
           <div className="rounded-md bg-warning-surface border border-warning/50 p-2 text-xs text-warning-surface-foreground">
-            This log is certified. Editing will preserve the previous version in audit history and mark this day as needing re-certification.
+            {t('logs.certifiedEditNote')}
           </div>
         )}
         <div className="space-y-3">
@@ -315,13 +319,13 @@ function EventEditor({ open, event, prefill, onClose, onSave, tz, carrier, equip
             {STATUSES.map((s) => (
               <button key={s} onClick={() => setStatus(s)}
                 className={`rounded-lg border p-2 text-xs font-medium text-card-foreground ${status === s ? 'border-primary bg-accent text-accent-foreground' : 'border-border'}`}>
-                {STATUS_LABELS[s]}
+                {dutyStatusLabel(s)}
               </button>
             ))}
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-            <div><Label className="text-xs">Start</Label><Input type="datetime-local" value={start} onChange={(e) => setStart(e.target.value)} /></div>
-            <div><Label className="text-xs">End</Label><Input type="datetime-local" value={end} onChange={(e) => setEnd(e.target.value)} /></div>
+            <div><Label className="text-xs">{t('logs.start')}</Label><Input type="datetime-local" value={start} onChange={(e) => setStart(e.target.value)} /></div>
+            <div><Label className="text-xs">{t('logs.end')}</Label><Input type="datetime-local" value={end} onChange={(e) => setEnd(e.target.value)} /></div>
           </div>
           <LocationInput
             value={{ city, state: stateVal }}
@@ -331,7 +335,7 @@ function EventEditor({ open, event, prefill, onClose, onSave, tz, carrier, equip
             }}
             showGps
           />
-          <div><Label className="text-xs">Remark</Label><Input value={remark} onChange={(e) => setRemark(e.target.value)} /></div>
+          <div><Label className="text-xs">{t('logs.remark')}</Label><Input value={remark} onChange={(e) => setRemark(e.target.value)} /></div>
         </div>
         {(localError || saveError) && (
           <div className="rounded-md bg-error-surface border border-error/50 p-2 text-xs text-error-surface-foreground flex gap-1">
@@ -339,8 +343,8 @@ function EventEditor({ open, event, prefill, onClose, onSave, tz, carrier, equip
           </div>
         )}
         <DialogFooter>
-          <Button variant="outline" onClick={onClose} disabled={saving}>Cancel</Button>
-          <Button onClick={save} disabled={saving}>{saving ? 'Saving…' : 'Save'}</Button>
+          <Button variant="outline" onClick={onClose} disabled={saving}>{t('common.cancel')}</Button>
+          <Button onClick={save} disabled={saving}>{saving ? t('common.saving') : t('common.save')}</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
