@@ -258,5 +258,13 @@
     "view": "View",
     "editLogGraph": "Edit Log Graph",
     "editMode": "EDIT MODE"
+  },
+  "warnings": {
+    "timeGapTitle": "Time gap between duty records",
+    "timeGapBody": "Your log must be continuous. Add a duty record for each missing time slot:",
+    "addRecord": "Add record",
+    "routeConflictTitle": "Route / time conflict",
+    "routeConflictBody": "A driving segment is shorter than its route realistically requires. Review the times or locations before certifying.",
+    "fixRouteTiming": "Fix route timing"
   }
 }
