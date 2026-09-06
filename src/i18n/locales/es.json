@@ -258,5 +258,13 @@
     "view": "Ver",
     "editLogGraph": "Editar Gráfico de Registro",
     "editMode": "MODO DE EDICIÓN"
+  },
+  "warnings": {
+    "timeGapTitle": "Espacio de tiempo entre registros de servicio",
+    "timeGapBody": "Su registro debe ser continuo. Agregue un registro de servicio para cada intervalo de tiempo faltante:",
+    "addRecord": "Agregar registro",
+    "routeConflictTitle": "Conflicto de ruta / tiempo",
+    "routeConflictBody": "Un segmento de conducción es más corto de lo que su ruta realmente requiere. Revise las horas o ubicaciones antes de certificar.",
+    "fixRouteTiming": "Corregir tiempo de ruta"
   }
 }
