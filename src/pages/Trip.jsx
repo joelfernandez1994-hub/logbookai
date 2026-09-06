@@ -367,6 +367,35 @@ export default function Trip() {
         </div>
       )}
 
+      {estimate && !estimate.error && routeStops.length > 0 && (
+        <div className="rounded-xl border border-border bg-card p-4 mb-4">
+          <div className="flex items-center gap-2 font-semibold text-sm text-card-foreground mb-1">
+            <Clock className="w-4 h-4" /> Suggested Stops Along Route
+          </div>
+          <p className="text-[11px] text-muted-foreground mb-3">Based on your current HOS availability, planning speed profile, and the FMCSA 30-minute break / 11-hour driving / 14-hour window / 60-70 hour cycle rules — the same deterministic HOS engine used everywhere else in LogbookAI. Planning suggestions only; not official RODS until you log them.</p>
+          <div className="space-y-2">
+            {routeStops.map((stop, i) => {
+              const meta = STOP_META[stop.type];
+              const Icon = meta.icon;
+              return (
+                <div key={i} className="flex items-center justify-between gap-2 rounded-lg border border-border bg-accent/30 p-2.5 text-xs">
+                  <div className="flex items-start gap-2">
+                    <Icon className="w-4 h-4 mt-0.5 shrink-0 text-muted-foreground" />
+                    <div>
+                      <div className="font-medium text-card-foreground">{meta.label}</div>
+                      <div className="text-muted-foreground">~mile {Math.round(stop.mile)} · {stop.reason}</div>
+                    </div>
+                  </div>
+                  <Button size="sm" variant="outline" className="h-7 px-2 shrink-0" onClick={() => addRouteStopToPlan(stop)}>
+                    <Plus className="w-3 h-3 mr-1" /> Add
+                  </Button>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
       <div className="rounded-xl border border-border bg-card p-3 mb-4">
         <div className="flex items-center justify-between mb-2">
           <div className="font-medium text-sm text-card-foreground">Planned Stops</div>
