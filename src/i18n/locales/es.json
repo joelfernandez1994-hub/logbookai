@@ -1,0 +1,83 @@
+{
+  "app": {
+    "name": "LogbookAI",
+    "tagline": "Asistente de Cumplimiento de HOS"
+  },
+  "duty_status": {
+    "OFF_DUTY": "Fuera de Servicio",
+    "SLEEPER_BERTH": "Litera de Descanso",
+    "DRIVING": "Conduciendo",
+    "ON_DUTY": "En Servicio"
+  },
+  "duty_status_quick": {
+    "OFF_DUTY": "Fuera de Servicio",
+    "SLEEPER_BERTH": "Litera",
+    "DRIVING": "Conduciendo",
+    "ON_DUTY": "En Servicio"
+  },
+  "today": {
+    "logbook": "Registro: {{time}}",
+    "currentStatus": "ESTADO DE SERVICIO ACTUAL",
+    "liveTracking": "Seguimiento en vivo",
+    "liveTrackingPaused": "El seguimiento de estado en vivo está pausado. Los cambios rápidos de estado abajo están deshabilitados — registre este período con {{askAi}} o {{logs}} en su lugar.",
+    "askLogbookAi": "Preguntar a LogbookAI",
+    "logsLink": "Registros",
+    "noActiveStatus": "Sin estado activo",
+    "since": "Desde las {{time}}",
+    "active": "Activo",
+    "bolLabel": "# DE CONOCIMIENTO DE EMBARQUE",
+    "bolPlaceholder": "ej. BOL-48213",
+    "bolPlaceholderNoStatus": "Establezca un estado de servicio primero",
+    "save": "Guardar",
+    "saving": "Guardando...",
+    "changeStatus": "Cambiar Estado",
+    "hosCompliance": "HOS / Cumplimiento",
+    "viewFullLog": "Ver Registro Completo",
+    "whatCanIDo": "¿Qué puede hacer LogbookAI?",
+    "timelineCorrectionRequired": "Se requiere corrección de la línea de tiempo. Los cálculos de HOS no están disponibles hasta que la cobertura transcurrida sea continua y sin conflictos.",
+    "todaysLog": "Registro de 24 Horas de Hoy",
+    "dailyDvir": "DVIR Diario",
+    "addAnother": "Agregar Otro",
+    "startInspection": "Iniciar Inspección",
+    "latestToday": "Más reciente hoy:",
+    "defectsReported": "Defectos reportados",
+    "noDefects": "Sin defectos",
+    "tractorUnit": "Tractor {{unit}}",
+    "noInspectionToday": "Aún no se ha registrado ningún informe de inspección hoy.",
+    "viewInspectionHistory": "Ver historial de inspecciones →",
+    "restartInProgress": "Reinicio de 34 Horas en Progreso",
+    "restartStatus": "Transcurrido {{elapsed}} · {{remaining}} restante · est. {{eta}}",
+    "splitSleeperActive": "Litera Dividida Activa",
+    "splitSleeperAvailable": "Litera Dividida Disponible",
+    "optional": "Opcional",
+    "safetyDefectPending": "Defecto que afecta la seguridad con reparación pendiente.",
+    "vehicleUnsafe": "El vehículo no debe operarse si no es seguro.",
+    "reviewDvir": "Revisar DVIR →",
+    "dvirReminder": "Recordatorio: revise el estado del vehículo antes de terminar su período de trabajo e informe cualquier defecto.",
+    "openDvir": "Abrir DVIR →",
+    "cycleAvailabilityNote": "La disponibilidad del ciclo se basa únicamente en los registros ingresados en LogbookAI. No se proporcionó historial de servicio previo, por lo que el balance del ciclo no está verificado hasta que exista suficiente historial para cubrir su ciclo de {{cycleDays}}.",
+    "cycle8Day": "8 días",
+    "cycle7Day": "7 días"
+  },
+  "hos": {
+    "drivingRemaining": "Conducción Restante",
+    "window14": "Ventana de 14 Horas",
+    "break30": "Descanso de 30 Min",
+    "cycleLabel": "Ciclo {{limit}}/{{days}}",
+    "expiresAt": "expira {{time}}",
+    "elevenHourLimit": "límite de 11 hrs",
+    "sinceTime": "desde las {{time}}",
+    "unavailable": "No disponible hasta que la línea de tiempo sea válida",
+    "satisfied": "Satisfecho",
+    "timeLeft": "quedan {{time}}",
+    "breakRequiredNow": "Descanso requerido ahora",
+    "eightHourRule": "regla de 8 horas de conducción",
+    "hoursLeft": "quedan {{hours}} hrs",
+    "usedBackTomorrow": "{{used}} usadas · {{back}} disponibles mañana",
+    "noTourStarted": "Ninguna jornada iniciada aún"
+  },
+  "settings": {
+    "language": "Idioma",
+    "languageDescription": "Elija el idioma de la aplicación. Preguntar a LogbookAI entiende inglés y español por igual — los PDF exportados, los informes DVIR/IFTA y las certificaciones siempre permanecen en inglés."
+  }
+}
