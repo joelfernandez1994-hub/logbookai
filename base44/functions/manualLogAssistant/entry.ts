@@ -367,11 +367,15 @@ function extractExplicitFacts(input) {
     .map(m => ({ raw: m[0], normalized: normalizeClockFact(m[1], m[2], m[3]) }));
   const locations = [...text.matchAll(/\b([A-Z][A-Za-z.'-]*(?:\s+[A-Z][A-Za-z.'-]*){0,3}),\s*([A-Z]{2})\b/g)]
     .map(m => ({ raw: m[0], city: m[1].trim(), state: m[2].toUpperCase() }));
+  // Bilingual (English + Spanish) so the explicit-fact guard is equally
+  // meaningful regardless of which language the driver wrote in — this is
+  // detection only, never the source of the stored status (that always comes
+  // from the model's fixed English enum output).
   const statusPatterns = [
-    ['SLEEPER_BERTH', /\b(?:sleeper|sleeper berth)\b/gi],
-    ['OFF_DUTY', /\boff[ -]?duty\b/gi],
-    ['ON_DUTY', /\bon[ -]?duty\b/gi],
-    ['DRIVING', /\b(?:driving|drove|drive)\b/gi],
+    ['SLEEPER_BERTH', /\b(?:sleeper|sleeper berth|litera|dormitorio)\b/gi],
+    ['OFF_DUTY', /\b(?:off[ -]?duty|fuera de servicio)\b/gi],
+    ['ON_DUTY', /\b(?:on[ -]?duty|en servicio)\b/gi],
+    ['DRIVING', /\b(?:driving|drove|drive|conduciendo|manejando|manej[oó])\b/gi],
   ];
   const statuses = statusPatterns.flatMap(([status, pattern]) => [...text.matchAll(pattern)].map(m => ({ raw: m[0], status })));
   return { times, locations, statuses };
