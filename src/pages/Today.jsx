@@ -1,6 +1,8 @@
 import { useState, useMemo, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 import { useDriverData } from '@/hooks/useDriverData';
+import { dutyStatusLabel } from '@/i18n';
 import { computeHOS, fmtDur, fmtClock, dateKeyInTz, hasSufficientCycleHistory } from '@/lib/hosEngine';
 import LogGraph from '@/components/LogGraph';
 import ClockCard from '@/components/ClockCard';
@@ -20,20 +22,18 @@ import TimezoneIndicator from '@/components/TimezoneIndicator';
 import TimelineGapNotice from '@/components/TimelineGapNotice';
 import PullToRefresh from '@/components/PullToRefresh';
 
-const STATUS_LABELS = {
-  OFF_DUTY: 'OFF DUTY',
-  SLEEPER_BERTH: 'SLEEPER BERTH',
-  DRIVING: 'DRIVING',
-  ON_DUTY: 'ON DUTY',
-};
+// Display labels are translated via dutyStatusLabel() (presentation layer
+// only) — the canonical codes below (OFF_DUTY, SLEEPER_BERTH, DRIVING,
+// ON_DUTY) are never translated and never change; they're exactly what's
+// written to DutyStatusEvent regardless of the driver's chosen app language.
 
 // Quick 2x2 selector: fixed order, each with a distinct dot color matching
 // StatusChangeSheet's palette so the two status pickers stay visually consistent.
 const QUICK_STATUSES = [
-  { key: 'OFF_DUTY', label: 'Off Duty', dot: 'bg-slate-500' },
-  { key: 'SLEEPER_BERTH', label: 'Sleeper', dot: 'bg-violet-600' },
-  { key: 'DRIVING', label: 'Driving', dot: 'bg-blue-600' },
-  { key: 'ON_DUTY', label: 'On Duty', dot: 'bg-orange-600' },
+  { key: 'OFF_DUTY', dot: 'bg-slate-500' },
+  { key: 'SLEEPER_BERTH', dot: 'bg-violet-600' },
+  { key: 'DRIVING', dot: 'bg-blue-600' },
+  { key: 'ON_DUTY', dot: 'bg-orange-600' },
 ];
 
 function clockStatus(ms) {
@@ -44,6 +44,7 @@ function clockStatus(ms) {
 }
 
 export default function Today() {
+  const { t } = useTranslation();
   const { profile, carrier, equipment, events, loading, reload } = useDriverData();
   const navigate = useNavigate();
   const [statusOpen, setStatusOpen] = useState(false);
