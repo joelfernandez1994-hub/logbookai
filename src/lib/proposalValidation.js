@@ -639,14 +639,21 @@ function isFullyExplicitLeg(leg) {
 export async function addRouteWarning(proposed, { routingProvider = fetchRoute, speedProfile = DEFAULT_SPEED_PROFILE, now = new Date(), isFuture = true, legs: providedLegs = null } = {}) {
   const legs = providedLegs || await inspectProposalRoutes(proposed, { routingProvider, speedProfile, now });
   if (!legs.length) return null;
-  const conflicts = legs.filter(leg => leg.evaluation?.conflict);
+  // An ongoing or destinationless leg was intentionally skipped by
+  // inspectProposalRoutes (evaluation.known === false, no error) — there is no
+  // completed trip to validate yet, so it never contributes a route warning.
+  // A genuine lookup failure (leg.error set, e.g. an unrecognized city) still
+  // surfaces below.
+  const evaluableLegs = legs.filter(leg => leg.evaluation?.known !== false || leg.error);
+  if (!evaluableLegs.length) return null;
+  const conflicts = evaluableLegs.filter(leg => leg.evaluation?.conflict);
   // Split conflicts by provenance: fully-explicit legs get a review-and-
   // acknowledge treatment; anything involving an inferred endpoint stays a
   // hard blocker (the AI may have guessed wrong — "Fix route timing" or a
   // manual edit is the correct remedy there, never a silent driver-fact change).
   const blockingConflicts = conflicts.filter(leg => !isFullyExplicitLeg(leg));
   const explicitConflictLegs = conflicts.filter(isFullyExplicitLeg);
-  const details = legs.map(leg => `${leg.origin || 'Unknown'} → ${leg.destination || 'Unknown'}: ${leg.evaluation?.known ? leg.evaluation.note : 'Road route unavailable; mileage will be labeled as an estimate.'}`);
+  const details = evaluableLegs.map(leg => `${leg.origin || 'Unknown'} → ${leg.destination || 'Unknown'}: ${leg.evaluation?.known ? leg.evaluation.note : 'Road route unavailable; mileage will be labeled as an estimate.'}`);
   const title = blockingConflicts.length ? 'ROUTE / TRAVEL-TIME CONFLICT — REVIEW'
     : explicitConflictLegs.length ? 'ROUTE TIMING LOOKS UNUSUAL'
       : 'ROUTE VALIDATION';
