@@ -26,7 +26,6 @@ import PullToRefresh from '@/components/PullToRefresh';
 import TimezoneIndicator from '@/components/TimezoneIndicator';
 import { wallTimeToIso, isoToWallTime } from '@/lib/timezones';
 
-const STATUS_LABELS = { OFF_DUTY: 'Off Duty', SLEEPER_BERTH: 'Sleeper', DRIVING: 'Driving', ON_DUTY: 'On Duty' };
 const STATUSES = ['OFF_DUTY', 'SLEEPER_BERTH', 'DRIVING', 'ON_DUTY'];
 
 export default function Logs() {
