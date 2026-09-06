@@ -1,0 +1,83 @@
+{
+  "app": {
+    "name": "LogbookAI",
+    "tagline": "HOS Compliance Assistant"
+  },
+  "duty_status": {
+    "OFF_DUTY": "Off Duty",
+    "SLEEPER_BERTH": "Sleeper Berth",
+    "DRIVING": "Driving",
+    "ON_DUTY": "On Duty"
+  },
+  "duty_status_quick": {
+    "OFF_DUTY": "Off Duty",
+    "SLEEPER_BERTH": "Sleeper",
+    "DRIVING": "Driving",
+    "ON_DUTY": "On Duty"
+  },
+  "today": {
+    "logbook": "Logbook: {{time}}",
+    "currentStatus": "CURRENT DUTY STATUS",
+    "liveTracking": "Live tracking",
+    "liveTrackingPaused": "Live status tracking is paused. Quick status changes below are disabled — log this period via {{askAi}} or {{logs}} instead.",
+    "askLogbookAi": "Ask LogbookAI",
+    "logsLink": "Logs",
+    "noActiveStatus": "No active status",
+    "since": "Since {{time}}",
+    "active": "Active",
+    "bolLabel": "BOL / SHIPPING DOC #",
+    "bolPlaceholder": "e.g. BOL-48213",
+    "bolPlaceholderNoStatus": "Set a duty status first",
+    "save": "Save",
+    "saving": "Saving...",
+    "changeStatus": "Change Status",
+    "hosCompliance": "HOS / Compliance",
+    "viewFullLog": "View Full Log",
+    "whatCanIDo": "What can LogbookAI do?",
+    "timelineCorrectionRequired": "Timeline correction required. HOS calculations are unavailable until elapsed coverage is continuous and conflict-free.",
+    "todaysLog": "Today's 24-Hour Log",
+    "dailyDvir": "Daily DVIR",
+    "addAnother": "Add Another",
+    "startInspection": "Start Inspection",
+    "latestToday": "Latest today:",
+    "defectsReported": "Defects reported",
+    "noDefects": "No defects",
+    "tractorUnit": "Tractor {{unit}}",
+    "noInspectionToday": "No inspection report logged today yet.",
+    "viewInspectionHistory": "View inspection history →",
+    "restartInProgress": "34-Hour Restart In Progress",
+    "restartStatus": "Elapsed {{elapsed}} · {{remaining}} remaining · est. {{eta}}",
+    "splitSleeperActive": "Split Sleeper Active",
+    "splitSleeperAvailable": "Split Sleeper Available",
+    "optional": "Optional",
+    "safetyDefectPending": "Safety-affecting defect with repair pending.",
+    "vehicleUnsafe": "Vehicle should not be operated if unsafe.",
+    "reviewDvir": "Review DVIR →",
+    "dvirReminder": "Reminder: review vehicle condition before finishing your work period and report any defects.",
+    "openDvir": "Open DVIR →",
+    "cycleAvailabilityNote": "Cycle availability based only on records entered in LogbookAI. Prior duty history was not provided, so cycle balance is not verified until enough history exists to cover your {{cycleDays}} cycle.",
+    "cycle8Day": "8-day",
+    "cycle7Day": "7-day"
+  },
+  "hos": {
+    "drivingRemaining": "Driving Remaining",
+    "window14": "14-Hour Window",
+    "break30": "30-Min Break",
+    "cycleLabel": "Cycle {{limit}}/{{days}}",
+    "expiresAt": "expires {{time}}",
+    "elevenHourLimit": "11-hr limit",
+    "sinceTime": "since {{time}}",
+    "unavailable": "Unavailable until timeline is valid",
+    "satisfied": "Satisfied",
+    "timeLeft": "{{time}} left",
+    "breakRequiredNow": "Break required now",
+    "eightHourRule": "8-hr driving rule",
+    "hoursLeft": "{{hours}} hr left",
+    "usedBackTomorrow": "{{used}} used · {{back}} back tomorrow",
+    "noTourStarted": "No tour started yet"
+  },
+  "settings": {
+    "language": "Language",
+    "languageDescription": "Choose the app's display language. Ask LogbookAI understands both English and Spanish either way — exported PDFs, DVIR/IFTA reports, and certifications always stay in English."
+  }
+}
