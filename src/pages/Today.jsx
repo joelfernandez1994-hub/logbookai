@@ -278,29 +278,29 @@ export default function Today() {
           quick-status section (layout-order change only; graph/timeline/HOS
           logic below is untouched). */}
       <div className="rounded-xl border border-border bg-card p-3 mb-4">
-        <div className="flex items-center justify-between mb-2"><div className="text-sm font-semibold text-card-foreground">Today's 24-Hour Log</div><TimezoneIndicator tz={tz} /></div>
+        <div className="flex items-center justify-between mb-2"><div className="text-sm font-semibold text-card-foreground">{t('today.todaysLog')}</div><TimezoneIndicator tz={tz} /></div>
         <LogGraph events={events} dateStr={todayKey} timezone={tz} />
       </div>
 
       {!timelineValidation.valid && (
         <div className="rounded-xl border border-error/40 bg-error-surface p-3 mb-3 text-xs text-error-surface-foreground flex gap-2">
-          <AlertTriangle className="w-4 h-4 shrink-0" /> Timeline correction required. HOS calculations are unavailable until elapsed coverage is continuous and conflict-free.
+          <AlertTriangle className="w-4 h-4 shrink-0" /> {t('today.timelineCorrectionRequired')}
         </div>
       )}
       <TimelineGapNotice events={events} dateStr={todayKey} tz={tz} now={now} />
 
       <div className="grid grid-cols-2 gap-2 mb-3">
-        <ClockCard label="Driving Remaining" value={timelineValidation.valid ? fmtDur(hos.driving.drivingRemainingMs) : '--'}
-          sublabel={timelineValidation.valid ? (hos.driving.expiresAt ? `expires ${fmtClock(hos.driving.expiresAt, tz)}` : '11-hr limit') : 'Unavailable until timeline is valid'}
+        <ClockCard label={t('hos.drivingRemaining')} value={timelineValidation.valid ? fmtDur(hos.driving.drivingRemainingMs) : '--'}
+          sublabel={timelineValidation.valid ? (hos.driving.expiresAt ? t('hos.expiresAt', { time: fmtClock(hos.driving.expiresAt, tz) }) : t('hos.elevenHourLimit')) : t('hos.unavailable')}
           status={timelineValidation.valid ? clockStatus(hos.driving.drivingRemainingMs) : 'disabled'} icon={Truck} />
-        <ClockCard label="14-Hour Window" value={timelineValidation.valid ? fmtDur(hos.window14.remainingMs) : '--'}
-          sublabel={timelineValidation.valid ? (hos.window14.windowStart ? `since ${fmtClock(hos.window14.windowStart, tz)}` : '') : 'Unavailable until timeline is valid'}
+        <ClockCard label={t('hos.window14')} value={timelineValidation.valid ? fmtDur(hos.window14.remainingMs) : '--'}
+          sublabel={timelineValidation.valid ? (hos.window14.windowStart ? t('hos.sinceTime', { time: fmtClock(hos.window14.windowStart, tz) }) : '') : t('hos.unavailable')}
           status={timelineValidation.valid ? clockStatus(hos.window14.remainingMs) : 'disabled'} icon={Clock} />
-        <ClockCard label="30-Min Break" value={timelineValidation.valid ? (hos.break30.satisfied ? 'Satisfied' : `${fmtDur(hos.break30.remainingBeforeBreakMs)} left`) : '--'}
-          sublabel={timelineValidation.valid ? (hos.break30.breakRequired ? 'Break required now' : '8-hr driving rule') : 'Unavailable until timeline is valid'}
+        <ClockCard label={t('hos.break30')} value={timelineValidation.valid ? (hos.break30.satisfied ? t('hos.satisfied') : t('hos.timeLeft', { time: fmtDur(hos.break30.remainingBeforeBreakMs) })) : '--'}
+          sublabel={timelineValidation.valid ? (hos.break30.breakRequired ? t('hos.breakRequiredNow') : t('hos.eightHourRule')) : t('hos.unavailable')}
           status={timelineValidation.valid ? (hos.break30.breakRequired ? 'critical' : 'normal') : 'disabled'} icon={Coffee} />
-        <ClockCard label={`Cycle ${hos.cycle.cycleLimit}/${hos.cycle.cycleDays}`} value={timelineValidation.valid ? `${hos.cycle.cycleRemainingHours.toFixed(1)} hr left` : '--'}
-          sublabel={timelineValidation.valid ? `${hos.cycle.cycleUsedHours.toFixed(1)} used · ${hos.cycle.returningTomorrowHours.toFixed(1)} back tomorrow` : 'Unavailable until timeline is valid'}
+        <ClockCard label={t('hos.cycleLabel', { limit: hos.cycle.cycleLimit, days: hos.cycle.cycleDays })} value={timelineValidation.valid ? t('hos.hoursLeft', { hours: hos.cycle.cycleRemainingHours.toFixed(1) }) : '--'}
+          sublabel={timelineValidation.valid ? t('hos.usedBackTomorrow', { used: hos.cycle.cycleUsedHours.toFixed(1), back: hos.cycle.returningTomorrowHours.toFixed(1) }) : t('hos.unavailable')}
           status={timelineValidation.valid ? clockStatus(hos.cycle.cycleRemainingHours * 3600000) : 'disabled'} icon={Gauge} />
       </div>
 
