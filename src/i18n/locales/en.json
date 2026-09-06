@@ -19,7 +19,7 @@
     "logbook": "Logbook: {{time}}",
     "currentStatus": "CURRENT DUTY STATUS",
     "liveTracking": "Live tracking",
-    "liveTrackingPaused": "Live status tracking is paused. Quick status changes below are disabled — log this period via {{askAi}} or {{logs}} instead.",
+    "liveTrackingPaused": "Live status tracking is paused. Quick status changes below are disabled — log this period via <askAi>Ask LogbookAI</askAi> or <logs>Logs</logs> instead.",
     "askLogbookAi": "Ask LogbookAI",
     "logsLink": "Logs",
     "noActiveStatus": "No active status",
