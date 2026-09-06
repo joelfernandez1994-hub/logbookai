@@ -60,8 +60,18 @@ export default function Trip() {
   const now = new Date();
   const todayKey = dateKeyInTz(now, tz);
   const availability = whatCanIDo(events, cycleType, tz, now, profile?.entered_prior_history);
-  const hosVerified = !availability.unavailable && !availability.cycleUnverified;
-  const hos = computeHOS(events, cycleType, tz, now, { historyComplete: hosVerified });
+  // REGRESSION FIX: this used to also require `!availability.cycleUnverified`,
+  // which silently disabled the ENTIRE stop-suggestion pipeline (auto AND the
+  // manual "Suggest a Rest Stop" button) whenever the driver hadn't entered
+  // prior cycle history — a common, normal state, not a broken timeline.
+  // driveRemainingMs/windowRemainingMs/break30 are all valid independent of
+  // cycle verification (see whatCanIDo in logAssistant.js — only
+  // cycleRemainingHours becomes null when unverified). Only a genuinely
+  // invalid/incomplete timeline (`availability.unavailable`) should block
+  // feasibility and stop suggestions.
+  const hosVerified = !availability.unavailable;
+  const cycleVerified = !availability.cycleUnverified;
+  const hos = computeHOS(events, cycleType, tz, now, { historyComplete: hosVerified && cycleVerified });
 
   useEffect(() => { getFuelReceipts(30).then(setFuelReceipts); }, []);
   useEffect(() => {
