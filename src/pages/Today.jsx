@@ -253,8 +253,8 @@ export default function Today() {
               <button key={s.key} type="button" disabled={!liveTrackingEnabled} onClick={() => handleQuickStatus(s.key)}
                 className={`flex items-center gap-2 rounded-lg border p-3 text-sm font-medium transition min-h-[44px] disabled:cursor-not-allowed ${active ? 'border-primary bg-accent text-accent-foreground' : 'border-border text-card-foreground'}`}>
                 <span className={`w-3 h-3 rounded-full shrink-0 ${s.dot}`} />
-                {s.label}
-                {active && <span className="ml-auto text-[10px] font-semibold uppercase tracking-wide text-primary">Active</span>}
+                {dutyStatusLabel(s.key, { quick: true })}
+                {active && <span className="ml-auto text-[10px] font-semibold uppercase tracking-wide text-primary">{t('today.active')}</span>}
               </button>
             );
           })}
@@ -263,12 +263,12 @@ export default function Today() {
         {/* BOL / shipping doc # — metadata on the current status, saved via a
             plain field patch (never a new duty-status event). */}
         <div className="mt-3">
-          <label className="text-[11px] text-muted-foreground font-medium">BOL / SHIPPING DOC #</label>
+          <label className="text-[11px] text-muted-foreground font-medium">{t('today.bolLabel')}</label>
           <div className="flex gap-2 mt-1">
             <Input value={bolDraft} onChange={(e) => setBolDraft(e.target.value)} onBlur={handleSaveBol}
-              placeholder={current ? 'e.g. BOL-48213' : 'Set a duty status first'} disabled={!current?.id} className="h-10" />
+              placeholder={current ? t('today.bolPlaceholder') : t('today.bolPlaceholderNoStatus')} disabled={!current?.id} className="h-10" />
             {bolDraft !== (current?.bill_of_lading_number || '') && (
-              <Button size="sm" className="h-10" disabled={bolSaving || !current?.id} onClick={handleSaveBol}>{bolSaving ? 'Saving...' : 'Save'}</Button>
+              <Button size="sm" className="h-10" disabled={bolSaving || !current?.id} onClick={handleSaveBol}>{bolSaving ? t('today.saving') : t('today.save')}</Button>
             )}
           </div>
         </div>
