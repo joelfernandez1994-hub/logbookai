@@ -518,6 +518,7 @@ export function getDrivingLegs(proposed, now = new Date()) {
   return sorted.map((event, index) => {
     if (event.duty_status !== 'DRIVING') return null;
     const destinationEvent = sorted[index + 1];
+    const isOngoing = !event.end_timestamp;
     const end = event.end_timestamp ? new Date(event.end_timestamp) : now;
 
     let origin = null;
@@ -527,10 +528,16 @@ export function getDrivingLegs(proposed, now = new Date()) {
     }
     if (!origin) origin = locOf(event);
 
+    // destinationKnown is true only when a REAL following non-driving event
+    // supplied the destination. When it falls back to the Driving event's own
+    // city (no genuine destination described), route/travel-time physics
+    // cannot be evaluated — that fallback is metadata inheritance, not a
+    // reported arrival point.
     let destination = null;
+    let destinationKnown = false;
     for (let i = index + 1; i < sorted.length; i++) {
       if (sorted[i].duty_status === 'DRIVING') continue;
-      if (usableLocation(sorted[i])) { destination = locOf(sorted[i]); break; }
+      if (usableLocation(sorted[i])) { destination = locOf(sorted[i]); destinationKnown = true; break; }
     }
     if (!destination) destination = locOf(event);
 
@@ -539,6 +546,8 @@ export function getDrivingLegs(proposed, now = new Date()) {
       eventIndex: source.indexOf(event),
       origin,
       destination,
+      destinationKnown,
+      isOngoing,
       drivingHours: Math.max(0, (end - new Date(event.start_timestamp)) / H),
       nextExplicitStartMs: destinationEvent?.start_timestamp ? new Date(destinationEvent.start_timestamp).getTime() : null,
     };
@@ -550,6 +559,16 @@ export async function inspectProposalRoutes(proposed, { routingProvider = fetchR
   return Promise.all(legs.map(async (leg) => {
     const origin = formatLocation(leg.origin.city, leg.origin.state);
     const destination = formatLocation(leg.destination.city, leg.destination.state);
+    // Route/travel-time physics only apply to a COMPLETED leg with a real,
+    // distinct destination. Skip entirely when: the Driving event is still
+    // ongoing (no arrival has happened yet to validate); or no genuine
+    // destination was described (destinationKnown is false, so "destination"
+    // is only the Driving event's own start city inherited by fallback) —
+    // otherwise a bare "then I started driving" with no destination gets
+    // manufactured into a same-city "conflict" against elapsed/now time.
+    if (leg.isOngoing || !leg.destinationKnown) {
+      return { ...leg, origin, destination, route: null, evaluation: { known: false } };
+    }
     if (!origin || !destination) return { ...leg, origin, destination, route: null, evaluation: { known: false }, error: 'Missing route endpoint' };
     if (sameLocation(leg.origin.city, leg.origin.state, leg.destination.city, leg.destination.state)) {
       return {
