@@ -243,5 +243,20 @@
     "startTimeRequired": "Start time is required.",
     "endAfterStart": "End time must be after the start time.",
     "editLog": "Edit Log"
+  },
+  "inspection": {
+    "mode": "INSPECTION MODE",
+    "hosClocksEndOfDay": "HOS Clocks (end of day)",
+    "uncertified": "Uncertified"
+  },
+  "dailyMiles": {
+    "totalMiles": "Total Miles",
+    "beginOdometer": "Begin Odometer (Optional)",
+    "endOdometer": "End Odometer (Optional)"
+  },
+  "rodsEditor": {
+    "view": "View",
+    "editLogGraph": "Edit Log Graph",
+    "editMode": "EDIT MODE"
   }
 }
