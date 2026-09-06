@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import { AlertTriangle, Wrench } from 'lucide-react';
 import { detectTimelineRouteConflicts } from '@/lib/routeAware';
 import { Button } from '@/components/ui/button';
@@ -13,6 +14,7 @@ import { Button } from '@/components/ui/button';
 // Tapping it opens the in-memory review dialog (RouteTimingFixDialog); nothing
 // is persisted until the driver confirms there.
 export default function RouteTimeConflictNotice({ events, dateStr, tz, speedProfile, now = new Date(), onFix }) {
+  const { t } = useTranslation();
   const [conflicts, setConflicts] = useState([]);
   const [loading, setLoading] = useState(true);
 
@@ -35,8 +37,8 @@ export default function RouteTimeConflictNotice({ events, dateStr, tz, speedProf
       <div className="flex items-start gap-2">
         <AlertTriangle className="w-4 h-4 text-error mt-0.5 shrink-0" />
         <div className="flex-1">
-          <div className="text-sm font-medium text-error-surface-foreground">Route / time conflict</div>
-          <div className="text-xs text-error-surface-foreground opacity-80 mt-0.5 mb-2">A driving segment is shorter than its route realistically requires. Review the times or locations before certifying.</div>
+          <div className="text-sm font-medium text-error-surface-foreground">{t('warnings.routeConflictTitle')}</div>
+          <div className="text-xs text-error-surface-foreground opacity-80 mt-0.5 mb-2">{t('warnings.routeConflictBody')}</div>
           <div className="space-y-1">
             {conflicts.map((c, i) => (
               <div key={i} className="text-xs text-error-surface-foreground rounded-lg bg-card border border-error/30 px-2 py-1">
@@ -47,7 +49,7 @@ export default function RouteTimeConflictNotice({ events, dateStr, tz, speedProf
           </div>
           {fixable && onFix && (
             <Button size="sm" variant="outline" className="mt-2 bg-card" onClick={onFix}>
-              <Wrench className="w-3.5 h-3.5 mr-1" /> Fix route timing
+              <Wrench className="w-3.5 h-3.5 mr-1" /> {t('warnings.fixRouteTiming')}
             </Button>
           )}
         </div>
