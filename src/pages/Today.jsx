@@ -307,18 +307,18 @@ export default function Today() {
       {restartProgress && (
         <div className="rounded-xl border border-border bg-accent p-3 mb-3">
           <div className="flex items-center gap-2 text-sm font-medium text-accent-foreground">
-            <RotateCcw className="w-4 h-4" /> 34-Hour Restart In Progress
+            <RotateCcw className="w-4 h-4" /> {t('today.restartInProgress')}
           </div>
           <div className="text-xs text-muted-foreground mt-1">
-            Elapsed {fmtDur(restartProgress.elapsedMs)} · {fmtDur(restartProgress.remainingMs)} remaining · est. {fmtClock(restartProgress.estimatedCompletion, tz)}
+            {t('today.restartStatus', { elapsed: fmtDur(restartProgress.elapsedMs), remaining: fmtDur(restartProgress.remainingMs), eta: fmtClock(restartProgress.estimatedCompletion, tz) })}
           </div>
         </div>
       )}
       {hos.split.status !== 'none' && (
         <div className="rounded-xl border border-border bg-card p-3 mb-3">
           <div className="flex items-center gap-2 text-sm font-medium text-card-foreground">
-            <Moon className="w-4 h-4" /> {hos.split.status === 'active' ? 'Split Sleeper Active' : 'Split Sleeper Available'}
-            <span className="ml-auto text-[10px] font-medium text-muted-foreground border border-border rounded px-1.5 py-0.5">Optional</span>
+            <Moon className="w-4 h-4" /> {hos.split.status === 'active' ? t('today.splitSleeperActive') : t('today.splitSleeperAvailable')}
+            <span className="ml-auto text-[10px] font-medium text-muted-foreground border border-border rounded px-1.5 py-0.5">{t('today.optional')}</span>
           </div>
           <div className="text-xs text-muted-foreground mt-1">{hos.split.note}</div>
           {hos.split.status === 'active' && hos.split.firstPeriod && hos.split.secondPeriod && (
@@ -346,8 +346,8 @@ export default function Today() {
         <div className="rounded-xl border border-error/40 bg-error-surface p-3 mb-3 flex items-start gap-2">
           <AlertTriangle className="w-4 h-4 text-error mt-0.5 shrink-0" />
           <div className="text-xs text-error-surface-foreground">
-            <span className="font-semibold">Safety-affecting defect with repair pending.</span> Vehicle should not be operated if unsafe.
-            <button className="underline ml-1 font-medium" onClick={() => navigate('/vehicle-inspection')}>Review DVIR →</button>
+            <span className="font-semibold">{t('today.safetyDefectPending')}</span> {t('today.vehicleUnsafe')}
+            <button className="underline ml-1 font-medium" onClick={() => navigate('/vehicle-inspection')}>{t('today.reviewDvir')}</button>
           </div>
         </div>
       )}
@@ -355,8 +355,8 @@ export default function Today() {
         <div className="rounded-xl border border-border bg-card p-3 mb-3 flex items-start gap-2">
           <ClipboardCheck className="w-4 h-4 text-muted-foreground mt-0.5 shrink-0" />
           <div className="text-xs text-muted-foreground">
-            Reminder: review vehicle condition before finishing your work period and report any defects.
-            <button className="underline ml-1 font-medium text-foreground" onClick={() => navigate('/vehicle-inspection')}>Open DVIR →</button>
+            {t('today.dvirReminder')}
+            <button className="underline ml-1 font-medium text-foreground" onClick={() => navigate('/vehicle-inspection')}>{t('today.openDvir')}</button>
           </div>
         </div>
       )}
@@ -364,7 +364,7 @@ export default function Today() {
         <div className="rounded-xl border border-warning/50 bg-warning-surface p-3 mb-3 flex items-start gap-2">
           <AlertTriangle className="w-4 h-4 text-warning mt-0.5 shrink-0" />
           <div className="text-xs text-warning-surface-foreground">
-            Cycle availability based only on records entered in LogbookAI. Prior duty history was not provided, so cycle balance is not verified until enough history exists to cover your {cycleType === '70_8' ? '8-day' : '7-day'} cycle.
+            {t('today.cycleAvailabilityNote', { cycleDays: cycleType === '70_8' ? t('today.cycle8Day') : t('today.cycle7Day') })}
           </div>
         </div>
       )}
@@ -374,43 +374,43 @@ export default function Today() {
       <div className="rounded-xl border border-border bg-card p-3 mb-3">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2 text-sm font-semibold text-card-foreground">
-            <ClipboardCheck className="w-4 h-4" /> Daily DVIR
+            <ClipboardCheck className="w-4 h-4" /> {t('today.dailyDvir')}
           </div>
           <Button size="sm" variant="outline" onClick={() => setDvirDialogOpen(true)}>
-            <Plus className="w-3.5 h-3.5 mr-1" /> {todayDvirs.length > 0 ? 'Add Another' : 'Start Inspection'}
+            <Plus className="w-3.5 h-3.5 mr-1" /> {todayDvirs.length > 0 ? t('today.addAnother') : t('today.startInspection')}
           </Button>
         </div>
         {latestTodayDvir ? (
           <div className="text-xs text-muted-foreground mt-1.5">
-            Latest today: <span className={latestTodayDvir.inspection_result === 'defects' ? 'text-error font-medium' : 'text-success font-medium'}>
-              {latestTodayDvir.inspection_result === 'defects' ? 'Defects reported' : 'No defects'}
-            </span> · Tractor {latestTodayDvir.tractor_number}
+            {t('today.latestToday')} <span className={latestTodayDvir.inspection_result === 'defects' ? 'text-error font-medium' : 'text-success font-medium'}>
+              {latestTodayDvir.inspection_result === 'defects' ? t('today.defectsReported') : t('today.noDefects')}
+            </span> · {t('today.tractorUnit', { unit: latestTodayDvir.tractor_number })}
           </div>
         ) : (
-          <div className="text-xs text-muted-foreground mt-1.5">No inspection report logged today yet.</div>
+          <div className="text-xs text-muted-foreground mt-1.5">{t('today.noInspectionToday')}</div>
         )}
-        <button type="button" onClick={() => navigate('/vehicle-inspection')} className="text-[11px] text-muted-foreground underline mt-1">View inspection history →</button>
+        <button type="button" onClick={() => navigate('/vehicle-inspection')} className="text-[11px] text-muted-foreground underline mt-1">{t('today.viewInspectionHistory')}</button>
       </div>
 
       <DailyMilesCard events={events} dateStr={todayKey} tz={tz} speedProfile={speedProfile} />
 
       {/* Primary action */}
       <Button className="w-full h-14 text-base font-semibold mb-3" disabled={!liveTrackingEnabled} onClick={() => setStatusOpen(true)}>
-        Change Status
+        {t('today.changeStatus')}
       </Button>
 
       {/* Secondary actions — stack on phones, side-by-side only when both labels fit (≥640px) */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 mb-2.5">
         <Button variant="outline" className="h-12 text-sm" onClick={() => navigate('/log-assistant')}>
-          <Bot className="w-4 h-4 shrink-0" /> Ask LogbookAI
+          <Bot className="w-4 h-4 shrink-0" /> {t('today.askLogbookAi')}
         </Button>
         <Button variant="outline" className="h-12 text-sm" onClick={() => navigate('/compliance')}>
-          <ShieldCheck className="w-4 h-4 shrink-0" /> HOS / Compliance
+          <ShieldCheck className="w-4 h-4 shrink-0" /> {t('today.hosCompliance')}
         </Button>
       </div>
 
       <Button variant="outline" className="w-full h-12 text-sm mb-4" onClick={() => navigate('/logs')}>
-        <ClipboardList className="w-4 h-4 shrink-0" /> View Full Log
+        <ClipboardList className="w-4 h-4 shrink-0" /> {t('today.viewFullLog')}
       </Button>
 
       {/* Help link — small, not a boxed action */}
@@ -419,7 +419,7 @@ export default function Today() {
         onClick={() => navigate('/log-assistant?tab=whatCanIDo')}
         className="w-full flex items-center justify-center gap-1.5 text-xs text-muted-foreground mb-8 py-1"
       >
-        <HelpCircle className="w-3.5 h-3.5" /> What can LogbookAI do?
+        <HelpCircle className="w-3.5 h-3.5" /> {t('today.whatCanIDo')}
       </button>
 
       <StatusChangeSheet open={statusOpen} onOpenChange={setStatusOpen} onApply={handleChangeStatus}
