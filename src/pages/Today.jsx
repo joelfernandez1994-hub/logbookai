@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect } from 'react';
-import { useTranslation } from 'react-i18next';
+import { useTranslation, Trans } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 import { useDriverData } from '@/hooks/useDriverData';
 import { dutyStatusLabel } from '@/i18n';
@@ -44,7 +44,8 @@ function clockStatus(ms) {
 }
 
 export default function Today() {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
+  const i18nLocale = i18n.language === 'es' ? 'es-US' : 'en-US';
   const { profile, carrier, equipment, events, loading, reload } = useDriverData();
   const navigate = useNavigate();
   const [statusOpen, setStatusOpen] = useState(false);
@@ -220,12 +221,11 @@ export default function Today() {
         </div>
         {!liveTrackingEnabled && (
           <div className="text-[11px] text-warning-surface-foreground bg-warning-surface border border-warning/50 rounded-md px-2 py-1 mt-1.5">
-            <Trans i18nKey="today.liveTrackingPaused" t={t}
+            <Trans i18nKey="today.liveTrackingPaused"
               components={{
-                askAi: <button type="button" className="underline font-medium" onClick={() => navigate('/log-assistant')}>{t('today.askLogbookAi')}</button>,
-                logs: <button type="button" className="underline font-medium" onClick={() => navigate('/logs')}>{t('today.logsLink')}</button>,
-              }}
-              values={{ askAi: t('today.askLogbookAi'), logs: t('today.logsLink') }} />
+                askAi: <button type="button" className="underline font-medium" onClick={() => navigate('/log-assistant')} />,
+                logs: <button type="button" className="underline font-medium" onClick={() => navigate('/logs')} />,
+              }} />
           </div>
         )}
         {(displayStatus || current) ? (
