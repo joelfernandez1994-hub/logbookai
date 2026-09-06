@@ -243,5 +243,20 @@
     "startTimeRequired": "Se requiere la hora de inicio.",
     "endAfterStart": "La hora de fin debe ser posterior a la hora de inicio.",
     "editLog": "Editar Registro"
+  },
+  "inspection": {
+    "mode": "MODO DE INSPECCIÓN",
+    "hosClocksEndOfDay": "Relojes HOS (fin del día)",
+    "uncertified": "No certificado"
+  },
+  "dailyMiles": {
+    "totalMiles": "Millas Totales",
+    "beginOdometer": "Odómetro Inicial (Opcional)",
+    "endOdometer": "Odómetro Final (Opcional)"
+  },
+  "rodsEditor": {
+    "view": "Ver",
+    "editLogGraph": "Editar Gráfico de Registro",
+    "editMode": "MODO DE EDICIÓN"
   }
 }
