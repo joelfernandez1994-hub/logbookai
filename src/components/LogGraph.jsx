@@ -63,7 +63,7 @@ export default function LogGraph({ events, dateStr, timezone, interactive = true
   const lineStroke = 'hsl(var(--graph-line))';
 
   return (
-    <div className="w-full overflow-x-auto">
+    <div className="w-full overflow-x-auto graph-scroll">
       <svg viewBox={`0 0 ${W} ${H}`} className="w-full min-w-[640px] h-auto bg-graph rounded-lg border border-border">
         {hourMarks.map((h) => (
           <line key={h} x1={xForHour(h)} y1={topPad} x2={xForHour(h)} y2={topPad + rowH * 4}
