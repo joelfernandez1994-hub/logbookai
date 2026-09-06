@@ -116,14 +116,14 @@ export default function Inspection() {
   const buildDoc = (dates, options) => generateLogsPdf(profile, carrier, events, dates, tz, certifications, cycleType, { ...options, dvirs, documents, dailySummaries, speedProfile });
 
   return (
-    <div className="px-4 min-h-screen bg-slate-900 text-white safe-top">
+    <div className="px-4 min-h-screen bg-background text-foreground safe-top">
       {/* Inspection banner */}
-      <div className="flex items-center justify-between bg-slate-800 rounded-xl p-3 mb-4 mt-6 border border-slate-700">
+      <div className="flex items-center justify-between bg-card rounded-xl p-3 mb-4 mt-6 border border-border">
         <div className="flex items-center gap-2">
-          <ShieldCheck className="w-5 h-5 text-blue-400" />
+          <ShieldCheck className="w-5 h-5 text-primary" />
           <div>
-            <div className="font-bold">INSPECTION MODE</div>
-            <div className="text-xs text-slate-400">Read-only · Current + Previous 7 Days</div>
+            <div className="font-bold text-card-foreground">INSPECTION MODE</div>
+            <div className="text-xs text-muted-foreground">Read-only · Current + Previous 7 Days</div>
           </div>
         </div>
         <Button variant="destructive" size="sm" onClick={() => window.history.back()}>
@@ -132,10 +132,10 @@ export default function Inspection() {
       </div>
 
       {/* Driver / carrier identity */}
-      <div className="bg-slate-800 rounded-xl p-3 mb-3 text-sm">
+      <div className="bg-card text-card-foreground rounded-xl p-3 mb-3 text-sm">
         <div className="font-semibold">{profile?.legal_name}</div>
-        <div className="text-slate-300 text-xs">{carrier?.carrier_name} · USDOT {carrier?.usdot_number}</div>
-        <div className="text-slate-400 text-xs">{carrier?.home_terminal_address}</div>
+        <div className="text-muted-foreground text-xs">{carrier?.carrier_name} · USDOT {carrier?.usdot_number}</div>
+        <div className="text-muted-foreground text-xs">{carrier?.home_terminal_address}</div>
         <div className="mt-1"><TimezoneIndicator tz={tz} /></div>
       </div>
 
@@ -150,49 +150,50 @@ export default function Inspection() {
         </Button>
       </div>
 
-      {/* Graph (read-only) — matches this page's own dark styling (bg-slate-800,
-          same as the other Inspection Mode cards) instead of forcing white,
-          which showed as a stray white frame around the otherwise-dark graph. */}
-      <div className="bg-slate-800 rounded-xl p-3 mb-3 text-white">
+      {/* Graph (read-only) — theme tokens like every other card here, so this
+          always matches the graph's own internals (which also read the same
+          theme variables) in both light and dark, instead of one hardcoded
+          fixed color that only happened to line up in one theme. */}
+      <div className="bg-card text-card-foreground rounded-xl p-3 mb-3">
         <RodsGraphEditor events={events} dateStr={selectedKey} timezone={tz} readOnly carrier={carrier} />
       </div>
 
       {/* Recap — all values sourced from hosForDay.cycle via recapDisplay */}
-      <div className="bg-slate-800 rounded-xl p-3 mb-3 text-sm">
+      <div className="bg-card text-card-foreground rounded-xl p-3 mb-3 text-sm">
         <div className="font-semibold mb-1">{recap.cycleLimit}-Hour / {recap.cycleDays}-Day Recap</div>
-        <div className="grid grid-cols-2 gap-1 text-xs text-slate-300">
+        <div className="grid grid-cols-2 gap-1 text-xs text-muted-foreground">
           <div>
             <div>Used: {recap.used.value}</div>
-            {recap.used.note && <div className="text-slate-500 text-[11px]">{recap.used.note}</div>}
+            {recap.used.note && <div className="text-muted-foreground text-[11px]">{recap.used.note}</div>}
           </div>
           <div>
             <div>Available: {recap.available.value}</div>
-            {recap.available.note && <div className="text-slate-500 text-[11px]">{recap.available.note}</div>}
+            {recap.available.note && <div className="text-muted-foreground text-[11px]">{recap.available.note}</div>}
           </div>
           <div>
             <div>Today: {recap.today.value}</div>
-            {recap.today.note && <div className="text-slate-500 text-[11px]">{recap.today.note}</div>}
+            {recap.today.note && <div className="text-muted-foreground text-[11px]">{recap.today.note}</div>}
           </div>
           <div>
             <div>Back tomorrow: {recap.returningTomorrow.value}</div>
-            {recap.returningTomorrow.note && <div className="text-slate-500 text-[11px]">{recap.returningTomorrow.note}</div>}
+            {recap.returningTomorrow.note && <div className="text-muted-foreground text-[11px]">{recap.returningTomorrow.note}</div>}
           </div>
         </div>
       </div>
 
       {/* HOS clocks (split-aware) as of end of selected day */}
-      <div className="bg-slate-800 rounded-xl p-3 mb-3 text-sm">
+      <div className="bg-card text-card-foreground rounded-xl p-3 mb-3 text-sm">
         <div className="font-semibold mb-1">HOS Clocks (end of day)</div>
-        <div className="grid grid-cols-2 gap-1 text-xs text-slate-300">
+        <div className="grid grid-cols-2 gap-1 text-xs text-muted-foreground">
           <div>
             Driving remaining: {hosDisplay.driving.value}
-            {hosDisplay.driving.note && <div className="text-slate-500 text-[11px]">{hosDisplay.driving.note}</div>}
+            {hosDisplay.driving.note && <div className="text-muted-foreground text-[11px]">{hosDisplay.driving.note}</div>}
           </div>
           <div>
             14-hr window remaining: {hosDisplay.window14.value}
-            {hosDisplay.window14.note && <div className="text-slate-500 text-[11px]">{hosDisplay.window14.note}</div>}
+            {hosDisplay.window14.note && <div className="text-muted-foreground text-[11px]">{hosDisplay.window14.note}</div>}
           </div>
-          <div className="col-span-2 text-slate-400 pt-1">
+          <div className="col-span-2 text-muted-foreground pt-1">
             {hosForDay.split.status === 'active'
               ? 'Split sleeper active (optional) — 11-hr & 14-hr clocks recalculated from the qualifying pairing.'
               : hosForDay.split.status === 'available'
@@ -203,11 +204,11 @@ export default function Inspection() {
       </div>
 
       {/* Certification */}
-      <div className="bg-slate-800 rounded-xl p-3 mb-3 text-sm">
+      <div className="bg-card text-card-foreground rounded-xl p-3 mb-3 text-sm">
         {cert ? (
-          <div className="text-emerald-400 font-medium">✓ Certified {new Date(cert.certified_at).toLocaleString()} — {cert.signature_name}</div>
+          <div className="text-success font-medium">✓ Certified {new Date(cert.certified_at).toLocaleString()} — {cert.signature_name}</div>
         ) : (
-          <div className="text-amber-400">Uncertified</div>
+          <div className="text-warning">Uncertified</div>
         )}
       </div>
 
