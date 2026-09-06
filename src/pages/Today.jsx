@@ -200,36 +200,41 @@ export default function Today() {
     <PullToRefresh onRefresh={reload} className="px-4 pt-6">
       <div className="flex items-center justify-between mb-4">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight text-foreground">LogbookAI</h1>
-          <p className="text-xs text-muted-foreground">HOS Compliance Assistant · {carrier?.ruleset_version?.split(' — ')[0]}</p>
+          <h1 className="text-2xl font-bold tracking-tight text-foreground">{t('app.name')}</h1>
+          <p className="text-xs text-muted-foreground">{t('app.tagline')} · {carrier?.ruleset_version?.split(' — ')[0]}</p>
         </div>
         <div className="text-right">
-          <p className="text-sm font-medium text-foreground">{now.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', timeZone: tz })}</p>
-          <p className="text-xs text-muted-foreground">Logbook: {fmtClock(now, tz)}</p>
+          <p className="text-sm font-medium text-foreground">{now.toLocaleDateString(i18nLocale, { weekday: 'short', month: 'short', day: 'numeric', timeZone: tz })}</p>
+          <p className="text-xs text-muted-foreground">{t('today.logbook', { time: fmtClock(now, tz) })}</p>
         </div>
       </div>
 
       <div className="rounded-xl border border-border bg-card p-4 mb-3">
         <div className="flex items-center justify-between">
-          <div className="text-xs text-muted-foreground font-medium">CURRENT DUTY STATUS</div>
+          <div className="text-xs text-muted-foreground font-medium">{t('today.currentStatus')}</div>
           <label className="flex items-center gap-1.5 text-[11px] text-muted-foreground cursor-pointer">
-            Live tracking
+            {t('today.liveTracking')}
             <input type="checkbox" role="switch" aria-checked={liveTrackingEnabled} checked={liveTrackingEnabled}
               onChange={(e) => toggleLiveTracking(e.target.checked)} className="w-4 h-4" />
           </label>
         </div>
         {!liveTrackingEnabled && (
           <div className="text-[11px] text-warning-surface-foreground bg-warning-surface border border-warning/50 rounded-md px-2 py-1 mt-1.5">
-            Live status tracking is paused. Quick status changes below are disabled — log this period via <button type="button" className="underline font-medium" onClick={() => navigate('/log-assistant')}>Ask LogbookAI</button> or <button type="button" className="underline font-medium" onClick={() => navigate('/logs')}>Logs</button> instead.
+            <Trans i18nKey="today.liveTrackingPaused" t={t}
+              components={{
+                askAi: <button type="button" className="underline font-medium" onClick={() => navigate('/log-assistant')}>{t('today.askLogbookAi')}</button>,
+                logs: <button type="button" className="underline font-medium" onClick={() => navigate('/logs')}>{t('today.logsLink')}</button>,
+              }}
+              values={{ askAi: t('today.askLogbookAi'), logs: t('today.logsLink') }} />
           </div>
         )}
         {(displayStatus || current) ? (
           <div className="flex items-baseline gap-2 mt-1">
-            <span className="text-2xl font-bold text-card-foreground">{STATUS_LABELS[displayStatus || current.duty_status]}</span>
-            <span className="text-sm text-muted-foreground">Since {fmtClock(displaySince || current.start, tz)}</span>
+            <span className="text-2xl font-bold text-card-foreground uppercase">{dutyStatusLabel(displayStatus || current.duty_status)}</span>
+            <span className="text-sm text-muted-foreground">{t('today.since', { time: fmtClock(displaySince || current.start, tz) })}</span>
           </div>
         ) : (
-          <div className="text-2xl font-bold mt-1 text-muted-foreground">No active status</div>
+          <div className="text-2xl font-bold mt-1 text-muted-foreground">{t('today.noActiveStatus')}</div>
         )}
         {current?.city && (
           <div className="flex items-center gap-1 text-sm text-muted-foreground mt-1">
