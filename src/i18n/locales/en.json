@@ -205,6 +205,10 @@
     "fuel": "Fuel",
     "break": "Break",
     "plannedStopsNote": "Planned stops are not official RODS. Confirm with \"Log This Event\" when they happen.",
-    "routeStopAddedNote": "{{label}} — ~mile {{mile}} of route ({{reason}}). Planning suggestion — not yet logged."
+    "routeStopAddedNote": "{{label}} — ~mile {{mile}} of route ({{reason}}). Planning suggestion — not yet logged.",
+    "fromFuelReceipt": "From fuel receipt",
+    "fromLoggedFuelEvent": "From logged fuel event",
+    "noStopFound": "No stop found",
+    "stopFallback": "stop"
   }
 }
