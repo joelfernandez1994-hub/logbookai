@@ -54,8 +54,12 @@ export function setAppLanguage(lang) {
 // throwing, so an unexpected/legacy value still renders something.
 export function dutyStatusLabel(code, { quick = false } = {}) {
   const ns = quick ? 'duty_status_quick' : 'duty_status';
-  const label = i18n.t(`${ns}.${code}`, { defaultValue: '' });
-  return label || code || '';
+  const key = `${ns}.${code}`;
+  const label = i18n.t(key);
+  // i18next's default missing-key behavior returns the key itself — treat
+  // that as "not found" and fall back to the raw code rather than showing
+  // a dotted key path to the driver.
+  return label === key ? (code || '') : label;
 }
 
 export default i18n;
