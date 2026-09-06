@@ -16,22 +16,16 @@ import LocationInput from '@/components/LocationInput';
 import TimezoneSelect from '@/components/TimezoneSelect';
 import { labelForIana } from '@/lib/timezones';
 
-const APPEARANCE_OPTIONS = [
-  { v: 'system', l: 'System', icon: Monitor },
-  { v: 'light', l: 'Light', icon: Sun },
-  { v: 'dark', l: 'Dark', icon: Moon },
-];
-
 const LANGUAGE_OPTIONS = [
   { v: 'en', l: 'English' },
   { v: 'es', l: 'Español' },
 ];
 
 export default function More() {
+  const { t } = useTranslation();
   const { profile, carrier, equipment, reload } = useDriverData(9);
   const navigate = useNavigate();
   const { mode, setTheme } = useTheme();
-  const { t } = useTranslation();
   const [usage, setUsage] = useState({ used: 0, allowance: 20 });
   const [settings, setSettings] = useState(null);
   const [adminMode, setAdminMode] = useState(false);
@@ -43,6 +37,12 @@ export default function More() {
   const [showDelete, setShowDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [deleteErr, setDeleteErr] = useState('');
+
+  const APPEARANCE_OPTIONS = [
+    { v: 'system', l: t('more.appearanceSystem'), icon: Monitor },
+    { v: 'light', l: t('more.appearanceLight'), icon: Sun },
+    { v: 'dark', l: t('more.appearanceDark'), icon: Moon },
+  ];
 
   const loadAll = async () => {
     const used = await getAIUsage();
@@ -75,7 +75,7 @@ export default function More() {
       try { await base44.auth.logout(); } catch (e) {}
       window.location.href = '/login';
     } catch (e) {
-      setDeleteErr(e?.message || 'Could not delete account. Please try again or contact support.');
+      setDeleteErr(e?.message || t('more.deleteAccountError'));
       setDeleting(false);
     }
   };
@@ -99,12 +99,12 @@ export default function More() {
   };
 
   const items = [
-    { icon: User, label: 'Driver Profile', onClick: () => setShowProfile(true) },
-    { icon: Building2, label: 'Carrier Profile', onClick: () => setShowCarrier(true) },
-    { icon: Truck, label: 'Equipment', onClick: () => setShowEquipment(true) },
-    { icon: ClipboardCheck, label: 'Vehicle Inspection (DVIR)', onClick: () => navigate('/vehicle-inspection') },
-    { icon: FileText, label: 'Documents', onClick: () => navigate('/documents') },
-    { icon: MapPin, label: 'IFTA Mileage', onClick: () => navigate('/ifta') },
+    { icon: User, label: t('more.driverProfile'), onClick: () => setShowProfile(true) },
+    { icon: Building2, label: t('more.carrierProfile'), onClick: () => setShowCarrier(true) },
+    { icon: Truck, label: t('more.equipment'), onClick: () => setShowEquipment(true) },
+    { icon: ClipboardCheck, label: t('more.vehicleInspectionDvir'), onClick: () => navigate('/vehicle-inspection') },
+    { icon: FileText, label: t('more.documents'), onClick: () => navigate('/documents') },
+    { icon: MapPin, label: t('more.iftaMileage'), onClick: () => navigate('/ifta') },
   ];
 
   const toggleDvirReminder = async (val) => {
@@ -126,18 +126,18 @@ export default function More() {
 
   return (
     <div className="px-4 pt-6 pb-6">
-      <h1 className="text-xl font-bold mb-4 text-foreground">More</h1>
+      <h1 className="text-xl font-bold mb-4 text-foreground">{t('more.title')}</h1>
 
       {/* AI usage */}
       <div className="rounded-xl border border-border bg-card p-4 mb-4">
-        <div className="flex items-center gap-2 font-semibold text-sm mb-2 text-card-foreground"><Bot className="w-4 h-4" /> LogbookAI AI</div>
-        <div className="text-2xl font-bold text-card-foreground">{usage.allowance - usage.used} <span className="text-sm font-normal text-muted-foreground">AI requests remaining this month</span></div>
-        <div className="text-xs text-muted-foreground mt-1">{usage.used} used this month · Voice Log does not count against this</div>
+        <div className="flex items-center gap-2 font-semibold text-sm mb-2 text-card-foreground"><Bot className="w-4 h-4" /> {t('more.aiUsageTitle')}</div>
+        <div className="text-2xl font-bold text-card-foreground">{usage.allowance - usage.used} <span className="text-sm font-normal text-muted-foreground">{t('more.aiRequestsRemaining')}</span></div>
+        <div className="text-xs text-muted-foreground mt-1">{t('more.aiUsedThisMonth', { used: usage.used })}</div>
       </div>
 
       {/* Appearance */}
       <div className="rounded-xl border border-border bg-card p-4 mb-4">
-        <div className="font-semibold text-sm mb-2 text-card-foreground">Appearance</div>
+        <div className="font-semibold text-sm mb-2 text-card-foreground">{t('more.appearance')}</div>
         <div className="grid grid-cols-3 gap-2">
           {APPEARANCE_OPTIONS.map((o) => {
             const Icon = o.icon;
@@ -149,7 +149,7 @@ export default function More() {
             );
           })}
         </div>
-        <div className="text-[11px] text-muted-foreground mt-2">System follows your device setting. Voice Log and basic logging work in any appearance.</div>
+        <div className="text-[11px] text-muted-foreground mt-2">{t('more.appearanceNote')}</div>
       </div>
 
       {/* Language */}
@@ -179,14 +179,15 @@ export default function More() {
       <div className="rounded-xl border border-border bg-card p-4 mb-4">
         <div className="flex items-center justify-between">
           <div>
-            <div className="font-semibold text-sm text-card-foreground">Daily Vehicle Inspection Reminder</div>
-            <div className="text-xs text-muted-foreground mt-0.5">Optional. Reminds you near the end of your work period to review vehicle condition. A no-defect written DVIR is not federally required every day for property-carrying CMVs.</div>
+            <div className="font-semibold text-sm text-card-foreground">{t('more.dvirReminderTitle')}</div>
+            <div className="text-xs text-muted-foreground mt-0.5">{t('more.dvirReminderDescription')}</div>
           </div>
           <input type="checkbox" checked={!!profile?.dvir_reminder_enabled} onChange={(e) => toggleDvirReminder(e.target.checked)} className="w-5 h-5 shrink-0" />
         </div>
       </div>
 
-      {/* Admin controls */}
+      {/* Admin controls — internal/staff surface, kept English regardless of
+          app language (not part of the driver-facing i18n scope). */}
       {adminMode && (
         <div className="rounded-xl border border-border bg-accent p-4 mb-4">
           <div className="flex items-center gap-2 font-semibold text-sm mb-3 text-card-foreground"><Shield className="w-4 h-4" /> Administrator Controls</div>
@@ -221,10 +222,10 @@ export default function More() {
         </div>
       )}
 
-      <Button variant="outline" className="w-full" onClick={logout}><LogOut className="w-4 h-4 mr-2" /> Log Out</Button>
-      <Button variant="ghost" className="w-full text-error mt-2" onClick={() => setShowDelete(true)}><Trash2 className="w-4 h-4 mr-2" /> Delete Account</Button>
+      <Button variant="outline" className="w-full" onClick={logout}><LogOut className="w-4 h-4 mr-2" /> {t('more.logOut')}</Button>
+      <Button variant="ghost" className="w-full text-error mt-2" onClick={() => setShowDelete(true)}><Trash2 className="w-4 h-4 mr-2" /> {t('more.deleteAccount')}</Button>
 
-      <p className="text-[11px] text-muted-foreground text-center mt-4">LogbookAI v2 · Not an ELD · {settings?.ruleset_version || 'US Interstate Property - Standard Federal Rules'}</p>
+      <p className="text-[11px] text-muted-foreground text-center mt-4">{t('more.footer', { ruleset: settings?.ruleset_version || t('more.defaultRuleset') })}</p>
 
       <ProfileDialog open={showProfile} onOpenChange={setShowProfile} profile={profile} onSave={(d) => saveDriverProfile(d, profile).then(reload)} />
       <CarrierDialog open={showCarrier} onOpenChange={setShowCarrier} carrier={carrier} onSave={(d) => saveCarrierProfile(d, carrier).then(reload)} />
@@ -232,12 +233,12 @@ export default function More() {
 
       <Dialog open={showDelete} onOpenChange={setShowDelete}>
         <DialogContent className="max-w-md">
-          <DialogHeader><DialogTitle>Delete Account</DialogTitle></DialogHeader>
-          <p className="text-sm text-muted-foreground">This permanently deletes your LogbookAI data and signs you out. This action cannot be undone.</p>
+          <DialogHeader><DialogTitle>{t('more.deleteAccountTitle')}</DialogTitle></DialogHeader>
+          <p className="text-sm text-muted-foreground">{t('more.deleteAccountBody')}</p>
           {deleteErr && <p className="text-xs text-error">{deleteErr}</p>}
           <DialogFooter>
-            <Button variant="outline" onClick={() => setShowDelete(false)}>Cancel</Button>
-            <Button variant="destructive" disabled={deleting} onClick={handleDelete}>{deleting ? 'Deleting…' : 'Delete Permanently'}</Button>
+            <Button variant="outline" onClick={() => setShowDelete(false)}>{t('common.cancel')}</Button>
+            <Button variant="destructive" disabled={deleting} onClick={handleDelete}>{deleting ? t('common.deleting') : t('more.deletePermanently')}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -246,25 +247,27 @@ export default function More() {
 }
 
 function ProfileDialog({ open, onOpenChange, profile, onSave }) {
+  const { t } = useTranslation();
   const [d, setD] = useState(profile || {});
   useEffect(() => setD(profile || {}), [profile, open]);
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-md">
-        <DialogHeader><DialogTitle>Driver Profile</DialogTitle></DialogHeader>
+        <DialogHeader><DialogTitle>{t('more.driverProfile')}</DialogTitle></DialogHeader>
         <div className="space-y-3">
-          <div><Label>Legal Name</Label><Input value={d.legal_name || ''} onChange={(e) => setD({ ...d, legal_name: e.target.value })} /></div>
-          <div><Label>Email</Label><Input value={d.email || ''} onChange={(e) => setD({ ...d, email: e.target.value })} /></div>
-          <div><Label>Phone</Label><Input value={d.phone || ''} onChange={(e) => setD({ ...d, phone: e.target.value })} /></div>
+          <div><Label>{t('more.legalName')}</Label><Input value={d.legal_name || ''} onChange={(e) => setD({ ...d, legal_name: e.target.value })} /></div>
+          <div><Label>{t('more.email')}</Label><Input value={d.email || ''} onChange={(e) => setD({ ...d, email: e.target.value })} /></div>
+          <div><Label>{t('more.phone')}</Label><Input value={d.phone || ''} onChange={(e) => setD({ ...d, phone: e.target.value })} /></div>
         </div>
-        <DialogFooter><Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
-          <Button onClick={() => { onSave(d); onOpenChange(false); }}>Save</Button></DialogFooter>
+        <DialogFooter><Button variant="outline" onClick={() => onOpenChange(false)}>{t('common.cancel')}</Button>
+          <Button onClick={() => { onSave(d); onOpenChange(false); }}>{t('common.save')}</Button></DialogFooter>
       </DialogContent>
     </Dialog>
   );
 }
 
 function CarrierDialog({ open, onOpenChange, carrier, onSave }) {
+  const { t } = useTranslation();
   const [d, setD] = useState(carrier || { hos_cycle: '70_8', home_terminal_timezone: 'America/Chicago' });
   const [tzConfirmed, setTzConfirmed] = useState(false);
   const [pendingSuggestion, setPendingSuggestion] = useState(null);
@@ -290,24 +293,24 @@ function CarrierDialog({ open, onOpenChange, carrier, onSave }) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-md">
-        <DialogHeader><DialogTitle>Carrier Profile</DialogTitle></DialogHeader>
+        <DialogHeader><DialogTitle>{t('more.carrierProfile')}</DialogTitle></DialogHeader>
         <div className="space-y-3">
-          <div><Label>Carrier Name</Label><Input value={d.carrier_name || ''} onChange={(e) => setD({ ...d, carrier_name: e.target.value })} /></div>
-          <div><Label>USDOT</Label><Input value={d.usdot_number || ''} onChange={(e) => setD({ ...d, usdot_number: e.target.value })} /></div>
+          <div><Label>{t('more.carrierName')}</Label><Input value={d.carrier_name || ''} onChange={(e) => setD({ ...d, carrier_name: e.target.value })} /></div>
+          <div><Label>{t('more.usdot')}</Label><Input value={d.usdot_number || ''} onChange={(e) => setD({ ...d, usdot_number: e.target.value })} /></div>
           <div>
-            <Label>Home Terminal City / State</Label>
+            <Label>{t('more.homeTerminalCityState')}</Label>
             <LocationInput value={{ city: d.home_terminal_city || '', state: d.home_terminal_state || '' }} onChange={onCityChange} />
           </div>
           <div>
-            <Label>Log Timezone</Label>
+            <Label>{t('more.logTimezone')}</Label>
             <TimezoneSelect className="w-full" value={d.home_terminal_timezone || 'America/Chicago'}
               onChange={(v) => { setD((prev) => ({ ...prev, home_terminal_timezone: v })); setTzConfirmed(true); setPendingSuggestion(null); }} />
             {pendingSuggestion && (
-              <button type="button" onClick={applySuggestion} className="mt-1 text-xs text-primary underline">Use suggested {labelForIana(pendingSuggestion)}?</button>
+              <button type="button" onClick={applySuggestion} className="mt-1 text-xs text-primary underline">{t('more.useSuggestedTimezone', { tz: labelForIana(pendingSuggestion) })}</button>
             )}
-            <p className="text-[11px] text-muted-foreground mt-1">Suggested from your home terminal city. Changing it only affects how times are displayed — your saved log entries are not moved.</p>
+            <p className="text-[11px] text-muted-foreground mt-1">{t('more.timezoneSuggestionNote')}</p>
           </div>
-          <div><Label>HOS Cycle</Label>
+          <div><Label>{t('more.hosCycle')}</Label>
             <div className="grid grid-cols-2 gap-2">
               {[{ v: '60_7', l: '60 hr / 7 day' }, { v: '70_8', l: '70 hr / 8 day' }].map((c) => (
                 <button key={c.v} type="button" onClick={() => setD({ ...d, hos_cycle: c.v })}
@@ -317,35 +320,36 @@ function CarrierDialog({ open, onOpenChange, carrier, onSave }) {
               ))}
             </div>
           </div>
-          <p className="text-xs text-warning">Changing the cycle will not rewrite prior certified calculations.</p>
+          <p className="text-xs text-warning">{t('more.cycleChangeNote')}</p>
         </div>
-        <DialogFooter><Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
-          <Button onClick={() => { onSave(d); onOpenChange(false); }}>Save</Button></DialogFooter>
+        <DialogFooter><Button variant="outline" onClick={() => onOpenChange(false)}>{t('common.cancel')}</Button>
+          <Button onClick={() => { onSave(d); onOpenChange(false); }}>{t('common.save')}</Button></DialogFooter>
       </DialogContent>
     </Dialog>
   );
 }
 
 function EquipmentDialog({ open, onOpenChange, onSave }) {
+  const { t } = useTranslation();
   const [type, setType] = useState('tractor');
   const [unit, setUnit] = useState('');
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-md">
-        <DialogHeader><DialogTitle>Add Equipment</DialogTitle></DialogHeader>
+        <DialogHeader><DialogTitle>{t('more.addEquipment')}</DialogTitle></DialogHeader>
         <div className="space-y-3">
           <div className="grid grid-cols-2 gap-2">
-            {[{ v: 'tractor', l: 'Tractor' }, { v: 'trailer', l: 'Trailer' }].map((t) => (
-              <button key={t.v} type="button" onClick={() => setType(t.v)}
-                className={`p-3 rounded-lg border text-sm font-medium text-card-foreground ${type === t.v ? 'border-primary bg-accent text-accent-foreground' : 'border-border'}`}>
-                {t.l}
+            {[{ v: 'tractor', l: t('more.tractor') }, { v: 'trailer', l: t('more.trailer') }].map((opt) => (
+              <button key={opt.v} type="button" onClick={() => setType(opt.v)}
+                className={`p-3 rounded-lg border text-sm font-medium text-card-foreground ${type === opt.v ? 'border-primary bg-accent text-accent-foreground' : 'border-border'}`}>
+                {opt.l}
               </button>
             ))}
           </div>
-          <div><Label>Unit #</Label><Input value={unit} onChange={(e) => setUnit(e.target.value)} /></div>
+          <div><Label>{t('more.unitNumber')}</Label><Input value={unit} onChange={(e) => setUnit(e.target.value)} /></div>
         </div>
-        <DialogFooter><Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
-          <Button onClick={() => { onSave({ type, unit_number: unit, is_default: false }); onOpenChange(false); }}>Save</Button></DialogFooter>
+        <DialogFooter><Button variant="outline" onClick={() => onOpenChange(false)}>{t('common.cancel')}</Button>
+          <Button onClick={() => { onSave({ type, unit_number: unit, is_default: false }); onOpenChange(false); }}>{t('common.save')}</Button></DialogFooter>
       </DialogContent>
     </Dialog>
   );
