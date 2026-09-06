@@ -68,6 +68,82 @@ export function restHoursForLimiter(limiterKey) {
   return limiterKey === 'cycle' ? 34 : 10;
 }
 
+// Multi-stop route planner. Simulates the trip mile-by-mile against the SAME
+// canonical HOS numbers already produced by hosEngine.computeHOS (break30,
+// driving, window14, cycle) — this function does not compute or duplicate any
+// HOS rule itself; it only converts those already-computed HOURS into ROUTE
+// MILES using the driver's planning speed profile, to say WHERE along the
+// route each next stop becomes necessary. Returns an ordered list of
+// { type: 'break'|'rest'|'restart', mile, durationHours, reason }.
+//
+//   'break'   — 30-minute qualifying break, required once 8 cumulative
+//               driving hours are reached since the last qualifying break
+//               (hos.break30, tracked by the canonical engine from the
+//               driver's actual logged history — not reimplemented here).
+//   'rest'    — 10-hour qualifying rest, required when the 11-hour driving
+//               limit or 14-hour window would otherwise be exceeded.
+//   'restart' — 34-hour restart, required when the 60/70-hour cycle would
+//               otherwise be exceeded. Never suggested when the cycle is
+//               unverified (cycleRemainingHours == null) — there is nothing
+//               reliable to plan a restart against.
+//
+// These are TRIP-PLANNING SUGGESTIONS ONLY. Nothing here writes an event or
+// claims to be an official RODS entry — the driver logs/confirms the actual
+// stop when it happens, same as every other Trip Planner suggestion.
+export function planTripStops({ hos, profileId, cycleType, totalMiles, maxStops = 12 } = {}) {
+  const mph = planningMph(profileId);
+  if (!(mph > 0) || !(totalMiles > 0) || !hos) return [];
+
+  const fullCycle = cycleType === '60_7' ? 60 : 70;
+  let milesCovered = 0;
+  let milesToBreak = ((hos.break30?.remainingBeforeBreakMs ?? 0) / H) * mph;
+  let driveRemaining = (hos.driving?.drivingRemainingMs ?? 0) / H;
+  let windowRemaining = (hos.window14?.remainingMs ?? 0) / H;
+  let cycleRemaining = Number.isFinite(hos.cycle?.cycleRemainingHours) ? hos.cycle.cycleRemainingHours : null;
+
+  const stops = [];
+  for (let i = 0; i < maxStops && milesCovered < totalMiles - 0.5; i++) {
+    const remainingTripMiles = totalMiles - milesCovered;
+    const candidates = [
+      { type: 'break', miles: milesToBreak, reason: '8-hour cumulative driving threshold (30-minute break required)' },
+      { type: 'rest', miles: driveRemaining * mph, reason: '11-hour driving limit' },
+      { type: 'rest', miles: windowRemaining * mph, reason: '14-hour window' },
+    ];
+    if (cycleRemaining != null) candidates.push({ type: 'restart', miles: cycleRemaining * mph, reason: `${fullCycle}-hour cycle limit` });
+
+    const next = candidates
+      .filter((c) => Number.isFinite(c.miles) && c.miles >= 0)
+      .sort((a, b) => a.miles - b.miles)[0];
+    if (!next || next.miles >= remainingTripMiles - 0.5) break; // reaches destination before any boundary
+
+    const stopMiles = Math.max(0, next.miles);
+    const stopAtMile = milesCovered + stopMiles;
+    const hoursDriven = stopMiles / mph;
+    milesCovered = stopAtMile;
+
+    if (next.type === 'break') {
+      stops.push({ type: 'break', mile: stopAtMile, durationHours: 0.5, reason: next.reason });
+      milesToBreak = 8 * mph; // qualifying break satisfied — 8-hour driving budget resets
+      driveRemaining -= hoursDriven;
+      windowRemaining -= hoursDriven + 0.5; // the window keeps running during the break itself
+      if (cycleRemaining != null) cycleRemaining -= hoursDriven;
+    } else if (next.type === 'rest') {
+      stops.push({ type: 'rest', mile: stopAtMile, durationHours: 10, reason: next.reason });
+      driveRemaining = 11;
+      windowRemaining = 14;
+      milesToBreak = 8 * mph;
+      if (cycleRemaining != null) cycleRemaining -= hoursDriven;
+    } else {
+      stops.push({ type: 'restart', mile: stopAtMile, durationHours: 34, reason: next.reason });
+      driveRemaining = 11;
+      windowRemaining = 14;
+      milesToBreak = 8 * mph;
+      cycleRemaining = fullCycle;
+    }
+  }
+  return stops;
+}
+
 // Build the proposed compliance edits: a rest stop at the suggested location
 // splitting the route into two driving legs. Returns leg mileages/hours and
 // per-leg feasibility so the UI can show exactly how miles match driving hours.
