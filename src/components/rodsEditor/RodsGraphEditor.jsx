@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect, useMemo, useCallback } from 'react';
+import { useTranslation } from 'react-i18next';
 import { getDailyGrid, computeHOS } from '@/lib/hosEngine';
 import {
   daySegments, planDayInsertion, planEdit, applyOps, buildAfterEvents,
@@ -35,6 +36,7 @@ export default function RodsGraphEditor({
   events = [], dateStr, timezone = 'America/Chicago', readOnly = false,
   carrier, equipment, profile, certifications = [], reload,
 }) {
+  const { t } = useTranslation();
   const tz = timezone;
   const cycleType = carrier?.hos_cycle || '70_8';
 
@@ -268,8 +270,8 @@ export default function RodsGraphEditor({
           </div>
         ) : (
           <div className="flex gap-1.5">
-            <Button size="sm" variant={editMode ? 'secondary' : 'outline'} onClick={() => setMode('view')}><Eye className="w-3.5 h-3.5 mr-1" />View</Button>
-            <Button size="sm" variant={editMode ? 'default' : 'outline'} onClick={() => setMode('edit')}><Pencil className="w-3.5 h-3.5 mr-1" />Edit Log Graph</Button>
+            <Button size="sm" variant={editMode ? 'secondary' : 'outline'} onClick={() => setMode('view')}><Eye className="w-3.5 h-3.5 mr-1" />{t('rodsEditor.view')}</Button>
+            <Button size="sm" variant={editMode ? 'default' : 'outline'} onClick={() => setMode('edit')}><Pencil className="w-3.5 h-3.5 mr-1" />{t('rodsEditor.editLogGraph')}</Button>
           </div>
         )}
         <div className="text-[11px] text-muted-foreground">{visibleHours >= 24 ? 'Full 24h' : `~${visibleHours}h view · swipe ↔`}</div>
@@ -277,7 +279,7 @@ export default function RodsGraphEditor({
 
       {editMode && (
         <div className="text-[11px] text-warning-surface-foreground bg-warning-surface border border-warning/50 rounded-md px-2.5 py-1.5 mb-2">
-          <b>EDIT MODE</b> — Press a row and drag to draw. Tap a segment to edit. Drag the ruler to pan.
+          <b>{t('rodsEditor.editMode')}</b> — Press a row and drag to draw. Tap a segment to edit. Drag the ruler to pan.
         </div>
       )}
 
