@@ -98,6 +98,15 @@ function locMatch(eventCity, eventState, target) {
 // sequence? A DRIVING event bridges A→B when it is immediately followed by an
 // event at B (the destination). If `from` is null (only the destination was
 // described), any DRIVING followed by an event at B counts.
+//
+// An ongoing, trailing DRIVING event (no end_timestamp, nothing after it) has
+// no "next" event to check — by design, since the driver hasn't arrived
+// anywhere yet. If the described "destination" is just that Driving event's
+// own current/starting city (e.g. an AI location confirmation that only
+// canonicalized "Miami" to "Miami, FL", not a genuinely different place the
+// driver said they were headed), treat it as covered: the driver described
+// driving, and an open Driving event with no further destination IS that
+// description — it doesn't need to prove arrival somewhere else.
 export function movementCovered(proposed, movement) {
   if (!movement || !movement.to || !movement.to.city) return true;
   const sorted = [...(proposed || [])]
@@ -106,7 +115,10 @@ export function movementCovered(proposed, movement) {
   for (let i = 0; i < sorted.length; i++) {
     if (sorted[i].duty_status !== 'DRIVING') continue;
     const next = sorted[i + 1];
-    if (!next) continue;
+    if (!next) {
+      if (!sorted[i].end_timestamp && locMatch(sorted[i].city, sorted[i].state, movement.to)) return true;
+      continue;
+    }
     if (!locMatch(next.city, next.state, movement.to)) continue;
     if (movement.from && movement.from.city) {
       const prev = sorted[i - 1];
