@@ -1,15 +1,17 @@
 import { useState, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 import { useDriverData } from '@/hooks/useDriverData';
 import { base44 } from '@/api/base44Client';
 import { getAppSettings, getAIUsage, saveDriverProfile, saveCarrierProfile, saveEquipment } from '@/lib/driverData';
 import { purgeMyData } from '@/lib/accountDeletion';
 import { useTheme } from '@/hooks/useTheme';
+import { setAppLanguage, SUPPORTED_LANGUAGES } from '@/i18n';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
-import { User, Building2, Truck, Bot, FileText, Settings, LogOut, Shield, ClipboardCheck, Trash2, Sun, Moon, Monitor, MapPin } from 'lucide-react';
+import { User, Building2, Truck, Bot, FileText, Settings, LogOut, Shield, ClipboardCheck, Trash2, Sun, Moon, Monitor, MapPin, Globe } from 'lucide-react';
 import LocationInput from '@/components/LocationInput';
 import TimezoneSelect from '@/components/TimezoneSelect';
 import { labelForIana } from '@/lib/timezones';
@@ -20,10 +22,16 @@ const APPEARANCE_OPTIONS = [
   { v: 'dark', l: 'Dark', icon: Moon },
 ];
 
+const LANGUAGE_OPTIONS = [
+  { v: 'en', l: 'English' },
+  { v: 'es', l: 'Español' },
+];
+
 export default function More() {
   const { profile, carrier, equipment, reload } = useDriverData(9);
   const navigate = useNavigate();
   const { mode, setTheme } = useTheme();
+  const { t } = useTranslation();
   const [usage, setUsage] = useState({ used: 0, allowance: 20 });
   const [settings, setSettings] = useState(null);
   const [adminMode, setAdminMode] = useState(false);
@@ -104,6 +112,18 @@ export default function More() {
     reload();
   };
 
+  // Presentation-only: changes the display language immediately (setAppLanguage)
+  // and persists it to DriverProfile so it follows the driver across devices.
+  // Never touches a stored duty-status value or any other database enum, and
+  // never affects official exports (RODS/DVIR/IFTA PDFs, certifications),
+  // which stay English regardless of this setting.
+  const changeLanguage = async (lang) => {
+    setAppLanguage(lang);
+    await saveDriverProfile({ ...profile, language: lang }, profile);
+    reload();
+  };
+  const currentLanguage = SUPPORTED_LANGUAGES.includes(profile?.language) ? profile.language : 'en';
+
   return (
     <div className="px-4 pt-6 pb-6">
       <h1 className="text-xl font-bold mb-4 text-foreground">More</h1>
@@ -130,6 +150,20 @@ export default function More() {
           })}
         </div>
         <div className="text-[11px] text-muted-foreground mt-2">System follows your device setting. Voice Log and basic logging work in any appearance.</div>
+      </div>
+
+      {/* Language */}
+      <div className="rounded-xl border border-border bg-card p-4 mb-4">
+        <div className="font-semibold text-sm mb-2 text-card-foreground flex items-center gap-2"><Globe className="w-4 h-4" /> {t('settings.language')}</div>
+        <div className="grid grid-cols-2 gap-2">
+          {LANGUAGE_OPTIONS.map((o) => (
+            <button key={o.v} onClick={() => changeLanguage(o.v)}
+              className={`flex items-center justify-center gap-1 rounded-lg border p-3 text-xs font-medium text-card-foreground ${currentLanguage === o.v ? 'border-primary bg-accent text-accent-foreground' : 'border-border'}`}>
+              {o.l}
+            </button>
+          ))}
+        </div>
+        <div className="text-[11px] text-muted-foreground mt-2">{t('settings.languageDescription')}</div>
       </div>
 
       {/* Settings list */}
