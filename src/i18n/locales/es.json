@@ -19,7 +19,7 @@
     "logbook": "Registro: {{time}}",
     "currentStatus": "ESTADO DE SERVICIO ACTUAL",
     "liveTracking": "Seguimiento en vivo",
-    "liveTrackingPaused": "El seguimiento de estado en vivo está pausado. Los cambios rápidos de estado abajo están deshabilitados — registre este período con {{askAi}} o {{logs}} en su lugar.",
+    "liveTrackingPaused": "El seguimiento de estado en vivo está pausado. Los cambios rápidos de estado abajo están deshabilitados — registre este período con <askAi>Preguntar a LogbookAI</askAi> o <logs>Registros</logs> en su lugar.",
     "askLogbookAi": "Preguntar a LogbookAI",
     "logsLink": "Registros",
     "noActiveStatus": "Sin estado activo",
