@@ -288,7 +288,7 @@ export default function RodsGraphEditor({
       )}
 
       {/* graph */}
-      <div ref={scrollRef} className="overflow-x-auto overflow-y-hidden rounded-lg border border-border bg-graph touch-pan-x"
+      <div ref={scrollRef} className="overflow-x-auto overflow-y-hidden rounded-lg border border-border bg-graph touch-pan-x graph-scroll"
         style={{ touchAction: 'pan-x' }}>
         <div ref={contentRef} style={{ width: contentW, position: 'relative', height: TOP_PAD + ROW_H * 4 + 6 }}>
           {/* hour ruler (scrolls) */}
