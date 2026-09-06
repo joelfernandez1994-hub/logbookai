@@ -150,8 +150,10 @@ export default function Inspection() {
         </Button>
       </div>
 
-      {/* Graph (read-only) */}
-      <div className="bg-white rounded-xl p-3 mb-3 text-slate-900">
+      {/* Graph (read-only) — matches this page's own dark styling (bg-slate-800,
+          same as the other Inspection Mode cards) instead of forcing white,
+          which showed as a stray white frame around the otherwise-dark graph. */}
+      <div className="bg-slate-800 rounded-xl p-3 mb-3 text-white">
         <RodsGraphEditor events={events} dateStr={selectedKey} timezone={tz} readOnly carrier={carrier} />
       </div>
 
