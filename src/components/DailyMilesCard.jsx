@@ -1,10 +1,12 @@
 import { useState, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Gauge, Pencil, Check, RotateCcw, Route, Sparkles } from 'lucide-react';
 import { computeDailyMiles, getDailyMiles, saveDailyMiles, saveOdometers, computeSuggestedMiles, getDrivingLegs } from '@/lib/tripSync';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 
 export default function DailyMilesCard({ events, dateStr, tz, speedProfile }) {
+  const { t } = useTranslation();
   const [override, setOverride] = useState(null);
   const [editing, setEditing] = useState(false);
   const [val, setVal] = useState('');
@@ -92,7 +94,7 @@ export default function DailyMilesCard({ events, dateStr, tz, speedProfile }) {
         <div className="flex items-center gap-2">
           <Gauge className="w-4 h-4 text-muted-foreground" />
           <div>
-            <div className="text-xs text-muted-foreground">Total Miles <span className="text-error">*</span></div>
+            <div className="text-xs text-muted-foreground">{t('dailyMiles.totalMiles')} <span className="text-error">*</span></div>
             {editing ? (
               <div className="flex items-center gap-1 mt-0.5">
                 <Input type="number" value={val} onChange={e => setVal(e.target.value)} className="w-24 h-7 text-sm" />
@@ -137,11 +139,11 @@ export default function DailyMilesCard({ events, dateStr, tz, speedProfile }) {
       <div className="mt-2 pt-2 border-t border-border">
         <div className="grid grid-cols-2 gap-2">
           <div>
-            <label className="text-[11px] text-muted-foreground">Begin Odometer (Optional)</label>
+            <label className="text-[11px] text-muted-foreground">{t('dailyMiles.beginOdometer')}</label>
             <Input type="number" inputMode="numeric" value={beginOdo} onChange={e => setBeginOdo(e.target.value)} onBlur={saveOdo} placeholder="—" className="h-7 text-sm" />
           </div>
           <div>
-            <label className="text-[11px] text-muted-foreground">End Odometer (Optional)</label>
+            <label className="text-[11px] text-muted-foreground">{t('dailyMiles.endOdometer')}</label>
             <Input type="number" inputMode="numeric" value={endOdo} onChange={e => setEndOdo(e.target.value)} onBlur={saveOdo} placeholder="—" className="h-7 text-sm" />
           </div>
         </div>
