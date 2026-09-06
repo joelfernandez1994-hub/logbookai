@@ -139,7 +139,10 @@ describe('English and Spanish narratives map to identical canonical duty-status 
       expect(offDuty.end_timestamp).toBe('2026-09-10T10:00:00.000Z'); // 6 AM local
 
       expect(preTrip.duty_status).toBe('ON_DUTY');
-      expect(preTrip.remark).toMatch(/pre-trip|pre-viaje/i);
+      // activity_type is a fixed English label regardless of narrative
+      // language (same convention as the duty_status enum) — only remark
+      // free text may vary by language.
+      expect(preTrip.activity_type).toBe('Pre-Trip');
       const preTripMinutes = (new Date(preTrip.end_timestamp) - new Date(preTrip.start_timestamp)) / 60000;
       expect(preTripMinutes).toBe(15);
 
