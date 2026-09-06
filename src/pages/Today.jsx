@@ -10,13 +10,18 @@ import StatusChangeSheet from '@/components/StatusChangeSheet';
 import { changeStatus, insertEvent, updateEventFields } from '@/lib/timelineWriter';
 import { validateTimeline } from '@/lib/timelineEngine';
 import { getDvirs, saveDvir } from '@/lib/dvirData';
-import { saveDriverProfile } from '@/lib/driverData';
+import { saveDriverProfile, getCertifications } from '@/lib/driverData';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import DvirForm from '@/components/dvir/DvirForm';
 import PreTripDialog from '@/components/PreTripDialog';
-import { Truck, Clock, Coffee, RotateCcw, AlertTriangle, MapPin, Bot, ClipboardList, ClipboardCheck, Gauge, Moon, HelpCircle, ShieldCheck, Plus } from 'lucide-react';
+// Edit Log reuses the EXACT SAME graph editor component the Logs tab uses —
+// no second implementation. RodsGraphEditor already owns the swipe/paint
+// edit workflow, EventSheet, canonical timelineWriter calls (applyTimelineOps)
+// and validation; Today and Logs are just two entry points into it.
+import RodsGraphEditor from '@/components/rodsEditor/RodsGraphEditor';
+import { Truck, Clock, Coffee, RotateCcw, AlertTriangle, MapPin, Bot, ClipboardList, ClipboardCheck, Gauge, Moon, HelpCircle, ShieldCheck, Plus, PencilLine } from 'lucide-react';
 import DailyMilesCard from '@/components/DailyMilesCard';
 import TimezoneIndicator from '@/components/TimezoneIndicator';
 import TimelineGapNotice from '@/components/TimelineGapNotice';
@@ -58,6 +63,8 @@ export default function Today() {
   const [dvirDialogOpen, setDvirDialogOpen] = useState(false);
   const [bolDraft, setBolDraft] = useState('');
   const [bolSaving, setBolSaving] = useState(false);
+  const [certifications, setCertifications] = useState([]);
+  const [editLogOpen, setEditLogOpen] = useState(false);
 
   const tz = carrier?.home_terminal_timezone || 'America/Chicago';
   const cycleType = carrier?.hos_cycle || '70_8';
@@ -87,6 +94,7 @@ export default function Today() {
   useEffect(() => { setBolDraft(hos.currentStatus?.bill_of_lading_number || ''); }, [hos.currentStatus?.id, hos.currentStatus?.bill_of_lading_number]);
 
   useEffect(() => { (async () => { try { setDvirs(await getDvirs(30) || []); } catch (e) {} })(); }, [reload]);
+  useEffect(() => { (async () => { try { setCertifications(await getCertifications(9) || []); } catch (e) {} })(); }, [reload]);
 
   const needsOnboarding = !profile || !profile.onboarded || !profile.has_acknowledged_non_eld;
   useEffect(() => {
@@ -280,6 +288,9 @@ export default function Today() {
       <div className="rounded-xl border border-border bg-card p-3 mb-4">
         <div className="flex items-center justify-between mb-2"><div className="text-sm font-semibold text-card-foreground">{t('today.todaysLog')}</div><TimezoneIndicator tz={tz} /></div>
         <LogGraph events={events} dateStr={todayKey} timezone={tz} />
+        <Button variant="outline" size="sm" className="w-full mt-3" onClick={() => setEditLogOpen(true)}>
+          <PencilLine className="w-3.5 h-3.5 mr-1" /> {t('logs.editLog')}
+        </Button>
       </div>
 
       {!timelineValidation.valid && (
@@ -429,6 +440,18 @@ export default function Today() {
         drivingStart={pendingStatus ? new Date() : null}
         defaultCity={pendingStatus?.city} defaultState={pendingStatus?.state}
         onConfirm={handlePretripConfirm} />
+
+      {/* Edit Log — same RodsGraphEditor instance/component Logs.jsx renders,
+          fed with Today's own data. Its own reload prop is Today's reload
+          (from useDriverData), so saving here refreshes Today's graph/HOS
+          immediately — same canonical timeline, same writer, same validation. */}
+      <Dialog open={editLogOpen} onOpenChange={setEditLogOpen}>
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader><DialogTitle>{t('logs.editLog')}</DialogTitle></DialogHeader>
+          <TimezoneIndicator tz={tz} className="mb-1" />
+          <RodsGraphEditor events={events} dateStr={todayKey} timezone={tz} carrier={carrier} equipment={equipment} profile={profile} certifications={certifications} reload={reload} />
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={dvirDialogOpen} onOpenChange={setDvirDialogOpen}>
         <DialogContent className="max-w-md max-h-[85vh] overflow-y-auto">
