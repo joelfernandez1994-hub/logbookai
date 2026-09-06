@@ -4,7 +4,7 @@ import { useDriverData } from '@/hooks/useDriverData';
 import { computeHOS, fmtDur, dateKeyInTz } from '@/lib/hosEngine';
 import { whatCanIDo } from '@/lib/logAssistant';
 import { truckEtaHours, speedProfileLabel } from '@/lib/proposalValidation';
-import { limitingClock, maxDriveMiles, buildComplianceEdits } from '@/lib/complianceStop';
+import { limitingClock, maxDriveMiles, buildComplianceEdits, planTripStops } from '@/lib/complianceStop';
 import { firstEventOfDay, loggedFuelStops, getFuelReceipts } from '@/lib/tripSync';
 import DailyMilesCard from '@/components/DailyMilesCard';
 import TimelineGapNotice from '@/components/TimelineGapNotice';
@@ -15,7 +15,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import LocationInput from '@/components/LocationInput';
 import { Switch } from '@/components/ui/switch';
-import { Map, Clock, Check, X, Plus, MapPin, AlertTriangle, Sparkles, Moon, RefreshCw } from 'lucide-react';
+import { Map, Clock, Check, X, Plus, MapPin, AlertTriangle, Sparkles, Moon, RefreshCw, Coffee, BedDouble } from 'lucide-react';
 
 // Always render durations as X hr YY min — never raw floating point.
 const fmtHM = (h) => {
@@ -129,6 +129,32 @@ export default function Trip() {
     return { neededHours, drivingRemaining, windowRemaining, cycleRemaining, achievable };
   };
   const feasibility = checkFeasibility();
+
+  // Full-route multi-stop plan (breaks / rests / restarts) — restored
+  // automatic suggestion pipeline. Reuses the SAME canonical HOS numbers
+  // already computed above (hos.break30 / hos.driving / hos.window14 /
+  // hos.cycle); planTripStops() only converts those hours into route miles.
+  // Suggestion only — nothing here writes an event; adding one to "Planned
+  // Stops" below still requires the driver's explicit tap.
+  const routeStops = (estimate && !estimate.error && hosVerified)
+    ? planTripStops({ hos, profileId: speedProfile, cycleType, totalMiles: estimate.miles })
+    : [];
+
+  const STOP_META = {
+    break: { label: '30-Minute Break', icon: Coffee, addType: 'break' },
+    rest: { label: '10-Hour Qualifying Rest', icon: Moon, addType: 'rest' },
+    restart: { label: '34-Hour Restart', icon: BedDouble, addType: 'rest' },
+  };
+
+  const addRouteStopToPlan = (stop) => {
+    const meta = STOP_META[stop.type];
+    setStopsTouched(true);
+    setStops((prev) => [...prev, {
+      type: meta.addType,
+      city: '',
+      note: `${meta.label} — ~mile ${Math.round(stop.mile)} of route (${stop.reason}). Planning suggestion — not yet logged.`,
+    }]);
+  };
 
   const fetchComplianceStop = async () => {
     if (!estimate || !pickup.city || !delivery.city || !hosVerified) return;
