@@ -205,6 +205,10 @@
     "fuel": "Combustible",
     "break": "Descanso",
     "plannedStopsNote": "Las paradas planificadas no son RODS oficiales. Confírmelas con \"Registrar Este Evento\" cuando ocurran.",
-    "routeStopAddedNote": "{{label}} — ~milla {{mile}} de la ruta ({{reason}}). Sugerencia de planificación — aún no registrada."
+    "routeStopAddedNote": "{{label}} — ~milla {{mile}} de la ruta ({{reason}}). Sugerencia de planificación — aún no registrada.",
+    "fromFuelReceipt": "Del recibo de combustible",
+    "fromLoggedFuelEvent": "Del evento de combustible registrado",
+    "noStopFound": "No se encontró ninguna parada",
+    "stopFallback": "parada"
   }
 }
