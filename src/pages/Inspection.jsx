@@ -1,4 +1,5 @@
 import { useState, useMemo, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useDriverData } from '@/hooks/useDriverData';
 import { getDailyGrid, computeHOS, hasSufficientCycleHistory, dateKeyInTz } from '@/lib/hosEngine';
 import { deriveHosDisplay } from '@/lib/proposalValidation';
@@ -70,6 +71,7 @@ function recapDisplay(hosForDay, historyComplete) {
 }
 
 export default function Inspection() {
+  const { t } = useTranslation();
   const { profile, carrier } = useDriverData(9);
   const [events, setEvents] = useState([]);
   const [certifications, setCertifications] = useState([]);
@@ -122,7 +124,7 @@ export default function Inspection() {
         <div className="flex items-center gap-2">
           <ShieldCheck className="w-5 h-5 text-primary" />
           <div>
-            <div className="font-bold text-card-foreground">INSPECTION MODE</div>
+            <div className="font-bold text-card-foreground">{t('inspection.mode')}</div>
             <div className="text-xs text-muted-foreground">Read-only · Current + Previous 7 Days</div>
           </div>
         </div>
@@ -183,7 +185,7 @@ export default function Inspection() {
 
       {/* HOS clocks (split-aware) as of end of selected day */}
       <div className="bg-card text-card-foreground rounded-xl p-3 mb-3 text-sm">
-        <div className="font-semibold mb-1">HOS Clocks (end of day)</div>
+        <div className="font-semibold mb-1">{t('inspection.hosClocksEndOfDay')}</div>
         <div className="grid grid-cols-2 gap-1 text-xs text-muted-foreground">
           <div>
             Driving remaining: {hosDisplay.driving.value}
@@ -208,7 +210,7 @@ export default function Inspection() {
         {cert ? (
           <div className="text-success font-medium">✓ Certified {new Date(cert.certified_at).toLocaleString()} — {cert.signature_name}</div>
         ) : (
-          <div className="text-warning">Uncertified</div>
+          <div className="text-warning">{t('inspection.uncertified')}</div>
         )}
       </div>
 
