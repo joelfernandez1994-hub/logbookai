@@ -104,6 +104,15 @@
       ],
       "default": "none",
       "description": "How the driver prefers odometer data to factor into IFTA mileage. 'none' means route-estimated mileage is used as-is until the driver confirms or corrects it."
+    },
+    "language": {
+      "type": "string",
+      "enum": [
+        "en",
+        "es"
+      ],
+      "default": "en",
+      "description": "Display language for the app UI (presentation layer only). Never changes stored duty-status codes or other database values, and never affects official exports (RODS/DVIR/IFTA PDFs and CSVs, certification labels), which always render in English. Ask LogbookAI accepts natural-language input in either English or Spanish regardless of this setting."
     }
   },
   "required": [
