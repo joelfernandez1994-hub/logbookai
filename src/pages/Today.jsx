@@ -432,7 +432,7 @@ export default function Today() {
 
       <Dialog open={dvirDialogOpen} onOpenChange={setDvirDialogOpen}>
         <DialogContent className="max-w-md max-h-[85vh] overflow-y-auto">
-          <DialogHeader><DialogTitle>Daily Vehicle Inspection</DialogTitle></DialogHeader>
+          <DialogHeader><DialogTitle>{t('today.dailyDvir')}</DialogTitle></DialogHeader>
           <DvirForm
             defaultSignature={profile?.signature_data?.startsWith('data:') ? profile.signature_data : ''}
             defaultSignatureName={profile?.signature_type === 'typed' ? profile?.signature_data : profile?.legal_name}
