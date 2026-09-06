@@ -10,7 +10,7 @@
 // ============================================================================
 import { describe, it, expect } from 'vitest';
 import { validateInterpretResult, normalizeStatus, DUTY_STATUSES } from './aiLayer';
-import i18n, { dutyStatusLabel, setAppLanguage, SUPPORTED_LANGUAGES } from '../i18n';
+import { dutyStatusLabel, setAppLanguage, SUPPORTED_LANGUAGES } from '../i18n';
 
 describe('dutyStatusLabel — presentation only, never touches the canonical code', () => {
   it('translates every canonical code in both supported languages without altering the code itself', () => {
