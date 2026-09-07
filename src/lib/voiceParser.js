@@ -443,9 +443,110 @@ export function parseVoiceCommand(text, ctx = {}) {
     return { handled: false, reason: 'question', fallback: 'ai' };
   }
 
-  // EDIT command — we can parse a single edit, but it requires matching an
-  // existing event by time. Mark as handled with a proposed change + a
-  // clarification asking the driver to confirm the target.
+  // ---------------------------------------------------------------------
+  // CORRECTIONS / EDIT-BY-REFERENCE — the driver refers to an already-
+  // logged event instead of describing new activity. Resolved against
+  // ctx.events via eventReference.js so the caller can route the change
+  // through the canonical editEvent()/deleteEventById() writer against the
+  // REAL existing record — never as a new inserted (and therefore
+  // duplicated/overlapping) event. Never guesses when genuinely ambiguous.
+  // ---------------------------------------------------------------------
+
+  // "Delete the second fuel stop." / "Elimina la segunda parada de combustible."
+  const deleteMatch = raw.match(/\b(?:delete|remove|elimina|borra|quita)\b\s+(.*)/i);
+  if (deleteMatch) {
+    const ref = resolveEventReference(ctx.events || [], deleteMatch[1] || raw, { tz });
+    if (ref.resolved && !ref.ambiguous) {
+      return {
+        handled: true, deleteEvent: true,
+        target: { id: ref.resolved.id, description: describeEvent(ref.resolved, tz) },
+        clarifications: [],
+      };
+    }
+    if (ref.candidates.length > 1) {
+      return {
+        handled: true, deleteEvent: true, target: null,
+        clarifications: [{
+          type: 'delete_target_ambiguous',
+          question: `I found ${ref.candidates.length} matching events — which one did you mean? ${ref.candidates.map((c) => describeEvent(c, tz)).join(' / ')}`,
+          candidates: ref.candidates.map((c) => ({ id: c.id, description: describeEvent(c, tz) })),
+        }],
+      };
+    }
+    // No local match — the AI may still understand a richer reference
+    // ("the stop near the Georgia line"); this deterministic pass only
+    // handles the clear-cut cases.
+    return { handled: false, reason: 'delete_target_not_found', fallback: 'ai' };
+  }
+
+  // "I actually started driving at 7, not 6:45." / "I actually got there at 9."
+  if (/\bactually\b/i.test(raw)) {
+    const isArrival = /\b(got there|arrived|made it|got in)\b/i.test(raw);
+    const statusHit = !isArrival ? detectStatus(raw) : null;
+    const t = parseTime(raw, refDate, tz, { existingEvents: ctx.events || [] });
+    if (t) {
+      const refText = isArrival ? 'driving' : (statusHit ? (statusHit.activity || labelStatus(statusHit.status)) : raw);
+      const ref = resolveEventReference(ctx.events || [], refText, { tz });
+      if (ref.resolved && !ref.ambiguous) {
+        const field = isArrival ? 'end_timestamp' : 'start_timestamp';
+        return {
+          handled: true, edit: true, correction: true,
+          events: [{ ...ref.resolved, [field]: t.date.toISOString(), target_event_id: ref.resolved.id, _ambiguous: { time: t.ambiguous } }],
+          clarifications: [],
+        };
+      }
+    }
+    // Fall through — let the AI interpret a correction it has more narrative
+    // context for (e.g. no resolvable target locally).
+  }
+
+  // "That was Jacksonville, not Orlando." — resolves against the WRONG value
+  // ("Orlando") when a matching logged event exists, else the most recent
+  // event with any city, so the fix lands on the actual event described.
+  const wasNotMatch = raw.match(/\bthat was\s+([A-Za-z][A-Za-z\s]*?)\s*,?\s*not\s+([A-Za-z][A-Za-z\s]*?)[.?!]*$/i);
+  if (wasNotMatch) {
+    const correctCity = wasNotMatch[1].trim();
+    const wrongCity = wasNotMatch[2].trim();
+    const target = findEventByCity(ctx.events || [], wrongCity) || resolveEventReference(ctx.events || [], 'that', { tz }).resolved;
+    if (target) {
+      return {
+        handled: true, edit: true, correction: true,
+        events: [{ ...target, city: correctCity, state: '', target_event_id: target.id }],
+        clarifications: [],
+      };
+    }
+    return { handled: false, reason: 'correction_target_not_found', fallback: 'ai' };
+  }
+
+  // "Make the fuel stop 30 minutes." — sets an existing event's duration.
+  const makeDurationMatch = raw.match(/\bmake\s+(?:the|my)\s+(.+?)\s+(\d+(?:\.\d+)?)\s*(minutes?|mins?|hours?|hrs?)\b/i);
+  if (makeDurationMatch) {
+    const refText = makeDurationMatch[1];
+    const n = Number(makeDurationMatch[2]);
+    const unit = makeDurationMatch[3].toLowerCase();
+    const durMs = unit.startsWith('h') ? n * H : n * MIN;
+    const ref = resolveEventReference(ctx.events || [], refText, { tz });
+    if (ref.resolved && !ref.ambiguous) {
+      const newEnd = new Date(new Date(ref.resolved.start_timestamp).getTime() + durMs);
+      return {
+        handled: true, edit: true, correction: true,
+        events: [{ ...ref.resolved, end_timestamp: newEnd.toISOString(), target_event_id: ref.resolved.id }],
+        clarifications: [],
+      };
+    }
+    if (ref.candidates.length > 1) {
+      return {
+        handled: true, edit: true, target: null,
+        clarifications: [{ type: 'edit_target_ambiguous', question: `Which ${refText} did you mean? ${ref.candidates.map((c) => describeEvent(c, tz)).join(' / ')}` }],
+      };
+    }
+  }
+
+  // Generic "change/edit/modify/update/switch/move ... to ..." — tries to
+  // resolve a real target via eventReference first; when ctx.events can't
+  // resolve one (e.g. no events supplied, or genuinely ambiguous), preserves
+  // the original behavior of asking the driver to confirm the target rather
+  // than guessing.
   if (detectEdit(raw)) {
     const t = parseTime(raw, refDate, tz, { existingEvents: ctx.events || [] });
     const target = detectStatus(raw);
@@ -458,6 +559,20 @@ export function parseVoiceCommand(text, ctx = {}) {
         target ? `${labelStatus(target.status)}${target.activity ? ` (${target.activity})` : ''}` : null,
         loc?.city ? `${loc.city}${loc.state ? `, ${loc.state}` : ''}` : null,
       ].filter(Boolean).join(' — ');
+      const ref = resolveEventReference(ctx.events || [], raw, { tz });
+      if (ref.resolved && !ref.ambiguous) {
+        const patch = {};
+        if (target?.status) { patch.duty_status = target.status; patch.activity_type = target.activity || ref.resolved.activity_type; patch.remark = target.activity || ref.resolved.remark; }
+        patch.start_timestamp = t.date.toISOString();
+        if (loc?.city) { patch.city = loc.city; patch.state = loc.state || ''; }
+        return {
+          handled: true,
+          edit: true,
+          events: [{ ...ref.resolved, ...patch, target_event_id: ref.resolved.id, _ambiguous: { time: t.ambiguous, location: loc?.ambiguous } }],
+          clarifications: [],
+          ambiguousFields: [t.ambiguous && 'start_timestamp', loc?.ambiguous && 'state'].filter(Boolean),
+        };
+      }
       return {
         handled: true,
         edit: true,
