@@ -15,20 +15,68 @@
 const H = 3600000;
 const MIN = 60000;
 
+// Bilingual (English + Spanish) trucking vocabulary. Every phrase here is a
+// real, common way drivers describe the same four canonical duty statuses —
+// the driver should never need to "speak computer" to be understood. Broader
+// phrases (multi-word) are safe as substring matches (checked via
+// `lower.includes`), so word order/punctuation variations still match.
 const STATUS_KEYWORDS = {
-  DRIVING: ['driving', 'drive', 'drove', 'drove off', 'left', 'heading out', 'on the road'],
-  ON_DUTY: ['on duty', 'on-duty', 'onduty', 'fuel', 'fueled', 'fueling', 'loading', 'loaded', 'unloading', 'unloaded', 'pre-trip', 'pretrip', 'pre trip', 'post-trip', 'post trip', 'posttrip', 'inspection', 'drop', 'hook', 'bobtail', 'yard move', 'equipment change'],
-  SLEEPER_BERTH: ['sleeper', 'sleeper berth', 'in the bunk', 'berth'],
-  OFF_DUTY: ['off duty', 'off-duty', 'offduty', 'off', 'done for the day', 'done', 'rest'],
+  DRIVING: [
+    'driving', 'drive', 'drove', 'drove off', 'left', 'heading out', 'on the road',
+    'rolling', 'started rolling', 'got rolling', 'pulled out', 'started back up',
+    'back on the road', 'hit the road', 'took off', 'headed out',
+    // Spanish
+    'conduciendo', 'manejando', 'maneje', 'manejé', 'arranque', 'arranqué', 'sali', 'salí', 'en la carretera',
+  ],
+  ON_DUTY: [
+    'on duty', 'on-duty', 'onduty', 'fuel', 'fueled', 'fueling', 'loading', 'loaded', 'unloading', 'unloaded',
+    'pre-trip', 'pretrip', 'pre trip', 'post-trip', 'post trip', 'posttrip', 'inspection', 'drop', 'hook',
+    'bobtail', 'yard move', 'equipment change', 'checked the truck', 'checking the truck',
+    'detention', 'waiting at the shipper', 'waited at the shipper', 'waiting at the receiver', 'waited at the receiver',
+    'paperwork', 'did paperwork', 'drop and hook', 'swapped trailers', 'dropped and hooked',
+    // Spanish
+    'en servicio', 'cargando', 'cargue', 'cargué', 'descargando', 'descargue', 'descargué',
+    'revisando el camion', 'revisando el camión', 'inspeccion', 'inspección', 'papeleo',
+  ],
+  SLEEPER_BERTH: [
+    'sleeper', 'sleeper berth', 'in the bunk', 'got in the bunk', 'berth', 'went in the sleeper',
+    // Spanish
+    'litera', 'en la litera', 'dormitorio',
+  ],
+  OFF_DUTY: [
+    'off duty', 'off-duty', 'offduty', 'off', 'done for the day', 'done', 'rest',
+    'called it a night', 'shut down', 'shut down for the night', 'done for the night',
+    'done driving for the day', 'done driving for the night', 'calling it a day', 'calling it a night',
+    // Spanish
+    'fuera de servicio', 'termine por hoy', 'terminé por hoy', 'termine por la noche', 'terminé por la noche',
+  ],
 };
 
 // Rest verbs that DON'T by themselves say where the driver rested. "Slept"/
-// "napped" could mean the truck's sleeper berth OR simply off-duty (a motel,
-// a lounge, etc.) — never guess; only classify as SLEEPER_BERTH when the
-// clause also names the berth/cab/truck. Otherwise surface it as genuinely
-// ambiguous between OFF_DUTY and SLEEPER_BERTH for driver confirmation.
-const AMBIGUOUS_REST_KEYWORDS = ['slept', 'sleep', 'sleeping', 'napped', 'napping', 'rested', 'resting'];
-const BERTH_CONTEXT_RE = /\b(sleeper|berth|bunk|cab|truck)\b/i;
+// "napped"/"went to bed" could mean the truck's sleeper berth OR simply
+// off-duty (a motel, a lounge, etc.) — never guess; only classify as
+// SLEEPER_BERTH when the clause also names the berth/cab/truck. Otherwise
+// surface it as genuinely ambiguous between OFF_DUTY and SLEEPER_BERTH for
+// driver confirmation.
+const AMBIGUOUS_REST_KEYWORDS = [
+  'slept', 'sleep', 'sleeping', 'napped', 'napping', 'rested', 'resting',
+  'went to bed', 'went to sleep', 'got up', 'woke up', 'hit the sack', 'turned in',
+  // Spanish
+  'dormi', 'dormí', 'durmiendo', 'me acoste', 'me acosté', 'descanse', 'descansé',
+];
+// Ambiguous non-driving stop with no explicit duty-status word — a lunch or
+// generic "break" could be OFF_DUTY (personal time) or ON_DUTY (paid stop),
+// and LogbookAI must not guess which. Same never-guess pattern as the rest
+// verbs above: default to the more common real-world meaning (OFF_DUTY) but
+// flag it for driver confirmation. The MANDATORY 30-minute break phrasing
+// ("my 30", "took my 30") is handled separately by ACTIVITY_MAP and is not
+// ambiguous — the driver named the specific FMCSA break, not a generic one.
+const AMBIGUOUS_BREAK_KEYWORDS = [
+  'took a break', 'stopped for lunch', 'lunch break', 'took lunch', 'stopped to eat',
+  // Spanish
+  'tome un descanso', 'tomé un descanso', 'pare para almorzar', 'paré para almorzar',
+];
+const BERTH_CONTEXT_RE = /\b(sleeper|berth|bunk|cab|truck|litera|camion|camión)\b/i;
 
 // Map an activity phrase to { duty_status, activity_type }
 const ACTIVITY_MAP = [
