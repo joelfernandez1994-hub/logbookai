@@ -17,7 +17,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import LocationInput from '@/components/LocationInput';
 import { Switch } from '@/components/ui/switch';
-import { Map, Clock, Check, X, Plus, MapPin, AlertTriangle, Sparkles, Moon, RefreshCw, Coffee, BedDouble, Fuel } from 'lucide-react';
+import { Map, Clock, Check, X, Plus, MapPin, AlertTriangle, Sparkles, Moon, RefreshCw, Coffee, BedDouble, Fuel, Truck } from 'lucide-react';
 
 // Always render durations as X hr YY min — never raw floating point.
 const fmtHM = (h) => {
@@ -175,9 +175,9 @@ export default function Trip() {
         try {
           const res = await base44.functions.invoke('complianceStop', { origin: originStr, destination: destStr, max_drive_miles: stop.mile });
           const s = res?.data || res;
-          out.push({ ...stop, city: s?.stop_city || '', state: s?.stop_state || '', verified: !!s?.verified });
+          out.push({ ...stop, city: s?.stop_city || '', state: s?.stop_state || '', verified: !!s?.verified, lat: s?.stop_lat ?? null, lng: s?.stop_lng ?? null });
         } catch (e) {
-          out.push({ ...stop, city: '', state: '', verified: false });
+          out.push({ ...stop, city: '', state: '', verified: false, lat: null, lng: null });
         }
       }
       if (!cancelled) { setResolvedStops(out); setResolvingStops(false); }
