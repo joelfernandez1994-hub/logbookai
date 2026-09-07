@@ -213,7 +213,12 @@
     "fromFuelReceipt": "From fuel receipt",
     "fromLoggedFuelEvent": "From logged fuel event",
     "noStopFound": "No stop found",
-    "stopFallback": "stop"
+    "stopFallback": "stop",
+    "truckStopOption": "Truck stop option",
+    "parkingAvailabilityCheck": "Parking availability: Check in Trucker Path",
+    "openInTruckerPath": "Open in Trucker Path",
+    "parkingLocationPending": "Resolving location for parking lookup…",
+    "truckerPathRequiresApp": "\"Open in Trucker Path\" requires the Trucker Path app installed on this device. LogbookAI does not show live parking availability itself — check Trucker Path for current truck-stop and parking information."
   },
   "logs": {
     "title": "Daily Logs",
