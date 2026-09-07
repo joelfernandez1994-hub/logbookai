@@ -132,8 +132,14 @@ export default function ProposalReview({ existing, proposed, cycleType, tz, onAp
 
   const proposedDate = events[0]?.start_timestamp ? dateKeyInTz(new Date(events[0].start_timestamp), tz) : dateKeyInTz(new Date(), tz);
   const proposalTotals = useMemo(() => computeProposalTotals(events, proposedDate, tz, evalNow), [events, proposedDate, tz, evalNow]);
-  const dailyMileage = useMemo(() => events.reduce((sum, event) => sum + (event.duty_status === 'DRIVING' && Number.isFinite(Number(event.mileage)) ? Number(event.mileage) : 0), 0), [events]);
+  const dailyMileage = useMemo(() => events.reduce((sum, event) => sum + (event.duty_status === 'DRIVING' && event.mileage != null && Number.isFinite(Number(event.mileage)) ? Number(event.mileage) : 0), 0), [events]);
   const hasEstimatedMileage = events.some(event => event.duty_status === 'DRIVING' && event.mileage_source === 'estimate');
+  // An ongoing or destinationless Driving event never gets fabricated mileage
+  // (see proposalValidation.enrichProposalMileage's canEstimateMileage) — it
+  // stays mileage:null / mileage_source:'unknown' until a real destination,
+  // odometer reading, or driver entry exists. Surfaced distinctly so the
+  // total's footer never implies a real number is quietly missing.
+  const hasUnknownMileage = events.some(event => event.duty_status === 'DRIVING' && event.mileage == null);
 
   const updateField = (i, field, val) => setEvents(prev => prev.map((e, idx) => idx === i ? { ...e, [field]: val } : e));
   const updateMileage = (i, val) => {
