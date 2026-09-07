@@ -200,7 +200,7 @@ export default function Trip() {
     setStopsTouched(true);
     setStops((prev) => [...prev, {
       type: meta.addType,
-      city: '',
+      city: stop.verified && stop.city ? `${stop.city}${stop.state ? `, ${stop.state}` : ''}` : '',
       note: t('trip.routeStopAddedNote', { label: meta.label, mile: Math.round(stop.mile), reason: stop.reason }),
     }]);
   };
