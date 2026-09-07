@@ -416,6 +416,9 @@ function mapInterpret(parsed, source, timezone, originalInput) {
       ambiguous_fields: p.ambiguous_fields || [],
       field_provenance: p.field_provenance || {},
       adjustments: p.adjustments || [],
+      // -1 (the model's "no confident target" sentinel, kept as a plain
+      // integer for strict-schema compatibility) normalizes to null here.
+      edit_target_index: Number.isInteger(p.edit_target_index) && p.edit_target_index >= 0 ? p.edit_target_index : null,
       source,
     };
   });
@@ -433,6 +436,7 @@ function mapInterpret(parsed, source, timezone, originalInput) {
     original_input: originalInput,
     pretrip_ask: !!parsed.pretrip_ask,
     refuses_fabrication: !!parsed.refuses_fabrication,
+    delete_target_indices: Array.isArray(parsed.delete_target_indices) ? parsed.delete_target_indices.filter((i) => Number.isInteger(i) && i >= 0) : [],
   };
 }
 
