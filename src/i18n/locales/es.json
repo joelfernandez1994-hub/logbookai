@@ -213,7 +213,12 @@
     "fromFuelReceipt": "Del recibo de combustible",
     "fromLoggedFuelEvent": "Del evento de combustible registrado",
     "noStopFound": "No se encontró ninguna parada",
-    "stopFallback": "parada"
+    "stopFallback": "parada",
+    "truckStopOption": "Opción de parada de camión",
+    "parkingAvailabilityCheck": "Disponibilidad de estacionamiento: Consulte en Trucker Path",
+    "openInTruckerPath": "Abrir en Trucker Path",
+    "parkingLocationPending": "Resolviendo la ubicación para la búsqueda de estacionamiento…",
+    "truckerPathRequiresApp": "\"Abrir en Trucker Path\" requiere tener instalada la aplicación Trucker Path en este dispositivo. LogbookAI no muestra disponibilidad de estacionamiento en vivo por sí misma — consulte Trucker Path para información actual de paradas de camión y estacionamiento."
   },
   "logs": {
     "title": "Registros Diarios",
