@@ -137,6 +137,45 @@ export function replaceDayRange(targetDate, tz) {
   return { dayStart, dayEnd };
 }
 
+// ---------------------------------------------------------------------------
+// REPLACE_DAY EXISTING-EVENT SCOPING.
+// ----------------------------------------------------------------------------
+// A replace_day proposal reconstructs an ENTIRE day from the driver's
+// narrative alone — it must never be validated/displayed as if the day's
+// PRE-EXISTING records (including a live/current-status row Today's quick-
+// status selector created or carried forward, e.g. from the carrier's home
+// terminal default) are still separately "there," or a full-day rewrite
+// starting somewhere else entirely gets bogus overlap/location warnings
+// against a stale row it is about to replace.
+//
+// This returns only the events OUTSIDE the replaced day — the ones a
+// replace_day proposal must still respect (yesterday's timeline, tomorrow's).
+// An event that STARTS within the target day is treated as part of the day
+// being replaced EVEN IF it is still open/ongoing (no end_timestamp) — an
+// open "current status" row is exactly the case rule 4 in the ticket calls
+// out: it must never leak into the reconstructed timeline as if it were an
+// external fact to reconcile against. An event that only STARTED before the
+// target day but is still ongoing INTO it is likewise excluded (it will be
+// truncated/handled by the replace-range writer at Apply time, same as any
+// other cross-boundary event — see planReplaceRange in timelineWriter.js,
+// unchanged here) rather than surfacing as a same-day conflict in a proposal
+// that is about to replace that day anyway.
+//
+// For any OTHER intent (add_events, edit_events, delete_events, etc.) this
+// is never called — existing/live-status context remains fully available,
+// exactly as it already is, since only a full-day reconstruction implies the
+// day's existing records are being superseded.
+export function existingOutsideReplacedDay(existing, targetDate, tz) {
+  const { dayStart, dayEnd } = replaceDayRange(targetDate, tz);
+  return (existing || []).filter((e) => {
+    if (!e || !e.start_timestamp) return true; // malformed — not this function's concern, leave it alone
+    const start = new Date(e.start_timestamp);
+    if (start >= dayStart && start < dayEnd) return false; // starts within the replaced day — excluded, even if still open
+    const end = e.end_timestamp ? new Date(e.end_timestamp) : new Date();
+    return end <= dayStart || start >= dayEnd;
+  });
+}
+
 // Validate + normalize an interpret response from the backend. Returns
 // { valid, errors, normalized }. Defensively coerces SLEEPER→SLEEPER_BERTH,
 // start_time→start_timestamp, end_time→end_timestamp so the UI/writer always
