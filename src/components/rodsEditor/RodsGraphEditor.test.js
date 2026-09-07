@@ -31,13 +31,8 @@
 //     touch target) and therefore legitimately scroll — this is unchanged
 //     behavior for the actual drawing/dragging interaction, on purpose.
 // ============================================================================
-import { describe, it, expect, vi } from 'vitest';
-// RodsGraphEditor.jsx transitively imports the Base44 client (via
-// timelineWriter.js) which needs `window` — not present in this plain
-// (non-jsdom) vitest environment. Mock it so importing the pure geometry
-// helper below doesn't need a real browser.
-vi.mock('@/api/base44Client', () => ({ base44: { entities: {} } }));
-import { computeGraphLayout } from './RodsGraphEditor';
+import { describe, it, expect } from 'vitest';
+import { computeGraphLayout } from '@/lib/rodsGraphLayout';
 
 const LEFT_W = 84;
 
