@@ -43,19 +43,32 @@ export default async function(req) {
     const milesFromOrigin = Math.round(pt.milesFromOrigin);
     const milesRemaining = Math.max(0, Math.round(totalMiles - pt.milesFromOrigin));
 
+    // stop_lat/stop_lng are the actual point-on-route coordinates computed
+    // above (pt.point = [lon, lat] from pointAtMiles) — included whether or
+    // not reverse geocoding resolved a name, so a downstream parking-provider
+    // handoff (e.g. Trucker Path's deep link, which requires lat/lng, not a
+    // city name) always has real, route-derived coordinates to use. This is
+    // never a fabricated point — it's the same location already used for the
+    // city/state lookup above.
     if (place && place.city) {
       return Response.json({
         stop_city: place.city,
         stop_state: place.state,
+        stop_lat: pt.point[1],
+        stop_lng: pt.point[0],
         miles_from_origin: milesFromOrigin,
         miles_remaining: milesRemaining,
         verified: true,
         note: 'Verified location via OpenStreetMap. Confirm it is truck-accessible before stopping.',
       });
     }
-    // Reverse geocode failed — give a range, never a fabricated name.
+    // Reverse geocode failed — give a range, never a fabricated name. The
+    // coordinates are still real (computed from the actual route), so a
+    // parking-provider handoff can still target them even without a place name.
     return Response.json({
       stop_city: '', stop_state: '',
+      stop_lat: pt.point[1],
+      stop_lng: pt.point[0],
       miles_from_origin: milesFromOrigin,
       miles_remaining: milesRemaining,
       verified: false,
