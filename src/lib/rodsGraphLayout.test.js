@@ -42,11 +42,20 @@ describe('REGRESSION — the graph always fits the viewport, no horizontal overf
   });
 });
 
-describe('REGRESSION — there is no separate zoomed/scrollable mode any more', () => {
-  it('computeGraphLayout takes no mode argument — the same fit-to-width result regardless of what a caller passes as a second arg', () => {
-    const withoutArg = computeGraphLayout(375);
-    const withExtraArg = computeGraphLayout(375, true); // extra arg silently ignored
-    expect(withExtraArg).toEqual(withoutArg);
+describe('REGRESSION — the default (no second argument) is always the full day, exactly fit', () => {
+  it('omitting the second argument defaults to visibleHours: 24, identical to explicitly passing 24', () => {
+    const withDefault = computeGraphLayout(375);
+    const withExplicit24 = computeGraphLayout(375, 24);
+    expect(withDefault).toEqual(withExplicit24);
+    expect(withDefault.visibleHours).toBe(24);
+  });
+
+  it('an explicit zoom window (e.g. 5h) intentionally produces a wider-than-viewport, legitimately scrollable content area', () => {
+    const zoomed = computeGraphLayout(375, 5);
+    expect(zoomed.visibleHours).toBe(5);
+    expect(zoomed.contentW).toBeGreaterThan(375);
+    // Still the same LEFT_W/pxPerHour relationship, just a different window.
+    expect(zoomed.graphW).toBeCloseTo(zoomed.pxPerHour * 24, 5);
   });
 
   it('a phone width (375px) never produces a wider-than-viewport content area', () => {
