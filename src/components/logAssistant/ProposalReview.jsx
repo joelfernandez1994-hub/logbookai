@@ -1,7 +1,7 @@
 import { useMemo, useState, useEffect } from 'react';
 import { validateProposal, hasBlocking, recommendBreakInsertion, buildPreTripEvent, computeProposalTotals, deriveHosDisplay, inspectProposalRoutes, addRouteWarning } from '@/lib/proposalValidation';
 import { reconstructDrivingDurations } from '@/lib/drivingDurationReconstruction';
-import { replaceDayRange, existingOutsideReplacedDay } from '@/lib/aiLayer';
+import { existingOutsideReplacedDay } from '@/lib/aiLayer';
 import { highestSeverity, fmtClockShort } from '@/lib/logAssistant';
 import { dateKeyInTz } from '@/lib/hosEngine';
 import LogGraph from '@/components/LogGraph';
