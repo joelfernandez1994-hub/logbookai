@@ -36,9 +36,15 @@
 // longest label ("Sleeper", 10px bold) plus its 6px right padding.
 export const LEFT_W = 64;
 
-export function computeGraphLayout(containerW) {
+// `visibleHours` defaults to 24 (the full day, fit exactly to width, no
+// scroll) — the only mode most of the app ever uses. Passing a smaller
+// value (e.g. 5) is the EXPLICIT, user-triggered "zoom in for precise
+// edits" interaction: pxPerHour increases, graphW/contentW legitimately
+// exceed containerW, and the caller is expected to make that region
+// horizontally scrollable/pannable. This is still presentation-only — it
+// changes how many PIXELS represent an hour, never what a stated time means.
+export function computeGraphLayout(containerW, visibleHours = 24) {
   const graphAvailW = Math.max(0, containerW - LEFT_W);
-  const visibleHours = 24;
   const pxPerHour = graphAvailW / visibleHours;
   const graphW = pxPerHour * 24;
   const contentW = LEFT_W + graphW;
