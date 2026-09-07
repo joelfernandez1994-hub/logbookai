@@ -21,7 +21,8 @@ import PreTripDialog from '@/components/PreTripDialog';
 // edit workflow, EventSheet, canonical timelineWriter calls (applyTimelineOps)
 // and validation; Today and Logs are just two entry points into it.
 import RodsGraphEditor from '@/components/rodsEditor/RodsGraphEditor';
-import { Truck, Clock, Coffee, RotateCcw, AlertTriangle, MapPin, Bot, ClipboardList, ClipboardCheck, Gauge, Moon, HelpCircle, ShieldCheck, Plus, PencilLine } from 'lucide-react';
+import { useIsMobile } from '@/hooks/use-mobile';
+import { Truck, Clock, Coffee, RotateCcw, AlertTriangle, MapPin, Bot, ClipboardList, ClipboardCheck, Gauge, Moon, HelpCircle, ShieldCheck, Plus, PencilLine, X, Check } from 'lucide-react';
 import DailyMilesCard from '@/components/DailyMilesCard';
 import TimezoneIndicator from '@/components/TimezoneIndicator';
 import TimelineGapNotice from '@/components/TimelineGapNotice';
