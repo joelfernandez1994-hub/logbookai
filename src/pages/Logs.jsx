@@ -191,7 +191,10 @@ export default function Logs() {
       <RouteTimeConflictNotice events={events} dateStr={dateStr} tz={tz} speedProfile={speedProfile} now={new Date()} onFix={() => setFixOpen(true)} />
       <DailyMilesCard events={events} dateStr={dateStr} tz={tz} speedProfile={speedProfile} />
 
-      <div className="rounded-xl border border-border bg-card p-3 mb-3">
+      {/* p-2 on mobile (down from p-3) so the shared graph editor gets a
+          little more real width to plot the full 24-hour day in —
+          presentation only, same card/border treatment on larger screens. */}
+      <div className="rounded-xl border border-border bg-card p-2 sm:p-3 mb-3">
         <TimezoneIndicator tz={tz} className="mb-2" />
         <RodsGraphEditor events={events} dateStr={dateStr} timezone={tz} carrier={carrier} equipment={equipment} profile={profile} certifications={certifications} reload={reload} />
       </div>
