@@ -151,14 +151,63 @@ export function movementCovered(proposed, movement) {
   return false;
 }
 
+// ---------------------------------------------------------------------------
+// STRUCTURAL check — no narrative text involved at all. Scans the PROPOSAL'S
+// OWN sequence of meaningful (non-Driving) status-change events for a city
+// change with no Driving event bridging it. Each leg is reconstructed from
+// the PREVIOUS meaningful location -> the DRIVING interval -> the NEXT
+// meaningful status-change location — it never requires both endpoints to
+// sit on the Driving event itself (a Driving event conventionally carries
+// only its ORIGIN city; the destination lives on the next non-Driving
+// event). Immune to phrasing/language entirely, so it catches exactly the
+// defect the text-regex approach can miss or misfire on: a genuinely
+// unbridged location jump in the proposal's own claimed geography.
+function findUnbridgedLocationChanges(proposed) {
+  const sorted = (proposed || [])
+    .filter((e) => e && e.start_timestamp)
+    .slice()
+    .sort((a, b) => new Date(a.start_timestamp) - new Date(b.start_timestamp));
+  const nonDriving = sorted.filter((e) => e.duty_status !== 'DRIVING' && String(e.city || '').trim());
+  const warnings = [];
+  for (let i = 1; i < nonDriving.length; i++) {
+    const prev = nonDriving[i - 1];
+    const cur = nonDriving[i];
+    if (normCity(prev.city) === normCity(cur.city) && normState(prev.state) === normState(cur.state)) continue;
+    const prevEndMs = prev.end_timestamp ? new Date(prev.end_timestamp).getTime() : new Date(prev.start_timestamp).getTime();
+    const curStartMs = new Date(cur.start_timestamp).getTime();
+    const hasDrivingBetween = sorted.some((e) => {
+      if (e.duty_status !== 'DRIVING' || !e.start_timestamp) return false;
+      const s = new Date(e.start_timestamp).getTime();
+      return s >= prevEndMs && s < curStartMs;
+    });
+    if (hasDrivingBetween) continue;
+    warnings.push({
+      type: 'described_movement_missing',
+      severity: 'blocking',
+      title: 'DESCRIBED DRIVING MISSING',
+      message: `This proposal moves from ${prev.city}${prev.state ? ', ' + prev.state : ''} to ${cur.city}${cur.state ? ', ' + cur.state : ''} with no Driving event connecting them. Add the missing Driving event (or edit the proposal) before confirming.`,
+      hint: 'Evidence: the proposal\'s own sequence of events. LogbookAI will not invent a Driving event — add the actual drive you performed.',
+      movement: { from: { city: prev.city, state: prev.state }, to: { city: cur.city, state: cur.state }, evidence: 'proposal_sequence' },
+    });
+  }
+  return warnings;
+}
+
 // Returns blocking warnings for every described movement the proposal fails to
 // cover. Consumed by validateProposal so ProposalReview's Confirm & Apply stays
-// disabled until the driver adds the missing Driving event.
+// disabled until the driver adds the missing Driving event. Combines the
+// narrative-text signal (specific phrasing like "drove from X to Y") with the
+// structural, language-independent check above; a given city-pair is only
+// ever reported once even if both signals catch it.
 export function describedMovementCoverage(proposed, narrative, provenance = {}) {
   const moves = extractDescribedMovements(narrative, provenance);
   const warnings = [];
+  const reported = new Set();
   for (const m of moves) {
     if (movementCovered(proposed, m)) continue;
+    const key = normCity(m.to.city) + '|' + normState(m.to.state);
+    if (reported.has(key)) continue;
+    reported.add(key);
     const label = m.from && m.from.city
       ? `${m.from.city}${m.from.state ? ', ' + m.from.state : ''} → ${m.to.city}${m.to.state ? ', ' + m.to.state : ''}`
       : `${m.to.city}${m.to.state ? ', ' + m.to.state : ''}`;
@@ -170,6 +219,12 @@ export function describedMovementCoverage(proposed, narrative, provenance = {}) 
       hint: `Evidence: ${m.evidence === 'regex' ? 'your narrative' : 'AI interpretation'}. LogbookAI will not invent a Driving event — add the actual drive you performed.`,
       movement: m,
     });
+  }
+  for (const w of findUnbridgedLocationChanges(proposed)) {
+    const key = normCity(w.movement.to.city) + '|' + normState(w.movement.to.state);
+    if (reported.has(key)) continue;
+    reported.add(key);
+    warnings.push(w);
   }
   return warnings;
 }
