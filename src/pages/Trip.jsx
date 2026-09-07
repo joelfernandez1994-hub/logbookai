@@ -217,6 +217,17 @@ export default function Trip() {
     }]);
   };
 
+  // Adds a SPECIFIC, real truck stop the driver picked from the discovery
+  // list below — distinct from the generic mileage-only "Add" above, but
+  // never a fabricated location: poi always comes from findTruckStopsNearStop
+  // (OpenStreetMap/Overpass). Manual Add Stop (the Planned Stops card further
+  // down) remains available either way.
+  const addTruckStopToPlan = (hosStop, poi) => {
+    const meta = STOP_META[hosStop.type];
+    setStopsTouched(true);
+    setStops((prev) => [...prev, buildPlannedStopFromTruckStop(hosStop, poi, meta.addType)]);
+  };
+
   const fetchComplianceStop = async () => {
     if (!estimate || !pickup.city || !delivery.city || !hosVerified) return;
     setStopLoading(true); setStopError(null);
