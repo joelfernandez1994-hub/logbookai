@@ -298,16 +298,18 @@ export default function RodsGraphEditor({
         </div>
       )}
 
-      {/* graph */}
-      <div ref={scrollRef} className="overflow-x-auto overflow-y-hidden rounded-lg border border-border bg-graph touch-pan-x graph-scroll"
-        style={{ touchAction: 'pan-x' }}>
+      {/* graph — overflow-hidden, not auto: the graph always fits exactly
+          (computeGraphLayout), so there is never a legitimate reason to
+          scroll; leaving overflow-x as "auto" only invited a stray 1px-
+          rounding scrollbar to reappear. */}
+      <div ref={scrollRef} className="overflow-hidden rounded-lg border border-border bg-graph">
         <div ref={contentRef} style={{ width: contentW, position: 'relative', height: TOP_PAD + ROW_H * 4 + 6 }}>
           {/* hour ruler (scrolls) */}
           <div style={{ position: 'absolute', left: LEFT_W, top: 0, width: graphW, height: TOP_PAD }}>
             {hourLabels.map((h) => (
               <div key={h}>
                 <div style={{ position: 'absolute', left: hourToX(h, pxPerHour) - 0.5, top: 0, width: 1, height: TOP_PAD, background: h % 6 === 0 ? C.gridStrong : (h % 2 === 0 ? C.gridMid : C.gridFaint) }} />
-                {h < 24 && (
+                {h < 24 && h % labelIntervalHours === 0 && (
                   <span style={{ position: 'absolute', left: hourToX(h, pxPerHour) + 3, top: 4, fontSize: 10, color: C.labels }}>
                     {h === 0 ? '12A' : h === 12 ? 'Noon' : h < 12 ? `${h}A` : `${h - 12}P`}
                   </span>
