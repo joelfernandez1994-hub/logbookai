@@ -1,7 +1,7 @@
 import { useMemo, useState, useEffect } from 'react';
 import { validateProposal, hasBlocking, recommendBreakInsertion, buildPreTripEvent, computeProposalTotals, deriveHosDisplay, inspectProposalRoutes, addRouteWarning } from '@/lib/proposalValidation';
 import { reconstructDrivingDurations } from '@/lib/drivingDurationReconstruction';
-import { replaceDayRange } from '@/lib/aiLayer';
+import { replaceDayRange, existingOutsideReplacedDay } from '@/lib/aiLayer';
 import { highestSeverity, fmtClockShort } from '@/lib/logAssistant';
 import { dateKeyInTz } from '@/lib/hosEngine';
 import LogGraph from '@/components/LogGraph';
@@ -26,14 +26,16 @@ function fmtHoursMinutes(hours) {
 
 export default function ProposalReview({ existing, proposed, cycleType, tz, onApply, onApplyReplace, onCancel, interpretation, clarifications, onResolveClarification, routeWarning, reconstructionConflicts = [], intent, targetDate, explicitGuard, narrative, provenance, enteredPriorHistory }) {
   const isReplaceDay = intent === 'replace_day';
+  // A replace_day proposal reconstructs the WHOLE target day from the
+  // driver's narrative alone — the day's own pre-existing records (including
+  // a live/current-status row Today's quick-status selector created, even
+  // still open/ongoing) are being superseded, not merged in as external
+  // facts to validate against. See existingOutsideReplacedDay's own header
+  // for the full rule. Any OTHER intent keeps full existing/live-status
+  // context, unchanged.
   const validationExisting = useMemo(() => {
     if (!isReplaceDay || !targetDate) return existing;
-    const { dayStart, dayEnd } = replaceDayRange(targetDate, tz);
-    return existing.filter((e) => {
-      const start = new Date(e.start_timestamp);
-      const end = e.end_timestamp ? new Date(e.end_timestamp) : new Date();
-      return end <= dayStart || start >= dayEnd;
-    });
+    return existingOutsideReplacedDay(existing, targetDate, tz);
   }, [existing, isReplaceDay, targetDate, tz]);
   const [editable, setEditable] = useState(false);
   const [events, setEvents] = useState(proposed);
