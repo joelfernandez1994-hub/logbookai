@@ -170,6 +170,12 @@ export function validateInterpretResult(data) {
       field_provenance: p.field_provenance || {},
       adjustments: Array.isArray(p.adjustments) ? p.adjustments : [],
       source: p.source || 'typed',
+      // Present only for intent 'edit_events' — the position (into the SAME
+      // events array sent to manualLogAssistant) of the existing event this
+      // proposal replaces. null/absent means the AI could not confidently
+      // identify one; see resolveEditTargets(), which callers MUST use
+      // before applying an edit — never insert an unresolved edit as new.
+      edit_target_index: Number.isInteger(p.edit_target_index) ? p.edit_target_index : null,
     };
   });
 
