@@ -363,7 +363,16 @@ export function validateProposal(existing, proposed, opts = {}) {
   if (opts.narrative) {
     warnings.push(...describedMovementCoverage(proposed, opts.narrative, opts.provenance || {}));
   }
-  warnings.push(...findOverlaps(merged, t));
+  // A pair already reported as an explicit-vs-explicit boundary conflict
+  // above is deliberately left un-truncated (rule 4/5) so the driver sees
+  // exactly what's wrong — suppress the generic overlap check's duplicate,
+  // less-specific report of that SAME pair (never suppress a different one).
+  const boundaryConflictStarts = new Set(
+    boundaryConflicts.map((c) => `${c.eventA?.start_timestamp}|${c.eventB?.start_timestamp}`)
+  );
+  warnings.push(...findOverlaps(merged, t).filter(
+    (w) => !boundaryConflictStarts.has(`${w.aStart?.toISOString?.()}|${w.bStart?.toISOString?.()}`)
+  ));
   warnings.push(...findLocationConflicts(merged, t));
 
   const pretrip = needsPreTrip(merged, t);
