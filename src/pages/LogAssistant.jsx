@@ -89,7 +89,7 @@ export default function LogAssistant() {
     return { ...value, proposed_events: reconstructed };
   };
 
-  const resetResults = () => { setProposal(null); setPastResult(null); setFutureResult(null); setError(''); setRouteWarning(null); setReconstructionConflicts([]); };
+  const resetResults = () => { setProposal(null); setPastResult(null); setFutureResult(null); setError(''); setRouteWarning(null); setReconstructionConflicts([]); setDeleteConfirm(null); };
 
   // ---------------------------------------------------------------------------
   // TELL tab: deterministic voice/text command parser runs FIRST (no quota).
