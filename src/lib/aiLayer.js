@@ -181,6 +181,10 @@ export function detectExplicitFactAlterations(events = [], deterministicFacts = 
     alteredExplicitFacts,
     droppedExplicitEvents,
     visibleAdjustments,
+    // Never blocking on their own — an approximate driver time that landed
+    // outside the tolerance window is surfaced for review, not treated as a
+    // dropped fact (the driver themselves said it was an estimate).
+    approximateMismatches,
   };
 }
 
