@@ -380,9 +380,24 @@ function normalizeClockFact(hour, minute, meridiem) {
   return `${String(h).padStart(2, '0')}:${String(Number(minute)).padStart(2, '0')}`;
 }
 
+// A time mention immediately preceded by an approximation qualifier
+// ("around 8:20", "about 5:45", Spanish "cerca de las"/"aproximadamente") is
+// NOT a hard, unambiguous fact the AI must reproduce exactly — it is the
+// driver's own estimate, and the AI rounding/inferring it (and correctly
+// marking that field "inferred") is the RIGHT behavior, not a dropped fact.
+// Treating every H:MM as an inviolable explicit fact regardless of hedging
+// language previously caused the guard to block extremely common, honest
+// trucker phrasing ("around 8", "about 20 minutes") with no visible reason.
+const APPROX_QUALIFIER_RE = /\b(?:about|around|near|roughly|approximately|circa|ish|cerca de|aproximadamente|casi)\s*$/i;
+function isApproximateMention(text, matchIndex) {
+  const lookback = text.slice(Math.max(0, matchIndex - 20), matchIndex);
+  return APPROX_QUALIFIER_RE.test(lookback);
+}
+
 function extractExplicitFacts(input) {
   const text = String(input || '');
   const times = [...text.matchAll(/\b(\d{1,2}):(\d{2})\s*(a\.?m\.?|p\.?m\.?)?\b/gi)]
+    .filter(m => !isApproximateMention(text, m.index))
     .map(m => ({ raw: m[0], normalized: normalizeClockFact(m[1], m[2], m[3]) }));
   const locations = [...text.matchAll(/\b([A-Z][A-Za-z.'-]*(?:\s+[A-Z][A-Za-z.'-]*){0,3}),\s*([A-Z]{2})\b/g)]
     .map(m => ({ raw: m[0], city: m[1].trim(), state: m[2].toUpperCase() }));
