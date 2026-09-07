@@ -39,3 +39,18 @@ export function computeGraphLayout(containerW) {
   const contentW = LEFT_W + graphW;
   return { visibleHours, pxPerHour, graphW, contentW };
 }
+
+// ---------------------------------------------------------------------------
+// Responsive TEXT LABEL density on the hour ruler — presentation only. The
+// grid itself (hour tick lines every hour, quarter ticks every 15 minutes)
+// is always full density via computeGraphLayout's pxPerHour, regardless of
+// this value; this only controls which ticks additionally get a "12A"/"3A"/
+// "Noon"/... text label, so labels never overlap once the full 24-hour day
+// is compressed into a phone-width screen. Returns the hour interval between
+// labeled ticks (e.g. 3 -> label every 3rd hour: 12A, 3A, 6A, ...).
+// ---------------------------------------------------------------------------
+export function getLabelIntervalHours(containerW) {
+  if (containerW <= 375) return 3;
+  if (containerW <= 430) return 2;
+  return 1; // existing denser (every-hour) labeling, unchanged for tablet/desktop
+}
