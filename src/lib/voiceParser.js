@@ -323,6 +323,15 @@ function parseDuration(text) {
   if (/half an hour|half hour|30 min|30min/i.test(text)) return 30 * MIN;
   if (/an hour|1 hour|one hour/i.test(text)) return H;
   if (/quarter hour|15 min|15min/i.test(text)) return 15 * MIN;
+  // Spanish: "por 20 minutos", "20 min", "media hora", "una hora", "un cuarto de hora".
+  const esUnit = text.match(/(?:por\s+)?(\d+(?:\.\d+)?)\s*(hora|horas|minuto|minutos|min)\b/i);
+  if (esUnit) {
+    const n = Number(esUnit[1]); const unit = esUnit[2].toLowerCase();
+    return unit.startsWith('hora') ? n * H : n * MIN;
+  }
+  if (/media hora/i.test(text)) return 30 * MIN;
+  if (/\buna hora\b/i.test(text)) return H;
+  if (/cuarto de hora/i.test(text)) return 15 * MIN;
   return null;
 }
 
