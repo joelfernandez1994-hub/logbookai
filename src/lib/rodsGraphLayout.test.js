@@ -25,7 +25,7 @@
 // rather than the graph zooming in to make room for finger precision.
 // ============================================================================
 import { describe, it, expect } from 'vitest';
-import { computeGraphLayout, LEFT_W } from './rodsGraphLayout';
+import { computeGraphLayout, getLabelIntervalHours, LEFT_W } from './rodsGraphLayout';
 
 describe('REGRESSION — the graph always fits the viewport, no horizontal overflow', () => {
   const widths = [320, 375, 390, 430, 768, 1024, 1440];
@@ -58,5 +58,44 @@ describe('REGRESSION — there is no separate zoomed/scrollable mode any more', 
     const layout = computeGraphLayout(320);
     expect(layout.contentW).toBeCloseTo(320, 5);
     expect(layout.pxPerHour).toBeGreaterThan(0);
+  });
+});
+
+// ============================================================================
+// Round 3: keeping the full-24h-fit geometry from round 2 (never shrink the
+// graph further) caused hour labels to overlap on a phone, since every one
+// of the 24 hours still got a rendered TEXT label crammed into ~240-350px of
+// graph width. getLabelIntervalHours() controls ONLY which ticks get a text
+// label (the grid lines themselves stay full density via computeGraphLayout,
+// unrelated to this) — exactly the widths requested: <=375px every 3h,
+// 376-430px every 2h, above that the original every-hour density.
+// ============================================================================
+describe('REGRESSION — responsive hour-label density (labels must never overlap on a phone)', () => {
+  it('<=375px labels every 3 hours', () => {
+    expect(getLabelIntervalHours(320)).toBe(3);
+    expect(getLabelIntervalHours(375)).toBe(3);
+  });
+
+  it('376-430px labels every 2 hours', () => {
+    expect(getLabelIntervalHours(376)).toBe(2);
+    expect(getLabelIntervalHours(390)).toBe(2);
+    expect(getLabelIntervalHours(430)).toBe(2);
+  });
+
+  it('above 430px keeps the original every-hour (denser) labeling, unchanged', () => {
+    expect(getLabelIntervalHours(431)).toBe(1);
+    expect(getLabelIntervalHours(768)).toBe(1);
+    expect(getLabelIntervalHours(1024)).toBe(1);
+    expect(getLabelIntervalHours(1440)).toBe(1);
+  });
+
+  it('label interval never affects the underlying grid geometry (computeGraphLayout is untouched by it)', () => {
+    // Same width, before/after the label-density feature existed: geometry
+    // (visibleHours/pxPerHour/graphW/contentW) is identical regardless of
+    // how many of those hours get a text label.
+    const before = computeGraphLayout(375);
+    getLabelIntervalHours(375); // calling it has no side effect on layout
+    const after = computeGraphLayout(375);
+    expect(after).toEqual(before);
   });
 });
