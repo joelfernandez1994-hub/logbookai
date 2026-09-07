@@ -453,20 +453,46 @@ export default function Today() {
       {/* Edit Log — same RodsGraphEditor instance/component Logs.jsx renders,
           fed with Today's own data. Its own reload prop is Today's reload
           (from useDriverData), so saving here refreshes Today's graph/HOS
-          immediately — same canonical timeline, same writer, same validation. */}
-      <Dialog open={editLogOpen} onOpenChange={setEditLogOpen}>
-        {/* w-[calc(100%-0.75rem)] uses essentially the full phone viewport
-            (a small 0.375rem side margin, not edge-to-edge against the
-            screen bezel/rounded corners) instead of the dialog primitive's
-            desktop-oriented max-w-lg default; p-2 (down from the base p-6)
-            gives the graph itself as much real width as possible. Unchanged
-            on larger screens (sm:max-w-2xl sm:p-6, the prior sizing). */}
-        <DialogContent className="w-[calc(100%-0.75rem)] p-2 sm:w-full sm:max-w-2xl sm:p-6 max-h-[90vh] overflow-y-auto">
-          <DialogHeader><DialogTitle>{t('logs.editLog')}</DialogTitle></DialogHeader>
-          <TimezoneIndicator tz={tz} className="mb-1" />
-          <RodsGraphEditor events={events} dateStr={todayKey} timezone={tz} carrier={carrier} equipment={equipment} profile={profile} certifications={certifications} reload={reload} />
-        </DialogContent>
-      </Dialog>
+          immediately — same canonical timeline, same writer, same validation.
+          On mobile it opens as a dedicated full-screen editor instead of a
+          card-sized modal (touch accuracy over fitting into a card); desktop
+          keeps the existing centered dialog. Either way it's the exact same
+          RodsGraphEditor + event-writing path, just different chrome. */}
+      {editLogOpen && isMobile ? (
+        <div className="fixed inset-0 z-50 bg-background flex flex-col">
+          <div className="flex items-center justify-between px-4 py-3 border-b border-border safe-top shrink-0">
+            <div className="font-semibold text-foreground">{t('logs.editLog')}</div>
+            <button type="button" onClick={() => setEditLogOpen(false)} aria-label={t('common.close') || 'Close'} className="p-1 -mr-1 text-muted-foreground">
+              <X className="w-5 h-5" />
+            </button>
+          </div>
+          <div className="flex-1 overflow-y-auto px-2 py-2">
+            <TimezoneIndicator tz={tz} className="mb-1" />
+            <RodsGraphEditor events={events} dateStr={todayKey} timezone={tz} carrier={carrier} equipment={equipment} profile={profile} certifications={certifications} reload={reload} />
+          </div>
+          {/* Fixed footer, clear of the (now-hidden) bottom nav and the home
+              indicator. Every actual data change already goes through
+              RodsGraphEditor's own EventSheet -> ProposedChangeDialog Apply
+              flow and is persisted immediately — these two buttons close the
+              full-screen editor, they don't hold back a batch of changes. */}
+          <div className="shrink-0 border-t border-border bg-background px-4 py-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] flex gap-2">
+            <Button variant="outline" className="flex-1" onClick={() => setEditLogOpen(false)}>
+              <X className="w-4 h-4 mr-1" /> {t('common.cancel') || 'Cancel'}
+            </Button>
+            <Button className="flex-1" onClick={() => setEditLogOpen(false)}>
+              <Check className="w-4 h-4 mr-1" /> {t('common.done') || 'Done'}
+            </Button>
+          </div>
+        </div>
+      ) : (
+        <Dialog open={editLogOpen} onOpenChange={setEditLogOpen}>
+          <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
+            <DialogHeader><DialogTitle>{t('logs.editLog')}</DialogTitle></DialogHeader>
+            <TimezoneIndicator tz={tz} className="mb-1" />
+            <RodsGraphEditor events={events} dateStr={todayKey} timezone={tz} carrier={carrier} equipment={equipment} profile={profile} certifications={certifications} reload={reload} />
+          </DialogContent>
+        </Dialog>
+      )}
 
       <Dialog open={dvirDialogOpen} onOpenChange={setDvirDialogOpen}>
         <DialogContent className="max-w-md max-h-[85vh] overflow-y-auto">
