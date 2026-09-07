@@ -7,10 +7,12 @@ import { whatCanIDo, computeProposedHOS, earliestLegalEta } from '@/lib/logAssis
 import { addRouteWarning, enrichProposalMileage, fetchRoute, truckEtaHours, DEFAULT_SPEED_PROFILE } from '@/lib/proposalValidation';
 import { reconstructDrivingDurations } from '@/lib/drivingDurationReconstruction';
 import { saveProposalMiles } from '@/lib/tripSync';
-import { insertEventsBatch, editEvent, replaceRangeEvents } from '@/lib/timelineWriter';
+import { insertEventsBatch, editEvent, deleteEventById, replaceRangeEvents } from '@/lib/timelineWriter';
 import { parseVoiceCommand } from '@/lib/voiceParser';
-import { validateInterpretResult, isQuestionIntent, shouldOfferApply, replaceDayRange } from '@/lib/aiLayer';
+import { validateInterpretResult, isQuestionIntent, shouldOfferApply, replaceDayRange, resolveEditTargets } from '@/lib/aiLayer';
 import { isMultiEventNarrative } from '@/lib/narrativeClassifier';
+import { detectFeasibilityQuestion, answerFeasibilityQuestion } from '@/lib/feasibilityQuestion';
+import { earliestLegalEta } from '@/lib/logAssistant';
 import AssistantInput from '@/components/logAssistant/AssistantInput';
 import ProposalReview from '@/components/logAssistant/ProposalReview';
 import WhatCanIDoPanel from '@/components/logAssistant/WhatCanIDoPanel';
