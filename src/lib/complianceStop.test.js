@@ -166,9 +166,13 @@ describe('withFuelOpportunities — separate mileage heuristic, not an HOS rule'
     for (let i = 1; i < combined.length; i++) expect(combined[i].mile).toBeGreaterThanOrEqual(combined[i - 1].mile);
   });
 
-  it('a longer trip (1,800 mi) on the same HOS basis DOES need a fuel stop beyond what break/rest cadence alone covers', () => {
-    const hosStops = planTripStops({ hos: FRESH_TRIP_HOS_BASIS, profileId: '55', cycleType: '70_8', totalMiles: 1800 });
-    const combined = withFuelOpportunities(hosStops, 1800, 500);
+  it('a tighter fuel range than the HOS-driven cadence DOES surface a separate fuel stop', () => {
+    // The 8-hour-driving/30-min-break cadence naturally caps most segments
+    // around ~440mi for this basis, which already fits a 500mi tank range —
+    // so with a smaller-tank profile (300mi range) a genuine extra fuel stop
+    // is still correctly surfaced rather than silently assumed unnecessary.
+    const hosStops = planTripStops({ hos: FRESH_TRIP_HOS_BASIS, profileId: '55', cycleType: '70_8', totalMiles: 1220 });
+    const combined = withFuelOpportunities(hosStops, 1220, 300);
     expect(combined.some((s) => s.type === 'fuel')).toBe(true);
   });
 });
