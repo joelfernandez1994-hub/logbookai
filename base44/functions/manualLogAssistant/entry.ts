@@ -220,14 +220,16 @@ ABSOLUTE SAFETY RULES:
 
 INTENT (choose exactly one):
 - "add_events": the driver is describing new activity to log (the normal case).
-- "edit_events": the driver wants to change specific existing events. Use the RECENT ACTUAL EVENTS to identify the target by time; if you cannot tell which event, set requires_clarification=true and still return your best-guess proposal.
+- "edit_events": the driver wants to CHANGE one or more specific existing events (a time, location, status, or duration correction — "change my last fuel stop to 8:15", "that was Jacksonville, not Orlando", "make the fuel stop 30 minutes", "I actually started driving at 7, not 6:45"). Each proposed_events entry you return for this intent is the FULL CORRECTED event (not just the changed field), and its edit_target_index MUST be set to the [index] of the exact RECENT ACTUAL EVENTS line it replaces (see REFERENCE RESOLUTION). If you cannot confidently identify a single existing event, set edit_target_index to -1 on that entry AND requires_clarification=true, and still return your best-guess proposed event.
+- "delete_events": the driver wants to REMOVE one or more specific existing events ("delete the second fuel stop", "remove that break"). Set proposed_events=[] and populate delete_target_indices with the [index] of each RECENT ACTUAL EVENTS line to remove. If you cannot confidently identify which event, leave delete_target_indices=[] and set requires_clarification=true with a targeted clarification_question instead of guessing.
 - "replace_day": the driver wants to redo an entire day/trip ("redo my day", "start my log over for August 20"). Provide the full replacement event set for that day.
 - "question": a non-HOS question about their log.
-- "hos_question": an HOS question ("how many hours do I have", "can I drive", "do I have a violation"). Do NOT propose events; answer in summary using the deterministic HOS context provided.
+- "hos_question": an HOS question ("how many hours do I have", "can I drive", "do I have a violation", "can I make it to X tonight"). Do NOT propose events; answer in summary using the deterministic HOS context provided. For a destination-feasibility question, use only the mileage/route information you are given in context — NEVER invent a distance, drive time, or ETA yourself.
 - "clarification": ONLY when a single missing detail MATERIALLY prevents any legal interpretation AND no reasonable inference exists. Set requires_clarification=true, ask ONE targeted question in clarification_question, and STILL return your best-guess proposed_events so the driver can proceed.
 
 REFERENCE RESOLUTION:
-- Resolve "earlier", "yesterday", "today", "my fuel stop", "my pre-trip", "the 4 PM stop", etc. using the RECENT ACTUAL EVENTS and the provided TODAY/NOW. target_date is the calendar date (YYYY-MM-DD) the described activity falls on.
+- Resolve "earlier", "yesterday", "today", "my fuel stop", "my pre-trip", "the 4 PM stop", "my last stop", "the second fuel stop", etc. using the numbered RECENT ACTUAL EVENTS list (each line is prefixed "[N] ...") and the provided TODAY/NOW. target_date is the calendar date (YYYY-MM-DD) the described activity falls on.
+- For edit_events/delete_events, the index N from that same "[N] ..." prefix is EXACTLY what edit_target_index / delete_target_indices expects — never invent an index outside the numbers actually shown, and never guess an index when more than one event could plausibly match (use -1 / omit it and ask instead).
 - If a referenced event is ambiguous or cannot be safely identified, set requires_clarification=true and ask in clarification_question, but still return a best-guess proposal when possible.
 
 COMPLETENESS-FIRST INFERENCE:
