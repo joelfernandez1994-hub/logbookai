@@ -283,7 +283,7 @@ export default function RodsGraphEditor({
 
       {editMode && (
         <div className="text-[11px] text-warning-surface-foreground bg-warning-surface border border-warning/50 rounded-md px-2.5 py-1.5 mb-2">
-          <b>{t('rodsEditor.editMode')}</b> — Press a row and drag to draw. Tap a segment to edit. Drag the ruler to pan.
+          <b>{t('rodsEditor.editMode')}</b> — Press a row and drag to draw. Tap a segment to edit.
         </div>
       )}
 
