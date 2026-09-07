@@ -9,14 +9,13 @@ import RodsGraphEditor from '@/components/rodsEditor/RodsGraphEditor';
 import { getCertifications } from '@/lib/driverData';
 import { base44 } from '@/api/base44Client';
 import { insertEvent, editEvent, deleteEventById, clearDayEvents } from '@/lib/timelineWriter';
-import { validateTimeline } from '@/lib/timelineEngine';
+
 import LocationInput from '@/components/LocationInput';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { ChevronLeft, ChevronRight, BadgeCheck, AlertTriangle, Pencil, Trash2, Plus, Bot, Eraser } from 'lucide-react';
-import { validateProposal, hasBlocking } from '@/lib/proposalValidation';
 import { useEffect } from 'react';
 import DailyMilesCard from '@/components/DailyMilesCard';
 import TimelineGapNotice from '@/components/TimelineGapNotice';
