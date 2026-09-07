@@ -295,17 +295,26 @@ export function validateTimeline(rawEvents, opts = {}) {
     expectedDuration = Math.max(0, targetEnd - dayStart);
     const clipped = norm.segments
       .filter(s => s.end > dayStart && s.start < targetEnd)
-      .map(s => ({ start: new Date(Math.max(s.start, dayStart)), end: new Date(Math.min(s.end, targetEnd)) }))
+      .map(s => ({ start: new Date(Math.max(s.start, dayStart)), end: new Date(Math.min(s.end, targetEnd)), is_ongoing: !!s.is_ongoing }))
       .sort((a, b) => a.start - b.start);
     let cursor = dayStart.getTime();
+    let lastOngoing = false;
     for (const s of clipped) {
       if (s.start.getTime() > cursor + 1000) hasElapsedGap = true;
       if (s.start.getTime() < cursor - 1000) hasOverlap = true;
       const from = Math.max(cursor, s.start.getTime());
       if (s.end.getTime() > from) totalCoveredDuration += s.end.getTime() - from;
       cursor = Math.max(cursor, s.end.getTime());
+      lastOngoing = s.is_ongoing;
     }
-    if (cursor < targetEnd.getTime() - 1000) hasElapsedGap = true;
+    // A currently open-ended duty status (Live Tracking's active status) is
+    // CONTINUOUS with `now` by construction — flagging a trailing gap here
+    // would only be measuring how long it's been since the last re-render,
+    // not a real hole in the log. Only a genuinely completed/closed last
+    // segment that stops short of `targetEnd` is a real elapsed gap. This
+    // exception only applies to the CURRENT day (isCurrent) — a past day's
+    // trailing coverage must still reach its real day-end.
+    if (!(isCurrent && lastOngoing) && cursor < targetEnd.getTime() - 1000) hasElapsedGap = true;
     isContinuousThroughNow = !hasElapsedGap && !hasOverlap && cursor >= targetEnd.getTime() - 1000;
     if (hasElapsedGap) issues.push({ type: 'elapsed_gap', severity: 'blocking', message: 'Elapsed duty-status coverage has an unassigned gap.' });
     const hours = totalCoveredDuration / H;
