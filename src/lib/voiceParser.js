@@ -12,6 +12,8 @@
 // reviews and confirms every field before anything is applied.
 // ============================================================================
 
+import { resolveEventReference, describeEvent, findEventByCity } from './eventReference';
+
 const H = 3600000;
 const MIN = 60000;
 
