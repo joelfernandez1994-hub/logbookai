@@ -12,7 +12,7 @@
 import { startOfDayInTz } from './hosEngine';
 
 export const DUTY_STATUSES = ['OFF_DUTY', 'SLEEPER_BERTH', 'DRIVING', 'ON_DUTY'];
-const INTENTS = ['add_events', 'edit_events', 'replace_day', 'question', 'hos_question', 'clarification'];
+const INTENTS = ['add_events', 'edit_events', 'delete_events', 'replace_day', 'question', 'hos_question', 'clarification'];
 
 export function normalizeStatus(s) {
   if (!s) return '';
