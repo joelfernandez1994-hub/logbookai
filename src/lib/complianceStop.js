@@ -61,6 +61,48 @@ export function legHours(miles, profileId) {
   return mph > 0 ? miles / mph : null;
 }
 
+// Fallback HOS basis for trip planning ONLY, used when the driver's ACTUAL
+// current HOS cannot be verified (validateTimeline finds the real log
+// invalid/gapped, so hosEngine.computeHOS can't calculate real remaining
+// clocks). This is NOT a second HOS implementation — it is the same shape
+// planTripStops() already consumes from computeHOS, just populated with the
+// standard property-carrying limits (11h driving, 14h window, 8h to a
+// qualifying break) as if the driver were starting a fresh, fully-rested day
+// right now. cycleRemainingHours is deliberately null (unknown, not assumed
+// full) so planTripStops() never suggests a 34-hour restart against a cycle
+// number nobody can verify. Callers MUST clearly label output produced from
+// this basis as an assumption, not the driver's real available hours.
+export const FRESH_TRIP_HOS_BASIS = Object.freeze({
+  break30: { remainingBeforeBreakMs: 8 * H, drivingAccumulatedMs: 0, breakRequired: false },
+  driving: { drivingRemainingMs: 11 * H },
+  window14: { remainingMs: 14 * H },
+  cycle: { cycleRemainingHours: null },
+});
+
+// Typical property-carrying tractor fuel range — NOT an HOS rule. Fuel stops
+// are a separate, non-regulatory planning concern from break/rest/restart
+// stops, so this stays a distinct, simple mileage heuristic rather than being
+// folded into planTripStops()'s HOS-driven simulation. Inserts a 'fuel'
+// suggestion whenever the gap between two consecutive planned points (start,
+// an HOS stop, or the destination) would exceed the typical range, so a long
+// trip with few/no HOS stops still gets sensible fuel opportunities.
+export function withFuelOpportunities(hosStops, totalMiles, fuelRangeMiles = 500) {
+  if (!(totalMiles > 0)) return hosStops || [];
+  const sorted = [...(hosStops || [])].sort((a, b) => a.mile - b.mile);
+  const points = [0, ...sorted.map((s) => s.mile), totalMiles];
+  const withFuel = [...sorted];
+  for (let i = 0; i < points.length - 1; i++) {
+    let cursor = points[i];
+    const segmentEnd = points[i + 1];
+    // A segment far longer than one tank needs more than one fuel stop.
+    while (segmentEnd - cursor > fuelRangeMiles) {
+      cursor += fuelRangeMiles;
+      withFuel.push({ type: 'fuel', mile: cursor, durationHours: 1 / 3, reason: `Typical truck fuel range (~${fuelRangeMiles} mi) since the last stop` });
+    }
+  }
+  return withFuel.sort((a, b) => a.mile - b.mile);
+}
+
 // Choose the rest duration that resets the limiting clock:
 //   10h+ off/sleeper resets 11h driving & 14h window.
 //   34h off/sleeper additionally resets the cycle.
