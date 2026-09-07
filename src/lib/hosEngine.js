@@ -415,13 +415,55 @@ export function evaluateSplitSleeper(segments, now = new Date(), blocksArg) {
 }
 
 // ---------------------------------------------------------------------------
+// REACHABILITY — how far back from `now` the logged segments form an
+// unbroken (gap-free) run. A rest block on the far side of an unlogged gap
+// must never silently become the 11h/14h anchor: an ancient qualifying reset
+// reached through days/weeks of silence produces a 14-hour window that looks
+// like it started long before the driver's actual current duty stretch (the
+// exact "cross-day 50h+ 14h-window artifact" computeContiguousGoverningReset
+// already guards against for AI-proposal construction). This generalizes
+// that same protection to computeGoverningReset itself, so every caller of
+// the live engine — Today, compliance checks, Trip Planner — shares it,
+// since they all read the same canonical timeline.
+// `reachedStart: true` with no gap ever found means the walk ran out of
+// history entirely (this IS the first segment ever logged for the driver),
+// which is a different situation from a genuine gap in a longer record —
+// see the 'implied' branch below.
+// ---------------------------------------------------------------------------
+const REACH_TOL_MS = 60000; // matches buildRestBlocksWithSleeper's own contiguity tolerance
+
+function reachableRegion(segments, now) {
+  const sorted = [...(segments || [])].sort((a, b) => a.start.getTime() - b.start.getTime());
+  if (!sorted.length) return { startMs: -Infinity, reachedStart: false, sorted };
+  let idx = sorted.length - 1;
+  while (idx > 0 && sorted[idx].start.getTime() > now.getTime()) idx--;
+  let cursor = idx;
+  let reachedStart = true;
+  for (let i = idx; i > 0; i--) {
+    const prevEnd = sorted[i - 1].end.getTime();
+    const curStart = sorted[i].start.getTime();
+    if (Math.abs(prevEnd - curStart) <= REACH_TOL_MS) {
+      cursor = i - 1;
+    } else {
+      reachedStart = false;
+      break;
+    }
+  }
+  return { startMs: sorted[cursor].start.getTime(), reachedStart, sorted };
+}
+
+// ---------------------------------------------------------------------------
 // GOVERNING RESET — the reset that anchors the current 11h and 14h clocks.
 // A valid split (after the last full reset) governs over the full reset;
-// otherwise the most recent 10h off-duty rest governs; otherwise none.
+// otherwise the most recent 10h off-duty rest governs; otherwise none — but
+// only ever searching the CONTIGUOUS region reaching back from `now` (see
+// reachableRegion above).
 // ----------------------------------------------------------------------------
 export function computeGoverningReset(segments, now = new Date()) {
-  const blocks = buildRestBlocksWithSleeper(segments, now);
-  const split = evaluateSplitSleeper(segments, now, blocks);
+  const region = reachableRegion(segments, now);
+  const reachableSegments = region.sorted.filter(s => s.end.getTime() >= region.startMs);
+  const blocks = buildRestBlocksWithSleeper(reachableSegments, now);
+  const split = evaluateSplitSleeper(reachableSegments, now, blocks);
   if (split.status === 'active' && split.referenceTime) {
     return {
       type: 'split',
@@ -446,7 +488,28 @@ export function computeGoverningReset(segments, now = new Date()) {
       block: fullReset,
     };
   }
-  return { type: 'none', referenceTime: null, effectiveTime: null, secondDuration: 0, split, block: null };
+  // No qualifying reset reachable contiguously back to `now`. If the region
+  // truly reaches the very first segment ever logged (nothing earlier exists
+  // to weigh against it — a brand-new record, not a gap in a longer one),
+  // imply the anchor from the record's own leading rest run: there is no
+  // logged history at all to contradict a reset, so don't report "unverified"
+  // for a driver whose very first entry IS this duty day.
+  if (region.reachedStart && region.sorted.length) {
+    let i = 0;
+    while (i < region.sorted.length && REST_STATUSES.includes(region.sorted[i].duty_status)) i++;
+    const implied = i > 0 ? region.sorted[i - 1].end : null;
+    if (implied) {
+      return { type: 'implied', referenceTime: implied, effectiveTime: implied, secondDuration: 0, split, block: null, historyComplete: false };
+    }
+    return { type: 'none', referenceTime: null, effectiveTime: null, secondDuration: 0, split, block: null };
+  }
+  // The contiguous region stops at a genuine gap, with older (possibly
+  // qualifying) history beyond it — never reach through it silently.
+  return {
+    type: 'unverified', referenceTime: null, effectiveTime: null, secondDuration: 0, split, block: null,
+    unverified: true,
+    reason: 'No qualifying split-sleeper pair or ≥10-hour reset found in the contiguous timeline back to now — the current duty stretch appears to extend across an unlogged gap in the record.',
+  };
 }
 
 // ---------------------------------------------------------------------------
