@@ -28,7 +28,7 @@ const STATUS_KEYWORDS = {
     'rolling', 'started rolling', 'got rolling', 'pulled out', 'started back up',
     'back on the road', 'hit the road', 'took off', 'headed out',
     // Spanish
-    'conduciendo', 'manejando', 'maneje', 'manejé', 'arranque', 'arranqué', 'sali', 'salí', 'en la carretera',
+    'conduciendo', 'manejando', 'manejar', 'maneje', 'manejé', 'arranque', 'arranqué', 'sali', 'salí', 'en la carretera',
   ],
   ON_DUTY: [
     'on duty', 'on-duty', 'onduty', 'fuel', 'fueled', 'fueling', 'loading', 'loaded', 'unloading', 'unloaded',
