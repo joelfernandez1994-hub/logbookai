@@ -130,7 +130,7 @@ const INTERPRET_SCHEMA = {
       },
     },
   },
-  required: ['intent', 'target_date', 'requires_clarification', 'clarification_question', 'summary', 'refuses_fabrication', 'pretrip_ask', 'proposed_events', 'clarifications', 'location_confirmations'],
+  required: ['intent', 'target_date', 'requires_clarification', 'clarification_question', 'summary', 'refuses_fabrication', 'pretrip_ask', 'delete_target_indices', 'proposed_events', 'clarifications', 'location_confirmations'],
 };
 
 // Response shapes for make_legal_past / make_legal_future, matching the JSON
