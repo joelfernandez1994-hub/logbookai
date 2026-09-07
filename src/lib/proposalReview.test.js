@@ -164,16 +164,21 @@ describe('mileage rule — ongoing/destinationless Driving never gets fabricated
   });
 
   it('5. HOS still evaluates elapsed Driving time normally for an ongoing, mileage-unknown event', async () => {
+    // A qualifying 10h+ reset (rather than the 6h used elsewhere in this
+    // file, which is fine when a test doesn't depend on exact clock values)
+    // makes the tour-start boundary unambiguous, so the expected remaining
+    // drive time below is exact and not dependent on hosEngine's own
+    // contiguous-governing-reset heuristics.
     const events = [
-      event('OFF_DUTY', 0, 6, 'Miami'),
-      event('ON_DUTY', 6, 6.25, 'Miami'),
-      { ...event('DRIVING', 6.25, null, 'Miami'), end_timestamp: null, is_ongoing: true },
+      event('OFF_DUTY', 0, 10, 'Miami'),
+      event('ON_DUTY', 10, 10.25, 'Miami'),
+      { ...event('DRIVING', 10.25, null, 'Miami'), end_timestamp: null, is_ongoing: true },
     ];
-    const now = new Date(iso(10)); // 3h45m of elapsed driving
+    const now = new Date(iso(14)); // 3h45m of elapsed driving
     const enriched = await enrichProposalMileage(events, { routingProvider: neverCalled, now });
     const hos = computeHOS(enriched.events, '70_8', TZ, now, { historyComplete: true });
     expect(hos.calculable).toBe(true);
-    // 11h limit minus ~3.75h driven so far — HOS math is entirely independent
+    // 11h limit minus 3.75h driven so far — HOS math is entirely independent
     // of the (now-null) mileage field.
     expect(hos.driving.drivingRemainingMs).toBeCloseTo((11 - 3.75) * H, -3);
   });
