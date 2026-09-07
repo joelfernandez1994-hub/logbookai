@@ -91,11 +91,18 @@ export function extractDescribedMovements(narrative, provenance = {}) {
     const dest = captureCityAt(summary.slice(sm.index + sm[0].length));
     if (dest && dest.city) moves.push({ from: null, to: dest, evidence: 'ai_provenance' });
   }
+  // Compare CITY ONLY (state stripped from both sides) so a plain state
+  // enrichment ("Gary" -> "Gary, IN") is never mistaken for a genuine
+  // destination change ("Gary" -> "Chicago, IL") — every location_confirmation
+  // gains a state suffix by design, so comparing the raw strings previously
+  // flagged EVERY confirmed location as a "described movement."
   const confirms = Array.isArray(provenance.location_confirmations) ? provenance.location_confirmations : [];
   for (const c of confirms) {
-    const o = String((c && c.original) || ''), intr = String((c && c.interpreted) || '');
-    if (!o || !intr || normCity(o) === normCity(intr)) continue;
-    moves.push({ from: null, to: { city: intr, state: '' }, evidence: 'ai_provenance' });
+    const oRaw = String((c && c.original) || ''), intrRaw = String((c && c.interpreted) || '');
+    if (!oRaw || !intrRaw) continue;
+    const o = splitCityState(oRaw), intr = splitCityState(intrRaw);
+    if (normCity(o.city) === normCity(intr.city)) continue; // same city, state merely added — not a movement
+    moves.push({ from: null, to: { city: intr.city, state: intr.state }, evidence: 'ai_provenance' });
   }
   return moves;
 }
