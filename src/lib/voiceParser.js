@@ -496,7 +496,12 @@ export function parseVoiceCommand(text, ctx = {}) {
     if (t) {
       const refText = isArrival ? 'driving' : (statusHit ? (statusHit.activity || labelStatus(statusHit.status)) : raw);
       const ref = resolveEventReference(ctx.events || [], refText, { tz });
-      if (ref.resolved && !ref.ambiguous) {
+      // Unlike a bare reference ("the fuel stop"), a self-correction like
+      // "I actually..." is almost always about the MOST RECENT matching
+      // event (what the driver just said or is still doing) — so the
+      // default-to-most-recent resolution is accepted even when multiple
+      // same-type events exist (ref.ambiguous), rather than asking.
+      if (ref.resolved) {
         const field = isArrival ? 'end_timestamp' : 'start_timestamp';
         return {
           handled: true, edit: true, correction: true,
