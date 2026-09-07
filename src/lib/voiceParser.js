@@ -78,16 +78,19 @@ const AMBIGUOUS_BREAK_KEYWORDS = [
 ];
 const BERTH_CONTEXT_RE = /\b(sleeper|berth|bunk|cab|truck|litera|camion|camión)\b/i;
 
-// Map an activity phrase to { duty_status, activity_type }
+// Map an activity phrase to { duty_status, activity_type }. Bilingual.
 const ACTIVITY_MAP = [
-  { re: /\bpre[-\s]?trip\b/i, status: 'ON_DUTY', activity: 'Pre-Trip' },
-  { re: /\bpost[-\s]?trip\b/i, status: 'ON_DUTY', activity: 'Post-Trip' },
-  { re: /\bfuel(?:ing|ed)?\b/i, status: 'ON_DUTY', activity: 'Fuel' },
-  { re: /\bunload(?:ing|ed)?\b/i, status: 'ON_DUTY', activity: 'Unloading' },
-  { re: /\bload(?:ing|ed)?\b/i, status: 'ON_DUTY', activity: 'Loading' },
-  { re: /\bdrop(?:ped)?\b.*\bhook\b|\bhook(?:ed)?\b.*\bdrop\b|\bequipment change\b/i, status: 'ON_DUTY', activity: 'Equipment Change' },
+  { re: /\bpre[-\s]?trip\b|\binspecci[oó]n previa\b/i, status: 'ON_DUTY', activity: 'Pre-Trip' },
+  { re: /\bpost[-\s]?trip\b|\binspecci[oó]n final\b/i, status: 'ON_DUTY', activity: 'Post-Trip' },
+  { re: /\bfuel(?:ing|ed)?\b|\bgot fuel\b|\bcombustible\b/i, status: 'ON_DUTY', activity: 'Fuel' },
+  { re: /\bunload(?:ing|ed)?\b|\bdescargu?[eé]?\b|\bdescargando\b/i, status: 'ON_DUTY', activity: 'Unloading' },
+  { re: /\bload(?:ing|ed)?\b|\bcargu?[eé]?\b|\bcargando\b/i, status: 'ON_DUTY', activity: 'Loading' },
+  { re: /\bdrop(?:ped)?\b.*\bhook\b|\bhook(?:ed)?\b.*\bdrop\b|\bequipment change\b|\bswapped trailers?\b|\bdrop and hook\b|\bdrop[-\s]?hook\b/i, status: 'ON_DUTY', activity: 'Equipment Change' },
   { re: /\bbobtail/i, status: 'ON_DUTY', activity: 'Equipment Change' },
   { re: /\byard move\b/i, status: 'ON_DUTY', activity: 'Yard Move' },
+  { re: /\bdetention\b|\bwait(?:ed|ing)?\s+at\s+the\s+(?:shipper|receiver|consignee)\b/i, status: 'ON_DUTY', activity: 'Detention' },
+  { re: /\bpaperwork\b|\bdid paperwork\b|\bpapeleo\b/i, status: 'ON_DUTY', activity: 'Paperwork' },
+  { re: /\bchecked the truck\b|\bchecking the truck\b|\brevis(?:e|ando)\s+el\s+cami[oó]n\b/i, status: 'ON_DUTY', activity: 'Vehicle Check' },
   // The mandatory 30-minute break — extremely common trucker phrasing
   // ("stopped for my 30", "took my 30") that previously matched no keyword
   // at all and silently dropped the whole clause.
