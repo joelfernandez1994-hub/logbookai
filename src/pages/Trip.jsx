@@ -437,22 +437,47 @@ export default function Trip() {
               const locationLabel = stop.verified && stop.city
                 ? `${stop.city}${stop.state ? `, ${stop.state}` : ''}`
                 : t('trip.approxMileOnly', { mile: Math.round(stop.mile) });
+              // Truck-stop/parking discovery is a SEPARATE concern from the HOS
+              // stop decision above: LogbookAI decided WHEN/roughly WHERE via
+              // planTripStops(); this only hands the driver off to an external
+              // provider (Trucker Path) to find an actual truck stop/parking
+              // spot near that real, route-derived point. Only offered once
+              // real coordinates exist for this stop — never a guess.
+              const handoff = buildParkingHandoff(stop);
               return (
-                <div key={i} className="flex items-center justify-between gap-2 rounded-lg border border-border bg-accent/30 p-2.5 text-xs">
-                  <div className="flex items-start gap-2">
-                    <Icon className="w-4 h-4 mt-0.5 shrink-0 text-muted-foreground" />
-                    <div>
-                      <div className="font-medium text-card-foreground">{meta.label} — {locationLabel}</div>
-                      <div className="text-muted-foreground">{stop.reason}</div>
+                <div key={i} className="rounded-lg border border-border bg-accent/30 p-2.5 text-xs">
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex items-start gap-2">
+                      <Icon className="w-4 h-4 mt-0.5 shrink-0 text-muted-foreground" />
+                      <div>
+                        <div className="font-medium text-card-foreground">{meta.label} — {locationLabel}</div>
+                        <div className="text-muted-foreground">{stop.reason}</div>
+                      </div>
                     </div>
+                    <Button size="sm" variant="outline" className="h-7 px-2 shrink-0" onClick={() => addRouteStopToPlan(stop)}>
+                      <Plus className="w-3 h-3 mr-1" /> {t('common.add')}
+                    </Button>
                   </div>
-                  <Button size="sm" variant="outline" className="h-7 px-2 shrink-0" onClick={() => addRouteStopToPlan(stop)}>
-                    <Plus className="w-3 h-3 mr-1" /> {t('common.add')}
-                  </Button>
+                  {(stop.type === 'break' || stop.type === 'rest' || stop.type === 'restart') && (
+                    <div className="mt-2 pt-2 border-t border-border/60 flex items-center justify-between gap-2">
+                      <div className="text-[10px] text-muted-foreground">
+                        <div>{t('trip.truckStopOption')}</div>
+                        <div>{t('trip.parkingAvailabilityCheck')}</div>
+                      </div>
+                      {handoff ? (
+                        <a href={handoff.appUrl} className="inline-flex items-center gap-1 h-7 px-2 rounded-md border border-border text-[11px] font-medium text-card-foreground hover:bg-accent shrink-0">
+                          <Truck className="w-3 h-3" /> {t('trip.openInTruckerPath')}
+                        </a>
+                      ) : (
+                        <div className="text-[10px] text-muted-foreground italic shrink-0">{t('trip.parkingLocationPending')}</div>
+                      )}
+                    </div>
+                  )}
                 </div>
               );
             })}
           </div>
+          <p className="text-[10px] text-muted-foreground mt-2">{t('trip.truckerPathRequiresApp')}</p>
         </div>
       )}
 
