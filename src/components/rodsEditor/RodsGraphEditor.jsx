@@ -83,9 +83,12 @@ export default function RodsGraphEditor({
   }, []);
 
   const editMode = mode === 'edit' && !readOnly;
+  // Always fits the full 24h day into the available width, in both view and
+  // edit mode — see rodsGraphLayout.js for why edit mode intentionally no
+  // longer zooms/scrolls.
   const { visibleHours, pxPerHour, graphW, contentW } = useMemo(
-    () => computeGraphLayout(containerW, editMode),
-    [containerW, editMode]
+    () => computeGraphLayout(containerW),
+    [containerW]
   );
   const rowTop = (i) => TOP_PAD + i * ROW_H;
   const x = (h) => LEFT_W + hourToX(h, pxPerHour);
