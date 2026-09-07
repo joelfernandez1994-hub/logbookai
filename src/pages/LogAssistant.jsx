@@ -218,7 +218,35 @@ export default function LogAssistant() {
             // Defensive: still show what we got, but surface the validation issue.
             setError('LogbookAI returned an unexpected response. Please rephrase and try again.');
           }
-          setProposal(await prepareProposal(normalized || res.data));
+          let toShow = normalized || res.data;
+          // edit_events/delete_events proposals only ever point at an INDEX
+          // into the events array we sent — resolve it back to a real event
+          // id here. An unresolved target is NEVER silently turned into a
+          // new inserted event (that would duplicate/overlap the timeline);
+          // it becomes a clarification instead.
+          if (toShow?.intent === 'delete_events') {
+            const { resolvedDeletes, unresolvedDeletes } = resolveEditTargets(events, toShow);
+            if (resolvedDeletes.length && !unresolvedDeletes.length) {
+              setDeleteConfirm({ targets: resolvedDeletes.map(r => ({ id: r.event.id, description: describeEvent(r.event, tz) })) });
+              setBusy(false);
+              return true;
+            }
+            toShow = {
+              ...toShow, intent: 'clarification', proposed_events: [], requires_clarification: true,
+              clarification_question: toShow.clarification_question || 'Which event did you mean? Please describe it more specifically (e.g. the approximate time or activity).',
+            };
+          } else if (toShow?.intent === 'edit_events') {
+            const { resolvedEdits, unresolvedEdits } = resolveEditTargets(events, toShow);
+            if (resolvedEdits.length && !unresolvedEdits.length) {
+              toShow = { ...toShow, proposed_events: resolvedEdits.map(r => ({ ...r.proposed, target_event_id: r.target.id })) };
+            } else {
+              toShow = {
+                ...toShow, proposed_events: [], requires_clarification: true,
+                clarification_question: toShow.clarification_question || 'Which event did you mean? Please describe it more specifically (e.g. the approximate time or activity).',
+              };
+            }
+          }
+          setProposal(await prepareProposal(toShow));
         } else if (mode === 'make_legal_past') setPastResult(res.data);
         else if (mode === 'make_legal_future') setFutureResult(res.data);
         ok = true;
