@@ -183,7 +183,6 @@ export default function Trip() {
     }
     resolveLocations();
     return () => { cancelled = true; };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [estimate?.miles, usingFreshHosFallback, pickup.city, pickup.state, delivery.city, delivery.state]);
 
   const displayStops = resolvedStops.length === routeStops.length ? resolvedStops : routeStops;
