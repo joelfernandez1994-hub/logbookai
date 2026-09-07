@@ -18,7 +18,7 @@
 // produced (break30, driving, window14, cycle) into route mileage.
 // ============================================================================
 import { describe, it, expect } from 'vitest';
-import { planTripStops, planningMph } from './complianceStop';
+import { planTripStops, planningMph, FRESH_TRIP_HOS_BASIS, withFuelOpportunities } from './complianceStop';
 
 const H = 3600000;
 
@@ -107,6 +107,60 @@ describe('planTripStops — reuses the canonical engine\'s numbers, never recomp
     const dueStops = planTripStops({ hos: almostDueHos, profileId: '55', cycleType: '70_8', totalMiles: 1200 });
     expect(freshStops[0].mile).toBeGreaterThan(dueStops[0].mile);
     expect(dueStops[0].mile).toBeCloseTo(0.5 * mph, 1);
+  });
+});
+
+describe('FRESH_TRIP_HOS_BASIS — fallback when the driver\'s real HOS cannot be verified', () => {
+  it('the exact Homestead, FL -> Houston, TX regression: a ~1220mi/22+hr route never returns an empty stop list, even when the real log is invalid', () => {
+    // Mirrors the live-account scenario: validateTimeline finds the actual
+    // log invalid (a multi-day gap), so hosEngine.computeHOS cannot produce
+    // real remaining clocks. The Trip Planner must still plan against the
+    // standard fresh-day limits rather than silently returning nothing.
+    const stops = planTripStops({ hos: FRESH_TRIP_HOS_BASIS, profileId: '55', cycleType: '70_8', totalMiles: 1220 });
+    expect(stops.length).toBeGreaterThan(0);
+    expect(stops.some((s) => s.type === 'break')).toBe(true);
+    expect(stops.some((s) => s.type === 'rest')).toBe(true);
+    // Cycle is unknown (null), not assumed full — never a restart suggestion.
+    expect(stops.some((s) => s.type === 'restart')).toBe(false);
+  });
+
+  it('never claims a real cycle number — cycleRemainingHours is null, not a guessed full cycle', () => {
+    expect(FRESH_TRIP_HOS_BASIS.cycle.cycleRemainingHours).toBeNull();
+  });
+});
+
+describe('withFuelOpportunities — separate mileage heuristic, not an HOS rule', () => {
+  it('inserts a fuel stop when a segment between HOS stops exceeds the typical range', () => {
+    const hosStops = [{ type: 'rest', mile: 900, durationHours: 10, reason: 'x' }];
+    const withFuel = withFuelOpportunities(hosStops, 1220, 500);
+    expect(withFuel.some((s) => s.type === 'fuel')).toBe(true);
+    // The 900-1220 segment (320mi) is under range and needs none; the
+    // 0-900 segment (900mi) needs one around mile 500.
+    const fuelStops = withFuel.filter((s) => s.type === 'fuel');
+    expect(fuelStops).toHaveLength(1);
+    expect(fuelStops[0].mile).toBeCloseTo(500, 0);
+  });
+
+  it('inserts no fuel stop when every segment is already within typical range', () => {
+    const hosStops = [{ type: 'break', mile: 300, durationHours: 0.5, reason: 'x' }, { type: 'rest', mile: 600, durationHours: 10, reason: 'x' }];
+    const withFuel = withFuelOpportunities(hosStops, 900, 500);
+    expect(withFuel.filter((s) => s.type === 'fuel')).toHaveLength(0);
+  });
+
+  it('inserts multiple fuel stops for one very long segment with no HOS stops at all', () => {
+    const withFuel = withFuelOpportunities([], 1600, 500);
+    const fuelStops = withFuel.filter((s) => s.type === 'fuel');
+    expect(fuelStops.length).toBeGreaterThanOrEqual(3);
+    for (let i = 1; i < fuelStops.length; i++) expect(fuelStops[i].mile).toBeGreaterThan(fuelStops[i - 1].mile);
+  });
+
+  it('the combined Homestead -> Houston plan (HOS basis + fuel) still keeps types clearly distinct', () => {
+    const hosStops = planTripStops({ hos: FRESH_TRIP_HOS_BASIS, profileId: '55', cycleType: '70_8', totalMiles: 1220 });
+    const combined = withFuelOpportunities(hosStops, 1220, 500);
+    expect(combined.some((s) => s.type === 'fuel')).toBe(true);
+    expect(combined.some((s) => s.type === 'break')).toBe(true);
+    expect(combined.some((s) => s.type === 'rest')).toBe(true);
+    for (let i = 1; i < combined.length; i++) expect(combined[i].mile).toBeGreaterThanOrEqual(combined[i - 1].mile);
   });
 });
 
