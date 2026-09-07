@@ -232,7 +232,16 @@ function parseTime(text, refDate, tz, opts = {}) {
   const lower = text.toLowerCase();
   // relative "now"
   if (/\bnow\b/.test(lower)) return { date: new Date(refDate.getTime()), ambiguous: false };
-  const m = lower.match(/\bat\s+(\d{1,2}(?::\d{2})?)\s*(a\.?m\.?|p\.?m\.?)?\b|(\d{1,2}:\d{2})\s*(a\.?m\.?|p\.?m\.?)?|(\d{1,2})\s*(a\.?m\.?|p\.?m\.?)\b/i);
+  // "noon"/"midnight" (and Spanish "mediodía"/"medianoche") are unambiguous
+  // named times, not numbers — common trucker phrasing ("stopped around noon").
+  if (/\bnoon\b|\bmediod[ií]a\b/.test(lower)) return { date: timeOnDate(refDate, 12, 0, tz), ambiguous: false };
+  if (/\bmidnight\b|\bmedianoche\b/.test(lower)) return { date: timeOnDate(refDate, 0, 0, tz), ambiguous: false };
+  // The "at <time>" alternative also accepts the common approximate-time
+  // prefixes ("around", "about", "near") and the Spanish equivalents ("a
+  // las", "cerca de las") — a bare hour with no colon/meridian is only ever
+  // treated as a time when introduced by one of these, never floating loose
+  // in prose (see the module header note on "stopped for my 30").
+  const m = lower.match(/\b(?:at|around|about|near|a las|cerca de las)\s+(\d{1,2}(?::\d{2})?)\s*(a\.?m\.?|p\.?m\.?)?\b|(\d{1,2}:\d{2})\s*(a\.?m\.?|p\.?m\.?)?|(\d{1,2})\s*(a\.?m\.?|p\.?m\.?)\b/i);
   if (!m) return null;
   const tok = m[1] || m[3] || m[5];
   const merTok = m[2] || m[4] || m[6];
