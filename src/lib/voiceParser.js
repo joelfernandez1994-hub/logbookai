@@ -241,7 +241,7 @@ function parseTime(text, refDate, tz, opts = {}) {
   // las", "cerca de las") — a bare hour with no colon/meridian is only ever
   // treated as a time when introduced by one of these, never floating loose
   // in prose (see the module header note on "stopped for my 30").
-  const m = lower.match(/\b(?:at|around|about|near|a las|cerca de las)\s+(\d{1,2}(?::\d{2})?)\s*(a\.?m\.?|p\.?m\.?)?\b|(\d{1,2}:\d{2})\s*(a\.?m\.?|p\.?m\.?)?|(\d{1,2})\s*(a\.?m\.?|p\.?m\.?)\b/i);
+  const m = lower.match(/\b(?:at|around|about|near|a las|cerca de las|alrededor de las?|a eso de las?)\s+(\d{1,2}(?::\d{2})?)\s*(a\.?m\.?|p\.?m\.?)?\b|(\d{1,2}:\d{2})\s*(a\.?m\.?|p\.?m\.?)?|(\d{1,2})\s*(a\.?m\.?|p\.?m\.?)\b/i);
   if (!m) return null;
   const tok = m[1] || m[3] || m[5];
   const merTok = m[2] || m[4] || m[6];
