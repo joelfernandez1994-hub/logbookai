@@ -113,16 +113,32 @@ export function detectExplicitFactAlterations(events = [], deterministicFacts = 
     }
   });
 
+  // TIME FACTS — matched at the CANONICAL BOUNDARY level (see
+  // canonicalClockBoundaries above), not per-event/per-field. A fact is
+  // preserved when its value (or, for a bare hour with no stated AM/PM,
+  // EITHER meridiem reading — the driver themselves didn't disambiguate, so
+  // the guard doesn't require the AI to have guessed the same one) appears
+  // anywhere in the proposal's real start/end boundaries. An APPROXIMATE
+  // fact ("around 8:20") that doesn't land exactly is still checked within a
+  // tolerance window and, even outside it, is downgraded to a review-level
+  // note rather than a hard block — the driver themselves signaled it was an
+  // estimate. An EXACT fact ("at 8:20") must match outright or it blocks,
+  // exactly as before — this path is never weakened.
+  const boundaries = canonicalClockBoundaries(events);
+  const boundaryMinutes = [...boundaries].map(clockToMinutes).filter((n) => n != null);
+  const approximateMismatches = [];
   for (const fact of (deterministicFacts.times || [])) {
-    const preserved = events.some(event => {
-      const startMatch = clockFromLocal(event.start_time_local || event.start_timestamp) === fact.normalized;
-      const endMatch = clockFromLocal(event.end_time_local || event.end_timestamp) === fact.normalized;
-      return (startMatch && event.field_provenance?.start_time === 'explicit')
-        || (endMatch && event.field_provenance?.end_time === 'explicit')
-        || adjustmentMatches(event, 'start_time', fact.raw)
-        || adjustmentMatches(event, 'end_time', fact.raw);
-    });
-    if (!preserved) droppedExplicitEvents.push({ type: 'time', value: fact.raw, reason: 'Explicit clock time was dropped, changed silently, or tagged inferred.' });
+    const candidates = Array.isArray(fact.candidates) && fact.candidates.length ? fact.candidates : [fact.normalized];
+    const exactMatch = candidates.some((c) => boundaries.has(c))
+      || events.some((event) => adjustmentMatches(event, 'start_time', fact.raw) || adjustmentMatches(event, 'end_time', fact.raw));
+    if (exactMatch) continue;
+    if (fact.approximate) {
+      const delta = nearestBoundaryDeltaMin(candidates, boundaryMinutes);
+      if (delta <= APPROX_TOLERANCE_MIN) continue; // close enough to the driver's own estimate
+      approximateMismatches.push({ type: 'time_approximate', value: fact.raw, reason: `Approximate time "${fact.raw}" is not reflected anywhere close in the proposal — please verify.` });
+      continue; // review-level only — the driver themselves said this was approximate
+    }
+    droppedExplicitEvents.push({ type: 'time', value: fact.raw, reason: 'Explicit clock time was dropped, changed silently, or tagged inferred.' });
   }
   for (const fact of (deterministicFacts.locations || [])) {
     const preserved = events.some(event => {
