@@ -23,7 +23,14 @@
 //   - the driver can add one of the recommendations to Planned Stops
 // Does not touch the canonical HOS engine.
 // ============================================================================
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
+
+// truckStopProvider.js imports base44 at module scope for its network call
+// (not exercised in this file); stand it in the same way tripSync.test.js /
+// truckStopProvider.test.js do so importing the pure functions below doesn't
+// require a browser `window` under vitest's node environment.
+vi.mock('@/api/base44Client', () => ({ base44: { functions: { invoke: vi.fn() } } }));
+
 import { planTripStops, FRESH_TRIP_HOS_BASIS } from './complianceStop';
 import { rankTruckStops, pickTopStopsForType, classifyFit, buildPlannedStopFromTruckStop } from './truckStopProvider';
 
