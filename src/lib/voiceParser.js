@@ -238,7 +238,7 @@ function parseTime(text, refDate, tz, opts = {}) {
   if (/\bmidnight\b|\bmedianoche\b/.test(lower)) return { date: timeOnDate(refDate, 0, 0, tz), ambiguous: false };
   // The "at <time>" alternative also accepts the common approximate-time
   // prefixes ("around", "about", "near") and the Spanish equivalents ("a
-  // las", "cerca de las") — a bare hour with no colon/meridian is only ever
+  // las", "cerca de las", "alrededor de las", "a eso de las") — a bare hour with no colon/meridian is only ever
   // treated as a time when introduced by one of these, never floating loose
   // in prose (see the module header note on "stopped for my 30").
   const m = lower.match(/\b(?:at|around|about|near|a las|cerca de las|alrededor de las?|a eso de las?)\s+(\d{1,2}(?::\d{2})?)\s*(a\.?m\.?|p\.?m\.?)?\b|(\d{1,2}:\d{2})\s*(a\.?m\.?|p\.?m\.?)?|(\d{1,2})\s*(a\.?m\.?|p\.?m\.?)\b/i);
