@@ -371,23 +371,31 @@ function localWallTimeToIso(value, timezone) {
   return new Date(instant).toISOString();
 }
 
-function normalizeClockFact(hour, minute, meridiem) {
-  let h = Number(hour);
+// Both 12-hour readings of a bare hour/minute mention (e.g. "2:45" -> 02:45
+// and 14:45). When the narrative states an explicit meridiem ("2:45 PM"),
+// only that one reading is returned — no ambiguity to preserve. When it
+// doesn't, the driver themselves left it ambiguous (relying on the day's
+// chronology, e.g. "stopped in Des Moines around 2:45" obviously afternoon)
+// — so the guard must accept EITHER reading rather than the extractor
+// guessing AM and rejecting a perfectly correct PM proposal as "dropped".
+function clockCandidates(hour, minute, meridiem) {
+  const h12 = Number(hour) % 12;
+  const mm = String(Number(minute)).padStart(2, '0');
+  const am = `${String(h12).padStart(2, '0')}:${mm}`;
+  const pm = `${String(h12 + 12).padStart(2, '0')}:${mm}`;
   if (meridiem) {
-    const pm = /^p/i.test(meridiem.replace(/\./g, ''));
-    h = h % 12 + (pm ? 12 : 0);
+    const isPm = /^p/i.test(meridiem.replace(/\./g, ''));
+    return [isPm ? pm : am];
   }
-  return `${String(h).padStart(2, '0')}:${String(Number(minute)).padStart(2, '0')}`;
+  return am === pm ? [am] : [am, pm];
 }
 
 // A time mention immediately preceded by an approximation qualifier
 // ("around 8:20", "about 5:45", Spanish "cerca de las"/"aproximadamente") is
-// NOT a hard, unambiguous fact the AI must reproduce exactly — it is the
-// driver's own estimate, and the AI rounding/inferring it (and correctly
-// marking that field "inferred") is the RIGHT behavior, not a dropped fact.
-// Treating every H:MM as an inviolable explicit fact regardless of hedging
-// language previously caused the guard to block extremely common, honest
-// trucker phrasing ("around 8", "about 20 minutes") with no visible reason.
+// the driver's own ESTIMATE, not a hard fact the AI must reproduce exactly.
+// It is still tracked (never silently dropped from consideration — the
+// driver did state it) but flagged `approximate: true` so aiLayer's guard
+// matches it with tolerance and never hard-blocks on it alone.
 const APPROX_QUALIFIER_RE = /\b(?:about|around|near|roughly|approximately|circa|ish|cerca de(?: las?)?|aproximadamente|casi)\s*$/i;
 function isApproximateMention(text, matchIndex) {
   const lookback = text.slice(Math.max(0, matchIndex - 20), matchIndex);
@@ -397,8 +405,10 @@ function isApproximateMention(text, matchIndex) {
 function extractExplicitFacts(input) {
   const text = String(input || '');
   const times = [...text.matchAll(/\b(\d{1,2}):(\d{2})\s*(a\.?m\.?|p\.?m\.?)?\b/gi)]
-    .filter(m => !isApproximateMention(text, m.index))
-    .map(m => ({ raw: m[0], normalized: normalizeClockFact(m[1], m[2], m[3]) }));
+    .map(m => {
+      const candidates = clockCandidates(m[1], m[2], m[3]);
+      return { raw: m[0], normalized: candidates[0], candidates, approximate: isApproximateMention(text, m.index) };
+    });
   const locations = [...text.matchAll(/\b([A-Z][A-Za-z.'-]*(?:\s+[A-Z][A-Za-z.'-]*){0,3}),\s*([A-Z]{2})\b/g)]
     .map(m => ({ raw: m[0], city: m[1].trim(), state: m[2].toUpperCase() }));
   // Bilingual (English + Spanish) so the explicit-fact guard is equally
