@@ -110,9 +110,13 @@ describe('resolveEventReference — edge cases', () => {
 });
 
 describe('findEventByCity — resolves a correction against the WRONG stated value', () => {
-  it('finds the event whose city matches (case-insensitive)', () => {
+  it('finds the most recent event whose city matches (case-insensitive)', () => {
+    // Both the Fuel stop (6) and the following Driving leg (7) carry
+    // "Melbourne" — findEventByCity intentionally returns the MOST RECENT
+    // match, matching its documented "resolve against the last-known value"
+    // semantics.
     const found = findEventByCity(DAY, 'melbourne');
-    expect(found.id).toBe('6');
+    expect(found.id).toBe('7');
   });
 
   it('returns null when no event has that city', () => {
