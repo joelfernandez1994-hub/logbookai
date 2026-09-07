@@ -20,6 +20,19 @@
 function normCity(v) { return String(v == null ? '' : v).trim().toLowerCase(); }
 function normState(v) { return String(v == null ? '' : v).trim().toUpperCase(); }
 
+// A "City, ST" or bare "City" string -> { city, state }. Used to split a
+// location_confirmation's `interpreted` value (which the backend always
+// writes as "City, ST") BEFORE comparing, so a plain state-abbreviation
+// enrichment ("Gary" -> "Gary, IN") is never mistaken for a genuine city
+// change ("Gary" -> "Chicago"). Comparing the raw strings directly (as this
+// module previously did) treats EVERY location_confirmation as a described
+// movement, since the interpreted side almost always gains a state suffix.
+function splitCityState(v) {
+  const s = String(v == null ? '' : v).trim();
+  const m = s.match(/^(.*?),\s*([A-Za-z]{2})$/);
+  return m ? { city: m[1].trim(), state: m[2].toUpperCase() } : { city: s, state: '' };
+}
+
 // Capture a Capitalized city (1–3 words) optionally followed by ", ST". This
 // regex is case-SENSITIVE (no `i` flag) so lowercase connectors ("and", "did",
 // "for") terminate the match — unlike the trigger regexes below which are
