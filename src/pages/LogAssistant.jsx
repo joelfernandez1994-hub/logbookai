@@ -292,7 +292,11 @@ export default function LogAssistant() {
       const edits = proposedEvents.filter((p) => p.target_event_id);
       const inserts = proposedEvents.filter((p) => !p.target_event_id);
       for (const p of edits) {
-        const res = await editEvent(events, p.target_event_id, shapeEvent(p, false), {
+        // Preserve ongoing-ness: a correction may target the current open
+        // event (e.g. "I actually started driving at 7" fixing the still-
+        // running Driving segment) — isLast is derived from whether the
+        // event itself still has no end_timestamp, not assumed false.
+        const res = await editEvent(events, p.target_event_id, shapeEvent(p, !p.end_timestamp), {
           carrierName: carrier?.carrier_name,
           methodOfCreation: 'Typed AI',
           editedBy: profile?.legal_name,
