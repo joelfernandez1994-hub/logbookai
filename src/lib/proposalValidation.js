@@ -632,6 +632,21 @@ export async function inspectProposalRoutes(proposed, { routingProvider = fetchR
   }));
 }
 
+// MILEAGE RULE: a speed x elapsed-driving-time ESTIMATE is only ever a
+// reasonable stand-in for a real road route when a real origin AND a real
+// destination are both known and the leg has actually completed — i.e. the
+// routing service itself failed/was unavailable for a trip that DID happen.
+// An ONGOING Driving event (no end yet) or a DESTINATIONLESS one (no genuine
+// following non-driving event supplied an arrival city — see getDrivingLegs)
+// has no endpoint LogbookAI actually knows. "elapsed time x assumed mph" for
+// that case is not an estimate of anything real — it is fabricated mileage
+// for a trip whose destination is unknown. Mileage stays unknown until a
+// real destination exists (route-estimated), an actual odometer reading
+// exists, or the driver enters it manually.
+function canEstimateMileage(leg) {
+  return !!(leg.destinationKnown && !leg.isOngoing);
+}
+
 export async function enrichProposalMileage(proposed, opts = {}) {
   const legs = await inspectProposalRoutes(proposed, opts);
   const speed = fallbackMph(opts.speedProfile || DEFAULT_SPEED_PROFILE);
@@ -639,10 +654,11 @@ export async function enrichProposalMileage(proposed, opts = {}) {
   for (const leg of legs) {
     const routeMiles = Number(leg.route?.miles);
     const hasRoadMiles = Number.isFinite(routeMiles) && routeMiles > 0.5;
+    const canEstimate = canEstimateMileage(leg);
     events[leg.eventIndex] = {
       ...events[leg.eventIndex],
-      mileage: hasRoadMiles ? routeMiles : leg.drivingHours * speed,
-      mileage_source: hasRoadMiles ? 'route' : 'estimate',
+      mileage: hasRoadMiles ? routeMiles : (canEstimate ? leg.drivingHours * speed : null),
+      mileage_source: hasRoadMiles ? 'route' : (canEstimate ? 'estimate' : 'unknown'),
       route_origin: leg.origin,
       route_destination: leg.destination,
     };
@@ -650,7 +666,7 @@ export async function enrichProposalMileage(proposed, opts = {}) {
   return {
     events,
     legs,
-    totalMiles: events.reduce((sum, event) => sum + (event.duty_status === 'DRIVING' && Number.isFinite(Number(event.mileage)) ? Number(event.mileage) : 0), 0),
+    totalMiles: events.reduce((sum, event) => sum + (event.duty_status === 'DRIVING' && event.mileage != null && Number.isFinite(Number(event.mileage)) ? Number(event.mileage) : 0), 0),
   };
 }
 
