@@ -33,9 +33,7 @@ const farBackTrack = { name: 'Remote Fuel Depot', lat: 31.0, lng: -83.5, has_fue
 describe('rankTruckStops — proximity/detour ranking', () => {
   it('ranks closer-to-route options first (route proximity is the primary key)', () => {
     const ranked = rankTruckStops([pilot, loves, smallPump]);
-    expect(ranked[0]).toBe(smallPump); // 0.3 mi off route, closest
-    expect(ranked[1]).toBe(loves); // 1.2 mi
-    expect(ranked[2]).toBe(pilot); // 2.0 mi
+    expect(ranked.map((p) => p.name)).toEqual(['Joe’s Gas', "Love's Travel Stop", 'Pilot Travel Center']); // 0.3, 1.2, 2.0 mi off route
   });
 
   it('bounds detour: excludes a big-backtrack POI when reasonable options exist', () => {
@@ -47,7 +45,7 @@ describe('rankTruckStops — proximity/detour ranking', () => {
     // farBackTrack is a "better" named truck stop than smallPump, but 40 mi
     // off route — must not be ranked ahead of a real, close-by option.
     const ranked = rankTruckStops([farBackTrack, smallPump], { maxDetourMiles: 5 });
-    expect(ranked[0]).toBe(smallPump);
+    expect(ranked[0].name).toBe('Joe’s Gas');
   });
 
   it('only relaxes the detour bound when NOTHING fits within it (never silently drops all options)', () => {
