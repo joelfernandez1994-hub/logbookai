@@ -115,6 +115,11 @@ function parseTimeNumber(tok) {
 function detectMeridian(text) {
   if (/\b(a\.?m\.?|am)\b/i.test(text)) return 'am';
   if (/\b(p\.?m\.?|pm)\b/i.test(text)) return 'pm';
+  // Spanish "de la mañana" (AM), "de la tarde"/"de la noche" (PM) — the
+  // natural way Spanish-speaking drivers state a meridian, since Spanish has
+  // no direct am/pm abbreviation in everyday speech.
+  if (/\bde la ma[nñ]ana\b/i.test(text)) return 'am';
+  if (/\bde la (tarde|noche)\b/i.test(text)) return 'pm';
   return null;
 }
 
@@ -127,6 +132,10 @@ function detectContextMeridian(text) {
   if (/\b(this morning|early this morning|woke up|got up)\b/.test(lower)) return 'am';
   if (/\b(this afternoon)\b/.test(lower)) return 'pm';
   if (/\b(this evening|tonight|last night)\b/.test(lower)) return 'pm';
+  // Spanish equivalents.
+  if (/\b(esta ma[nñ]ana|en la ma[nñ]ana)\b/.test(lower)) return 'am';
+  if (/\b(esta tarde|en la tarde)\b/.test(lower)) return 'pm';
+  if (/\b(esta noche|anoche)\b/.test(lower)) return 'pm';
   return null;
 }
 
