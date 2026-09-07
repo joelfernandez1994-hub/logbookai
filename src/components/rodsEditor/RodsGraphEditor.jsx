@@ -18,7 +18,11 @@ const STATUS_COLORS = {
   OFF_DUTY: '#64748b', SLEEPER_BERTH: '#7c3aed', DRIVING: '#2563eb', ON_DUTY: '#ea580c',
 };
 const STATUS_LABELS = { OFF_DUTY: 'Off', SLEEPER_BERTH: 'Sleeper', DRIVING: 'Drive', ON_DUTY: 'On' };
-const TOP_PAD = 24, ROW_H = 52;
+// TOP_PAD/ROW_H are presentation-only pixel dimensions (not timeline/event
+// math) — ROW_H raised from 52 so the four duty-status rows have more
+// visual breathing room on a phone-width graph, closer to a real paper
+// logbook grid than a compressed mini-chart.
+const TOP_PAD = 24, ROW_H = 64;
 
 const C = {
   gridStrong: 'hsl(var(--graph-grid))',
