@@ -388,7 +388,7 @@ function normalizeClockFact(hour, minute, meridiem) {
 // Treating every H:MM as an inviolable explicit fact regardless of hedging
 // language previously caused the guard to block extremely common, honest
 // trucker phrasing ("around 8", "about 20 minutes") with no visible reason.
-const APPROX_QUALIFIER_RE = /\b(?:about|around|near|roughly|approximately|circa|ish|cerca de|aproximadamente|casi)\s*$/i;
+const APPROX_QUALIFIER_RE = /\b(?:about|around|near|roughly|approximately|circa|ish|cerca de(?: las?)?|aproximadamente|casi)\s*$/i;
 function isApproximateMention(text, matchIndex) {
   const lookback = text.slice(Math.max(0, matchIndex - 20), matchIndex);
   return APPROX_QUALIFIER_RE.test(lookback);
