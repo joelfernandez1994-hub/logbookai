@@ -197,3 +197,59 @@ describe('Regression corpus — the exact scenarios requested', () => {
     expect(guard.droppedExplicitEvents.some((i) => i.type === 'time' && i.value.includes('8:20'))).toBe(true);
   });
 });
+
+// ============================================================================
+// REGRESSION — Spanish "alrededor (de las)"/"a eso de las" hedge vocabulary.
+// ----------------------------------------------------------------------------
+// Live bug (AIProposal id 6a9eb6663369dbb69c6560f1, request_text "I made it
+// to Valdosta around 1:30, unloaded for 30 minutes, then went off duty." —
+// interpretation shown to the Spanish-locale driver: "He interpretado que
+// llegaste a Valdosta, GA, alrededor de la 1:30 PM..."): the OLD
+// APPROX_QUALIFIER_RE recognized English "around" but had NO Spanish
+// "alrededor"/"alrededor de (las)"/"a eso de (las)" entry at all, even though
+// that exact phrasing is the app's own natural Spanish rendering of "around"
+// (see feasibilityQuestion.js's "Llegada estimada alrededor de las...").  A
+// Spanish narrative hedging a time with "alrededor"/"a eso de" was therefore
+// treated as an EXACT (non-approximate) fact, so any AI rounding away from
+// the literal value could hard-block Apply instead of using the same 30-
+// minute tolerance an English "around" mention already received.
+// Fix: APPROX_QUALIFIER_RE (manualLogAssistant/entry.ts, mirrored above) and
+// voiceParser.js's TIME_PREFIX regex both now accept "alrededor(?: de(?:
+// las?)?)?" and "a eso de(?: las?)?" alongside the existing "cerca de(?:
+// las?)?".
+// ============================================================================
+describe('REGRESSION — Spanish "alrededor"/"a eso de" hedge vocabulary (live Valdosta proposal)', () => {
+  it('"alrededor de la 1:30 PM" is tagged approximate, not an exact fact', () => {
+    const [fact] = extractExplicitTimes('llegaste a Valdosta, GA, alrededor de la 1:30 PM, realizaste 30 minutos de descarga');
+    expect(fact.approximate).toBe(true);
+  });
+
+  it('"alrededor de las 1:30 PM" (plural "las") is tagged approximate', () => {
+    const [fact] = extractExplicitTimes('Llegue a Valdosta, GA alrededor de las 1:30 PM, hice 30 minutos de descarga');
+    expect(fact.approximate).toBe(true);
+  });
+
+  it('"a eso de la 1:30 PM" (alternate Spanish hedge phrase) is tagged approximate', () => {
+    const [fact] = extractExplicitTimes('llegue a Valdosta, GA a eso de la 1:30 PM');
+    expect(fact.approximate).toBe(true);
+  });
+
+  it('bare "alrededor" with no "de" still counts as a hedge prefix', () => {
+    const [fact] = extractExplicitTimes('parked alrededor 1:30 PM');
+    expect(fact.approximate).toBe(true);
+  });
+
+  it('REAL live proposal: the exact Valdosta request_text + real proposed_events — zero drops, zero review notes', () => {
+    // Verbatim from AIProposal 6a9eb6663369dbb69c6560f1.
+    const requestText = 'I made it to Valdosta around 1:30, unloaded for 30 minutes, then went off duty.';
+    const times = extractExplicitTimes(requestText);
+    const events = [
+      ev('2026-08-25T13:30:00', '2026-08-25T14:00:00', { duty_status: 'ON_DUTY', field_provenance: { start_time: 'inferred', end_time: 'inferred', status: 'explicit', city: 'inferred', state: 'inferred' } }),
+      ev('2026-08-25T14:00:00', null, { duty_status: 'OFF_DUTY', field_provenance: { start_time: 'inferred', end_time: 'inferred', status: 'explicit', city: 'inferred', state: 'inferred' } }),
+    ];
+    const guard = detectExplicitFactAlterations(events, { times, locations: [], statuses: [] });
+    expect(guard.blocking).toBe(false);
+    expect(guard.droppedExplicitEvents).toEqual([]);
+    expect(guard.approximateMismatches).toEqual([]);
+  });
+});
