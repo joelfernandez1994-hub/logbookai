@@ -663,8 +663,8 @@ function simplifyEvent(e) {
 
 function buildHosSummary(hos) {
   return [
-    `Driving remaining: ${fmtDur(hos.driving.drivingRemainingMs)}`,
-    `14-hour window remaining: ${fmtDur(hos.window14.remainingMs)}`,
+    `Driving remaining: ${hos.driving.applicable ? fmtDur(hos.driving.drivingRemainingMs) : 'unavailable — no verified reset in the contiguous timeline'}`,
+    `14-hour window remaining: ${hos.window14.applicable ? fmtDur(hos.window14.remainingMs) : 'unavailable — no verified reset in the contiguous timeline'}`,
     `30-min break: ${hos.break30.satisfied ? 'satisfied' : (hos.break30.breakRequired ? 'required' : 'not yet required')}`,
     `Cycle ${hos.cycle.cycleLimit}/${hos.cycle.cycleDays} remaining: ${hos.cycle.cycleRemainingHours.toFixed(1)} hr`,
     `Split sleeper: ${hos.split.status}`,
