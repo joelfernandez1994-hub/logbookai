@@ -11,7 +11,7 @@ describe('aiLayer.validateInterpretResult', () => {
   it('normalizes SLEEPER -> SLEEPER_BERTH and start_time -> start_timestamp', () => {
     const { valid, normalized } = validateInterpretResult({
       intent: 'add_events',
-      summary: 'Logged your morning',
+      summary: "Here's your morning sleeper period",
       proposed_events: [
         { start_time: '2026-08-20T11:00:00Z', end_time: '2026-08-20T15:00:00Z', status: 'SLEEPER', city: 'Miami', state: 'FL', activity: 'Sleeper', remark: '' },
       ],
@@ -20,7 +20,7 @@ describe('aiLayer.validateInterpretResult', () => {
     expect(normalized.proposed_events[0].duty_status).toBe('SLEEPER_BERTH');
     expect(normalized.proposed_events[0].start_timestamp).toBe('2026-08-20T11:00:00Z');
     expect(normalized.proposed_events[0].end_timestamp).toBe('2026-08-20T15:00:00Z');
-    expect(normalized.interpretation).toBe('Logged your morning');
+    expect(normalized.interpretation).toBe("Here's your morning sleeper period");
   });
 
   it('flags an invalid schema (missing start time, bad status) but still returns a normalized shape', () => {
