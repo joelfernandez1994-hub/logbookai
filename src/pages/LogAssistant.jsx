@@ -98,18 +98,69 @@ export default function LogAssistant() {
   // Returns true on success (so AssistantInput clears the input), false on
   // failure (input is preserved for retry).
   // ---------------------------------------------------------------------------
+  // The driver's most recently logged city/state — the natural notion of
+  // "current location" for a route-feasibility question, consistent with how
+  // Trip Planner infers pickup from the day's first event.
+  const lastLoggedLocation = () => {
+    const withCity = [...events].filter((e) => e.city && e.start_timestamp)
+      .sort((a, b) => new Date(b.start_timestamp) - new Date(a.start_timestamp));
+    return withCity[0] ? { city: withCity[0].city, state: withCity[0].state } : null;
+  };
+
   const handleTell = async (text, type) => {
     setError('');
+
+    // 1. DETERMINISTIC ROUTE-FEASIBILITY ANSWER ("Can I make it to Atlanta
+    //    tonight?") — real road mileage (fetchRoute) + the driver's ACTUAL
+    //    current HOS (earliestLegalEta, the same simulator the Future Plan
+    //    tab uses). Zero AI cost, never touches the log. Falls through to
+    //    Ask LogbookAI when it can't confidently answer (unknown current
+    //    location, unresolvable destination, no road route).
+    if (detectFeasibilityQuestion(text)) {
+      const feasibility = await answerFeasibilityQuestion(text, {
+        currentLocation: lastLoggedLocation(),
+        hos, now: new Date(),
+        fetchRouteFn: fetchRoute,
+        truckEtaHoursFn: (route) => truckEtaHours(route, speedProfile),
+        earliestLegalEtaFn: earliestLegalEta,
+        isSpanish: /\b(puedo|podr[eé])\b/i.test(text),
+      });
+      if (feasibility.handled) {
+        setProposal({
+          intent: 'question', target_date: '', requires_clarification: false, clarification_question: '',
+          interpretation: feasibility.answer, summary: feasibility.answer,
+          proposed_events: [], clarifications: [], location_confirmations: [],
+          refuses_fabrication: false, _deterministic: true,
+        });
+        return true;
+      }
+      // Not confidently answerable deterministically — fall through to AI.
+    }
+
     // AI-first routing: any narrative describing more than one event/activity
     // goes straight to manualLogAssistant. The deterministic parser is kept
-    // only for trivial single-intent commands ("off duty now", "sleeper at 10 PM").
+    // only for trivial single-intent commands ("off duty now", "sleeper at 10 PM")
+    // and edit-by-reference corrections ("change my last fuel stop to 8:15").
     if (isMultiEventNarrative(text)) {
       return callAssistant('interpret', text, { source: type });
     }
     // Pass the driver's actual logged events so ambiguous-hour resolution
     // can prefer continuity with a neighboring real event (tier 3 of the
-    // AM/PM disambiguation) when narrative chronology alone isn't decisive.
+    // AM/PM disambiguation) when narrative chronology alone isn't decisive,
+    // and so edit-by-reference/delete commands can resolve a REAL target.
     const det = parseVoiceCommand(text, { now: new Date(), timezone: tz, events });
+
+    // 2. DELETE-BY-REFERENCE ("delete the second fuel stop") — resolved
+    //    against a real logged event; never silently guessed.
+    if (det.handled && det.deleteEvent) {
+      if (det.target?.id) {
+        setDeleteConfirm({ targets: [{ id: det.target.id, description: det.target.description }] });
+      } else {
+        setDeleteConfirm({ targets: null, question: det.clarifications?.[0]?.question || 'Which event did you mean? Please describe it more specifically.' });
+      }
+      return true;
+    }
+
     if (det.handled) {
       const detEvents = (det.events || []).map((e) => ({
         ...e,
@@ -123,7 +174,7 @@ export default function LogAssistant() {
         target_date: detEvents[0]?.date || dateKeyInTz(new Date(), tz),
         requires_clarification: (det.clarifications || []).length > 0,
         clarification_question: det.clarifications?.[0]?.question || '',
-        interpretation: 'I understood:',
+        interpretation: det.correction ? 'I understood this as a correction to an existing event:' : 'I understood:',
         proposed_events: detEvents,
         clarifications: det.clarifications || [],
         refuses_fabrication: false,
