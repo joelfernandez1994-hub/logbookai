@@ -369,6 +369,15 @@ function detectStatus(text) {
       return { status: 'OFF_DUTY', activity: '', statusAmbiguous: true, statusCandidates: ['OFF_DUTY', 'SLEEPER_BERTH'] };
     }
   }
+  // Ambiguous generic break/lunch — could be OFF_DUTY (personal time) or
+  // ON_DUTY (paid, non-driving). Never guess; default to the more common
+  // real-world meaning (OFF_DUTY) and flag for driver confirmation. Distinct
+  // from the mandatory-30 phrasing above, which is unambiguous.
+  for (const kw of AMBIGUOUS_BREAK_KEYWORDS) {
+    if (lower.includes(kw)) {
+      return { status: 'OFF_DUTY', activity: 'Break', statusAmbiguous: true, statusCandidates: ['OFF_DUTY', 'ON_DUTY'] };
+    }
+  }
   return null;
 }
 
