@@ -345,8 +345,12 @@ export function validateProposal(existing, proposed, opts = {}) {
   if (explicitGuard?.blocking) {
     warnings.push({
       type: 'explicit_fact_guard', severity: 'blocking', title: 'EXPLICIT DRIVER FACT CHANGED OR MISSING',
+      // Each issue's actual flagged value is always included, not just the
+      // generic reason sentence — several issues sharing the same reason
+      // text (e.g. multiple dropped times) must never render as that one
+      // sentence repeated with no indication of WHICH values are the problem.
       message: [...(explicitGuard.alteredExplicitFacts || []), ...(explicitGuard.droppedExplicitEvents || [])]
-        .map(issue => issue.reason || `${issue.field || issue.type}: ${issue.value || 'review required'}`).join(' '),
+        .map(issue => `${issue.reason || `${issue.field || issue.type}: review required`}${issue.value ? ` ("${issue.value}")` : ''}`).join(' '),
     });
   }
   for (const adjustment of (explicitGuard?.visibleAdjustments || [])) {
@@ -354,6 +358,14 @@ export function validateProposal(existing, proposed, opts = {}) {
       type: 'explicit_adjustment', severity: 'review', title: 'DRIVER FACT ADJUSTED — REVIEW',
       message: `${adjustment.field}: adjusted from ${adjustment.original_stated_value} to ${adjustment.adjusted_value}. ${adjustment.reason || ''}`.trim(),
       eventIndex: adjustment.eventIndex,
+    });
+  }
+  // Approximate driver times that landed outside the tolerance window are a
+  // review note, never a blocker — the driver themselves signaled an estimate.
+  for (const mismatch of (explicitGuard?.approximateMismatches || [])) {
+    warnings.push({
+      type: 'time_approximate_review', severity: 'review', title: 'APPROXIMATE TIME — REVIEW',
+      message: mismatch.reason,
     });
   }
   // Described-movement gate: if the driver explicitly described a driving
