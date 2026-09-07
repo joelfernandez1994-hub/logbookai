@@ -114,10 +114,11 @@ export default function RodsGraphEditor({
     return () => ro.disconnect();
   }, []);
 
-  const visibleHours = containerW >= 820 ? 24 : containerW >= 520 ? 12 : 6;
-  const pxPerHour = containerW / visibleHours;
-  const graphW = pxPerHour * 24;
-  const contentW = LEFT_W + graphW;
+  const editMode = mode === 'edit' && !readOnly;
+  const { visibleHours, pxPerHour, graphW, contentW } = useMemo(
+    () => computeGraphLayout(containerW, editMode),
+    [containerW, editMode]
+  );
   const rowTop = (i) => TOP_PAD + i * ROW_H;
   const x = (h) => LEFT_W + hourToX(h, pxPerHour);
 
