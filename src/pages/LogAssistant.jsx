@@ -597,7 +597,7 @@ export default function LogAssistant() {
                   <div className="font-semibold flex items-center gap-1 mb-1"><AlertTriangle className="w-4 h-4" /> Could not safely build a proposal</div>
                   <div>
                     {[...(proposal.explicit_guard.alteredExplicitFacts || []), ...(proposal.explicit_guard.droppedExplicitEvents || [])]
-                      .map(issue => issue.reason || `${issue.field || issue.type}: ${issue.value || 'review required'}`).join(' ')}
+                      .map(issue => `${issue.reason || `${issue.field || issue.type}: review required`}${issue.value ? ` ("${issue.value}")` : ''}`).join(' ')}
                   </div>
                   <div className="text-[11px] mt-1 opacity-80">Try rephrasing with a bit more detail, or describe the day in smaller pieces.</div>
                 </div>
