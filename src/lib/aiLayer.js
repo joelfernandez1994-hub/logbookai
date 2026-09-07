@@ -195,7 +195,49 @@ export function validateInterpretResult(data) {
     explicit_guard: explicitGuard,
     pretrip_ask: !!data.pretrip_ask,
     refuses_fabrication: !!data.refuses_fabrication,
+    // Only meaningful for intent 'delete_events' — positions into the SAME
+    // events array sent to manualLogAssistant. See resolveEditTargets().
+    delete_target_indices: Array.isArray(data.delete_target_indices)
+      ? data.delete_target_indices.filter((i) => Number.isInteger(i))
+      : [],
   };
 
   return { valid: errors.length === 0, errors, normalized };
+}
+
+// ---------------------------------------------------------------------------
+// EDIT-BY-REFERENCE TARGET RESOLUTION.
+// ----------------------------------------------------------------------------
+// The AI never edits/deletes anything directly — it only points at a
+// position in the SAME `events` array the client sent it (see
+// manualLogAssistant/entry.ts's indexed eventSummary). This resolves those
+// indices back to the real logged events (with real ids) so the caller can
+// route the change through the canonical editEvent()/deleteEventById()
+// writer. An edit/delete whose target cannot be resolved (index missing,
+// null, or out of range) is NEVER silently applied as a new insert — it is
+// returned as "unresolved" so the caller blocks Apply and asks the driver
+// instead. `events` MUST be the exact same array (same order) that was sent
+// to manualLogAssistant for this proposal, or the indices will not line up.
+// ---------------------------------------------------------------------------
+export function resolveEditTargets(events, normalized) {
+  const list = events || [];
+  const at = (idx) => (Number.isInteger(idx) && idx >= 0 && idx < list.length) ? list[idx] : null;
+
+  if (normalized?.intent === 'delete_events') {
+    const all = (normalized.delete_target_indices || []).map((index) => ({ index, event: at(index) }));
+    return {
+      resolvedEdits: [], unresolvedEdits: [],
+      resolvedDeletes: all.filter((r) => r.event),
+      unresolvedDeletes: all.filter((r) => !r.event),
+    };
+  }
+  if (normalized?.intent === 'edit_events') {
+    const all = (normalized.proposed_events || []).map((proposed) => ({ proposed, target: at(proposed.edit_target_index) }));
+    return {
+      resolvedEdits: all.filter((r) => r.target),
+      unresolvedEdits: all.filter((r) => !r.target),
+      resolvedDeletes: [], unresolvedDeletes: [],
+    };
+  }
+  return { resolvedEdits: [], unresolvedEdits: [], resolvedDeletes: [], unresolvedDeletes: [] };
 }
