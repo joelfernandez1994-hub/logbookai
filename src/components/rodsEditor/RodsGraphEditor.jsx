@@ -119,13 +119,17 @@ export default function RodsGraphEditor({
   const beforeHos = useMemo(() => computeHOS(events, cycleType, tz, evalNow, { historyComplete: true }),
     [events, cycleType, tz, evalNow]);
 
+  // Pure coordinate math (rodsGraphGesture.js) — same formula as before,
+  // just extracted so it's independently unit-testable.
   const hourFromClientX = useCallback((clientX) => {
     if (!rowsRef.current) return 0;
     const rect = rowsRef.current.getBoundingClientRect();
-    return Math.max(0, Math.min(24, (clientX - rect.left) / pxPerHour));
+    return xToHour(clientX, rect.left, pxPerHour);
   }, [pxPerHour]);
 
-  // ---- auto-scroll while dragging near edges ----
+  // ---- auto-scroll while dragging near edges (only does anything once
+  // zoomed — in the default full-day view there is nothing to scroll, so
+  // scrollLeft writes are harmless no-ops) ----
   const startAutoScroll = useCallback(() => {
     const tick = () => {
       if (!gesture.current) { rafRef.current = 0; return; }
@@ -133,12 +137,7 @@ export default function RodsGraphEditor({
       const cx = lastClientX.current;
       if (sc && cx != null) {
         const vr = sc.getBoundingClientRect();
-        const edge = 48;
-        const rightDist = vr.right - cx;
-        const leftDist = cx - vr.left;
-        let dx = 0;
-        if (rightDist < edge) dx = (edge - rightDist) * 0.4;
-        else if (leftDist < edge) dx = -(edge - leftDist) * 0.4;
+        const dx = autoScrollDelta(cx, vr.left, vr.right);
         if (dx) sc.scrollLeft += dx;
       }
       rafRef.current = requestAnimationFrame(tick);
@@ -153,17 +152,22 @@ export default function RodsGraphEditor({
   useEffect(() => () => stopAutoScroll(), [stopAutoScroll]);
 
   // ---- pointer handlers (shared by rows + handles) ----
+  // The 'draw' branch is a thin wrapper around updateDrawGesture/
+  // finalizeDrawGesture (rodsGraphGesture.js): one continuous swipe
+  // accumulates into a single gesture object regardless of how many hour
+  // boundaries or re-renders happen in between, and produces exactly one
+  // canonical {status, lo, hi} range at release — never a fragmented series
+  // of inserts. The duty status is fixed at touch-down (beginDrawGesture)
+  // and never re-derived from vertical position here either.
   const onPointerMove = useCallback((e) => {
     const g = gesture.current; if (!g) return;
     lastClientX.current = e.clientX;
-    const dx = Math.abs(e.clientX - g.startClientX);
-    const dy = Math.abs(e.clientY - g.startClientY);
-    if (dx > 4 || dy > 8) g.moved = true;
     const hour = hourFromClientX(e.clientX);
     if (g.type === 'draw') {
-      g.endHour = hour;
-      setDraft({ status: g.status, startHour: g.startHour, endHour: hour });
-      setBubble({ x: e.clientX, y: e.clientY, startHour: g.startHour, endHour: hour, status: g.status, color: STATUS_COLORS[g.status] });
+      const updated = updateDrawGesture(g, e.clientX, e.clientY, hour);
+      gesture.current = updated;
+      setDraft({ status: updated.status, startHour: updated.startHour, endHour: updated.endHour });
+      setBubble({ x: e.clientX, y: e.clientY, startHour: updated.startHour, endHour: updated.endHour, status: updated.status, color: STATUS_COLORS[updated.status] });
     } else if (g.type === 'handle') {
       let s = g.which === 'start' ? hour : g.otherHour;
       let e2 = g.which === 'end' ? hour : g.otherHour;
@@ -180,23 +184,26 @@ export default function RodsGraphEditor({
     if (!g) return;
     if (g.type === 'handle') return;
     setDraft(null);
-    if (!g.moved) {
-      // tap -> edit existing segment at this hour
-      const seg = daySegs.find((s) => g.startHour >= s.startHour - 0.01 && g.startHour < s.endHour);
-      if (seg) openEdit(seg);
+    const result = finalizeDrawGesture(g);
+    if (!result) {
+      // No net movement (or zero-length) -> a tap, not a draw: edit the
+      // existing segment at this hour if there is one. This also covers
+      // "cancel discards the gesture completely" — nothing was ever staged
+      // to write, so there is nothing to undo.
+      if (!g.moved) {
+        const seg = daySegs.find((s) => g.startHour >= s.startHour - 0.01 && g.startHour < s.endHour);
+        if (seg) openEdit(seg);
+      }
       return;
     }
-    let lo = Math.min(g.startHour, g.endHour), hi = Math.max(g.startHour, g.endHour);
-    lo = snapHour(lo, 1); hi = snapHour(hi, 1);
-    if (hi - lo < 1 / 60) return;
-    openNew(g.status, lo, hi);
+    openNew(result.status, result.lo, result.hi);
   }, [daySegs, stopAutoScroll]);
 
   const onPointerDownRow = (e, status) => {
     if (readOnly || mode !== 'edit') return;
     e.preventDefault();
     const hour = hourFromClientX(e.clientX);
-    gesture.current = { type: 'draw', status, startHour: hour, endHour: hour, startClientX: e.clientX, startClientY: e.clientY, moved: false, pointerId: e.pointerId };
+    gesture.current = { ...beginDrawGesture(status, e.clientX, e.clientY, hour), pointerId: e.pointerId };
     setDraft({ status, startHour: hour, endHour: hour });
     setBubble({ x: e.clientX, y: e.clientY, endHour: hour, status, color: STATUS_COLORS[status] });
     lastClientX.current = e.clientX;
