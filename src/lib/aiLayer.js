@@ -34,6 +34,24 @@ export function shouldOfferApply(proposal) {
   return Array.isArray(proposal.proposed_events) && proposal.proposed_events.length > 0;
 }
 
+// A proposal's `interpretation`/`summary` text is model-generated prose and
+// must NEVER claim the entries are already saved — nothing is written until
+// the driver taps Apply (timelineWriter.js is the only thing that persists).
+// The backend system prompt instructs the model to use forward-looking
+// ("I'll log...") language, but an LLM's compliance with a prompt
+// instruction can't be guaranteed or unit-tested, so this is a deterministic
+// backstop: any past-tense "already done" claim slipping through is rewritten
+// to proposal-framed language before it ever reaches the driver.
+const PREMATURE_SUCCESS_RE = /\b(?:i(?:'ve| have)?\s+(?:already\s+)?logged|i(?:'ve| have)?\s+(?:already\s+)?recorded|logged your|processed your(?: full)?(?: day)? log|he registrado|ya (?:registr[eé]|guard[eé])|he guardado)\b/i;
+export function neutralizeProposalLanguage(text) {
+  const s = String(text || '').trim();
+  if (!s || !PREMATURE_SUCCESS_RE.test(s)) return s;
+  const isSpanish = PREMATURE_SUCCESS_RE.exec(s)?.[0]?.match(/registr|guard/i) || /[ñáéíóú]/i.test(s);
+  const prefix = isSpanish ? 'Esto es lo que registraré si lo apruebas: ' : "Here's what I'll log if you approve: ";
+  const rest = s.replace(PREMATURE_SUCCESS_RE, '').replace(/^[\s,.:;-]+/, '');
+  return prefix + (rest || s);
+}
+
 const GUARDED_FIELDS = ['start_time', 'end_time', 'status', 'city', 'state'];
 
 function clockFromLocal(value) {
