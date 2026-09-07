@@ -6,7 +6,7 @@ import {
   validateTimeline, snapHour, formatHour, hourToX,
 } from '@/lib/rodsEditor';
 import { applyTimelineOps } from '@/lib/timelineWriter';
-import { computeGraphLayout } from '@/lib/rodsGraphLayout';
+import { computeGraphLayout, LEFT_W } from '@/lib/rodsGraphLayout';
 import EventSheet from './EventSheet';
 import ProposedChangeDialog from './ProposedChangeDialog';
 import TimeBubble from './TimeBubble';
@@ -18,7 +18,7 @@ const STATUS_COLORS = {
   OFF_DUTY: '#64748b', SLEEPER_BERTH: '#7c3aed', DRIVING: '#2563eb', ON_DUTY: '#ea580c',
 };
 const STATUS_LABELS = { OFF_DUTY: 'Off', SLEEPER_BERTH: 'Sleeper', DRIVING: 'Drive', ON_DUTY: 'On' };
-const LEFT_W = 84, TOP_PAD = 24, ROW_H = 52;
+const TOP_PAD = 24, ROW_H = 52;
 
 const C = {
   gridStrong: 'hsl(var(--graph-grid))',
