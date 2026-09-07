@@ -42,6 +42,7 @@ export default function Logs() {
   const [saveError, setSaveError] = useState('');
   const [confirmClear, setConfirmClear] = useState(false);
   const [clearing, setClearing] = useState(false);
+  const [certifying, setCertifying] = useState(false);
   const [fixOpen, setFixOpen] = useState(false);
 
   const tz = carrier?.home_terminal_timezone || 'America/Chicago';
@@ -87,13 +88,23 @@ export default function Logs() {
   };
 
   const certify = async () => {
-    await base44.entities.Certification.create({
-      log_date: dateStr,
-      certified_at: new Date().toISOString(),
-      signature_data: profile?.signature_data || '',
-      signature_name: profile?.legal_name || '',
-    });
-    await loadCerts();
+    // Guard against a duplicate Certification record from a rapid double-tap
+    // (or any lag between click and `isCertified` updating from loadCerts()):
+    // this is a driver's legal attestation, not an ordinary save, so it must
+    // never fire twice for the same tap.
+    if (certifying || isCertified) return;
+    setCertifying(true);
+    try {
+      await base44.entities.Certification.create({
+        log_date: dateStr,
+        certified_at: new Date().toISOString(),
+        signature_data: profile?.signature_data || '',
+        signature_name: profile?.legal_name || '',
+      });
+      await loadCerts();
+    } finally {
+      setCertifying(false);
+    }
   };
 
   // Both Add and Edit funnel through this single handler. The canonical writer
@@ -222,7 +233,7 @@ export default function Logs() {
         </div>
       </div>
 
-      <Button className="w-full mb-2" onClick={certify} disabled={isCertified}>
+      <Button className="w-full mb-2" onClick={certify} disabled={isCertified || certifying}>
         {isCertified ? t('logs.certifiedCheck') : t('logs.certifyLog')}
       </Button>
       <Button variant="outline" className="w-full mb-2 text-error border-error/40 hover:bg-error-surface" disabled={clearing} onClick={() => setConfirmClear(true)}>
