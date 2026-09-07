@@ -224,17 +224,17 @@ export default function LogAssistant() {
           // id here. An unresolved target is NEVER silently turned into a
           // new inserted event (that would duplicate/overlap the timeline);
           // it becomes a clarification instead.
+          let deleteResolved = null;
           if (toShow?.intent === 'delete_events') {
             const { resolvedDeletes, unresolvedDeletes } = resolveEditTargets(events, toShow);
             if (resolvedDeletes.length && !unresolvedDeletes.length) {
-              setDeleteConfirm({ targets: resolvedDeletes.map(r => ({ id: r.event.id, description: describeEvent(r.event, tz) })) });
-              setBusy(false);
-              return true;
+              deleteResolved = resolvedDeletes.map(r => ({ id: r.event.id, description: describeEvent(r.event, tz) }));
+            } else {
+              toShow = {
+                ...toShow, intent: 'clarification', proposed_events: [], requires_clarification: true,
+                clarification_question: toShow.clarification_question || 'Which event did you mean? Please describe it more specifically (e.g. the approximate time or activity).',
+              };
             }
-            toShow = {
-              ...toShow, intent: 'clarification', proposed_events: [], requires_clarification: true,
-              clarification_question: toShow.clarification_question || 'Which event did you mean? Please describe it more specifically (e.g. the approximate time or activity).',
-            };
           } else if (toShow?.intent === 'edit_events') {
             const { resolvedEdits, unresolvedEdits } = resolveEditTargets(events, toShow);
             if (resolvedEdits.length && !unresolvedEdits.length) {
@@ -246,7 +246,8 @@ export default function LogAssistant() {
               };
             }
           }
-          setProposal(await prepareProposal(toShow));
+          if (deleteResolved) setDeleteConfirm({ targets: deleteResolved });
+          else setProposal(await prepareProposal(toShow));
         } else if (mode === 'make_legal_past') setPastResult(res.data);
         else if (mode === 'make_legal_future') setFutureResult(res.data);
         ok = true;
