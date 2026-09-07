@@ -45,6 +45,45 @@ function adjustmentMatches(event, field, expected) {
   return (event.adjustments || []).some(a => a.field === field && String(a.original_stated_value || '').toLowerCase().includes(String(expected || '').toLowerCase()));
 }
 
+function clockToMinutes(hhmm) {
+  const m = String(hhmm || '').match(/^(\d{2}):(\d{2})$/);
+  return m ? Number(m[1]) * 60 + Number(m[2]) : null;
+}
+
+// Every clock value that appears as ANY event's start or end in the proposed
+// timeline — the CANONICAL set of boundaries the proposal actually contains.
+// A stated driver fact is "preserved" if its value is present here at all,
+// regardless of which specific event/field carries it or how that field is
+// provenance-labeled. This is what makes a SHARED boundary work correctly
+// ("12:00" simultaneously closing one event and opening the next is ONE fact,
+// not two separate ones each requiring their own 'explicit' tag) — the guard
+// cares whether the VALUE survived into the timeline, not which field "owns"
+// the provenance label for it.
+function canonicalClockBoundaries(events) {
+  const set = new Set();
+  for (const event of events) {
+    const s = clockFromLocal(event.start_time_local || event.start_timestamp);
+    const e = clockFromLocal(event.end_time_local || event.end_timestamp);
+    if (s) set.add(s);
+    if (e) set.add(e);
+  }
+  return set;
+}
+
+// Smallest distance (minutes) from any of `candidates` to any real boundary.
+// Used only for an APPROXIMATE fact's tolerance check — an exact fact must
+// match a boundary outright (see below), never by "close enough".
+function nearestBoundaryDeltaMin(candidates, boundaryMinutes) {
+  let min = Infinity;
+  for (const c of candidates) {
+    const cm = clockToMinutes(c);
+    if (cm == null) continue;
+    for (const bm of boundaryMinutes) min = Math.min(min, Math.abs(cm - bm));
+  }
+  return min;
+}
+const APPROX_TOLERANCE_MIN = 30;
+
 export function detectExplicitFactAlterations(events = [], deterministicFacts = {}) {
   const alteredExplicitFacts = [];
   const droppedExplicitEvents = [];
