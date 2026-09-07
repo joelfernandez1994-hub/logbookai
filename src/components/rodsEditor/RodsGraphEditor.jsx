@@ -72,6 +72,7 @@ export default function RodsGraphEditor({
   const totals = grid.totals;
 
   const [mode, setMode] = useState('view');
+  const [zoomHours, setZoomHours] = useState(null); // null = full day (default)
   const [containerW, setContainerW] = useState(360);
   const [draft, setDraft] = useState(null);
   const [bubble, setBubble] = useState(null);
@@ -93,13 +94,18 @@ export default function RodsGraphEditor({
   }, []);
 
   const editMode = mode === 'edit' && !readOnly;
-  // Always fits the full 24h day into the available width, in both view and
-  // edit mode — see rodsGraphLayout.js for why edit mode intentionally no
-  // longer zooms/scrolls.
+  // Default is always the full day fit exactly to the available width — no
+  // scroll required just to view or edit. zoomHours is only ever set while
+  // actively editing (an explicit, driver-triggered "zoom in" for precise
+  // touch edits on a short stop); leaving edit mode or dateStr changing
+  // resets it back to the full-day default (see the effect below).
+  const zoomed = editMode && !!zoomHours;
   const { visibleHours, pxPerHour, graphW, contentW } = useMemo(
-    () => computeGraphLayout(containerW),
-    [containerW]
+    () => computeGraphLayout(containerW, zoomed ? zoomHours : 24),
+    [containerW, zoomed, zoomHours]
   );
+  useEffect(() => { if (!editMode) setZoomHours(null); }, [editMode]);
+  useEffect(() => { setZoomHours(null); }, [dateStr]);
   // Presentation only: how many hours apart a TEXT label is drawn on the
   // hour ruler. The grid itself (hour tick lines + quarter ticks) is always
   // full density regardless of this — only which ticks additionally get a
