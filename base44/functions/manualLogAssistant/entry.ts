@@ -96,8 +96,14 @@ const INTERPRET_SCHEMA = {
               required: ['field', 'original_stated_value', 'adjusted_value', 'reason'],
             },
           },
+          // Only for intent "edit_events": the [index] (from RECENT ACTUAL
+          // EVENTS) of the existing event THIS proposed event replaces. -1
+          // when you cannot confidently identify a single existing event —
+          // in that case also set requires_clarification=true. Irrelevant
+          // (leave -1) for add_events/replace_day.
+          edit_target_index: { type: 'integer' },
         },
-        required: ['start_time', 'end_time', 'status', 'city', 'state', 'activity', 'remark', 'ambiguous_fields', 'field_provenance', 'adjustments'],
+        required: ['start_time', 'end_time', 'status', 'city', 'state', 'activity', 'remark', 'ambiguous_fields', 'field_provenance', 'adjustments', 'edit_target_index'],
       },
     },
     clarifications: {
