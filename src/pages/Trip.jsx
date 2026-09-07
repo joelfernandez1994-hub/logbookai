@@ -460,20 +460,26 @@ export default function Trip() {
               const locationLabel = stop.verified && stop.city
                 ? `${stop.city}${stop.state ? `, ${stop.state}` : ''}`
                 : t('trip.approxMileOnly', { mile: Math.round(stop.mile) });
-              // Truck-stop/parking discovery is a SEPARATE concern from the HOS
-              // stop decision above: LogbookAI decided WHEN/roughly WHERE via
-              // planTripStops(); this only hands the driver off to an external
-              // provider (Trucker Path) to find an actual truck stop/parking
-              // spot near that real, route-derived point. Only offered once
-              // real coordinates exist for this stop — never a guess.
-              const handoff = buildParkingHandoff(stop);
+              // Truck-stop discovery is a SEPARATE concern from the HOS stop
+              // decision above: LogbookAI already decided WHEN/roughly WHERE via
+              // planTripStops(); topStops only shows REAL, route-derived truck
+              // stops from a supported public POI source (OpenStreetMap/
+              // Overpass) near that point, ranked by route proximity/detour —
+              // never by chain preference. "Check Parking" hands the driver to
+              // Trucker Path for a LIVE parking check at the best real stop
+              // found (or the HOS point itself if no named stop was found yet);
+              // LogbookAI itself never shows a live parking number.
+              const topStops = pickTopStopsForType(stop.truckStops || [], stop.type, 3);
+              const parkingTarget = topStops[0] || (stop.lat != null && stop.lng != null ? stop : null);
+              const parkingHandoff = parkingTarget ? buildParkingHandoff(parkingTarget) : null;
+              const showTruckStops = stop.type === 'break' || stop.type === 'rest' || stop.type === 'restart' || stop.type === 'fuel';
               return (
                 <div key={i} className="rounded-lg border border-border bg-accent/30 p-2.5 text-xs">
                   <div className="flex items-center justify-between gap-2">
                     <div className="flex items-start gap-2">
                       <Icon className="w-4 h-4 mt-0.5 shrink-0 text-muted-foreground" />
                       <div>
-                        <div className="font-medium text-card-foreground">{meta.label} — {locationLabel}</div>
+                        <div className="font-medium text-card-foreground">{meta.label} — {t('trip.nearLocation', { location: locationLabel })}</div>
                         <div className="text-muted-foreground">{stop.reason}</div>
                       </div>
                     </div>
@@ -481,19 +487,44 @@ export default function Trip() {
                       <Plus className="w-3 h-3 mr-1" /> {t('common.add')}
                     </Button>
                   </div>
-                  {(stop.type === 'break' || stop.type === 'rest' || stop.type === 'restart' || stop.type === 'fuel') && (
-                    <div className="mt-2 pt-2 border-t border-border/60 flex items-center justify-between gap-2">
-                      <div className="text-[10px] text-muted-foreground">
-                        <div>{t('trip.truckStopOption')}</div>
-                        <div>{t('trip.parkingAvailabilityCheck')}</div>
-                      </div>
-                      {handoff ? (
-                        <a href={handoff.appUrl} className="inline-flex items-center gap-1 h-7 px-2 rounded-md border border-border text-[11px] font-medium text-card-foreground hover:bg-accent shrink-0">
-                          <Truck className="w-3 h-3" /> {t('trip.openInTruckerPath')}
-                        </a>
+                  {showTruckStops && (
+                    <div className="mt-2 pt-2 border-t border-border/60">
+                      {topStops.length > 0 ? (
+                        <>
+                          <div className="text-[10px] uppercase tracking-wide text-muted-foreground mb-1">{t('trip.suggestedTruckStops')}</div>
+                          <div className="space-y-1.5">
+                            {topStops.map((poi, j) => {
+                              const fit = classifyFit(poi);
+                              return (
+                                <div key={poi.osm_id ?? j} className="flex items-center justify-between gap-2 rounded-md bg-card border border-border/60 p-1.5">
+                                  <div>
+                                    <div className="font-medium text-card-foreground">{poi.name}</div>
+                                    <div className="text-[10px] text-muted-foreground">
+                                      {t('trip.milesOffRoute', { miles: Number.isFinite(poi.off_route_mi) ? poi.off_route_mi.toFixed(1) : '?' })}
+                                      {fit.tenHourRest ? ` · ${t('trip.goodForOvernight')}` : (fit.fuelPlusBreak ? ` · ${t('trip.goodForFuelBreak')}` : '')}
+                                    </div>
+                                  </div>
+                                  <Button size="sm" variant="outline" className="h-6 px-2 text-[10px] shrink-0" onClick={() => addTruckStopToPlan(stop, poi)}>
+                                    {t('trip.addToTrip')}
+                                  </Button>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </>
                       ) : (
-                        <div className="text-[10px] text-muted-foreground italic shrink-0">{t('trip.parkingLocationPending')}</div>
+                        <div className="text-[10px] text-muted-foreground italic">{t('trip.noTruckStopsFound')}</div>
                       )}
+                      <div className="flex items-center justify-between gap-2 mt-2">
+                        <div className="text-[10px] text-muted-foreground">{t('trip.parkingAvailabilityCheck')}</div>
+                        {parkingHandoff ? (
+                          <a href={parkingHandoff.appUrl} className="inline-flex items-center gap-1 h-6 px-2 rounded-md border border-border text-[10px] font-medium text-card-foreground hover:bg-accent shrink-0">
+                            <Truck className="w-3 h-3" /> {t('trip.checkParking')}
+                          </a>
+                        ) : (
+                          <div className="text-[10px] text-muted-foreground italic shrink-0">{t('trip.parkingLocationPending')}</div>
+                        )}
+                      </div>
                     </div>
                   )}
                 </div>
