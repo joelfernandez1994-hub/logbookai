@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { getDailyGrid, computeHOS } from '@/lib/hosEngine';
 import {
   daySegments, planDayInsertion, planEdit, applyOps, buildAfterEvents,
-  validateTimeline, snapHour, formatHour, hourToX,
+  validateTimeline, snapHour, hourToX,
 } from '@/lib/rodsEditor';
 import { applyTimelineOps } from '@/lib/timelineWriter';
 import { computeGraphLayout, LEFT_W } from '@/lib/rodsGraphLayout';
