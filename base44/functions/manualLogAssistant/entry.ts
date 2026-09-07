@@ -396,7 +396,7 @@ function clockCandidates(hour, minute, meridiem) {
 // It is still tracked (never silently dropped from consideration — the
 // driver did state it) but flagged `approximate: true` so aiLayer's guard
 // matches it with tolerance and never hard-blocks on it alone.
-const APPROX_QUALIFIER_RE = /\b(?:about|around|near|roughly|approximately|circa|ish|cerca de(?: las?)?|aproximadamente|casi)\s*$/i;
+const APPROX_QUALIFIER_RE = /\b(?:about|around|near|roughly|approximately|circa|ish|cerca de(?: las?)?|alrededor(?: de(?: las?)?)?|a eso de(?: las?)?|m[aá]s o menos|aproximadamente|casi)\s*$/i;
 function isApproximateMention(text, matchIndex) {
   const lookback = text.slice(Math.max(0, matchIndex - 20), matchIndex);
   return APPROX_QUALIFIER_RE.test(lookback);
