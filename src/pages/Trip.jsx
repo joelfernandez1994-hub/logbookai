@@ -6,6 +6,7 @@ import { computeHOS, fmtDur, dateKeyInTz } from '@/lib/hosEngine';
 import { whatCanIDo } from '@/lib/logAssistant';
 import { truckEtaHours, speedProfileLabel } from '@/lib/proposalValidation';
 import { limitingClock, maxDriveMiles, buildComplianceEdits, planTripStops, withFuelOpportunities, FRESH_TRIP_HOS_BASIS } from '@/lib/complianceStop';
+import { buildParkingHandoff } from '@/lib/parkingProvider';
 import { firstEventOfDay, loggedFuelStops, getFuelReceipts } from '@/lib/tripSync';
 import DailyMilesCard from '@/components/DailyMilesCard';
 import TimelineGapNotice from '@/components/TimelineGapNotice';
