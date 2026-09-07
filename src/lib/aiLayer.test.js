@@ -223,3 +223,37 @@ describe('normalizeStatus', () => {
     expect(normalizeStatus('SLEEPER_BERTH')).toBe('SLEEPER_BERTH');
   });
 });
+
+describe('neutralizeProposalLanguage — AI must never claim a proposal is already saved', () => {
+  it('rewrites the exact real captured phrasing ("I have logged your day...")', () => {
+    const out = neutralizeProposalLanguage('I have logged your day starting in Atlanta, including your 15-minute pre-trip.');
+    expect(out).not.toMatch(/i have logged/i);
+    expect(out).toMatch(/here's what i'll log/i);
+  });
+
+  it('rewrites "Processed your full day log..."', () => {
+    const out = neutralizeProposalLanguage('Processed your full day log from Atlanta to Gainesville.');
+    expect(out).not.toMatch(/processed your/i);
+  });
+
+  it('rewrites the Spanish equivalent ("He registrado...")', () => {
+    const out = neutralizeProposalLanguage('He registrado su estado fuera de servicio en Miami hasta las 06:00.');
+    expect(out).not.toMatch(/he registrado/i);
+    expect(out).toMatch(/registrar/i);
+  });
+
+  it('leaves ordinary proposal-framed text completely untouched', () => {
+    const text = "Here's what I'll log if you approve: off duty until 6, then driving.";
+    expect(neutralizeProposalLanguage(text)).toBe(text);
+  });
+
+  it('validateInterpretResult applies the backstop to both interpretation and summary', () => {
+    const { normalized } = validateInterpretResult({
+      intent: 'add_events',
+      summary: 'I have logged your day.',
+      proposed_events: [],
+    });
+    expect(normalized.interpretation).not.toMatch(/i have logged/i);
+    expect(normalized.summary).not.toMatch(/i have logged/i);
+  });
+});
