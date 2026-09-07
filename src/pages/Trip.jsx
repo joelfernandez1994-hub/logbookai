@@ -173,13 +173,24 @@ export default function Trip() {
       const out = [];
       for (const stop of routeStops) {
         if (cancelled) return;
+        let city = '', state = '', verified = false, lat = null, lng = null;
         try {
           const res = await base44.functions.invoke('complianceStop', { origin: originStr, destination: destStr, max_drive_miles: stop.mile });
           const s = res?.data || res;
-          out.push({ ...stop, city: s?.stop_city || '', state: s?.stop_state || '', verified: !!s?.verified, lat: s?.stop_lat ?? null, lng: s?.stop_lng ?? null });
-        } catch (e) {
-          out.push({ ...stop, city: '', state: '', verified: false, lat: null, lng: null });
-        }
+          city = s?.stop_city || ''; state = s?.stop_state || ''; verified = !!s?.verified;
+          lat = s?.stop_lat ?? null; lng = s?.stop_lng ?? null;
+        } catch (e) { /* leave unresolved — never fabricate a location */ }
+        // Truck-stop discovery is a SEPARATE lookup from the HOS-derived point
+        // above: it asks a supported public POI source (OpenStreetMap/Overpass,
+        // via truckStopSearch) what real, named truck stops exist near that
+        // point. A failure here must never block the HOS stop suggestion
+        // itself — it only means no truck-stop options are shown for it.
+        let truckStops = [];
+        try {
+          const ts = await findTruckStopsNearStop({ origin: originStr, destination: destStr, targetMiles: stop.mile });
+          truckStops = rankTruckStops(ts?.pois || []);
+        } catch (e) { truckStops = []; }
+        out.push({ ...stop, city, state, verified, lat, lng, truckStops });
       }
       if (!cancelled) { setResolvedStops(out); setResolvingStops(false); }
     }
