@@ -94,3 +94,105 @@ describe('proposal routes and mileage', () => {
     expect(after.cycle.cycleRemainingHours).toBe(before.cycle.cycleRemainingHours);
   });
 });
+
+// ============================================================================
+// REGRESSION: an ongoing/destinationless Driving event must never generate
+// fabricated mileage (neither a road route lookup nor an elapsed-time x
+// assumed-mph estimate). Live bug: "12:00–6:00 OFF DUTY — Miami / 6:00–6:15
+// ON DUTY — Pre-Trip / 6:15→ongoing DRIVING — Miami" (driver never gave a
+// destination) produced "911.3 mi (estimated fallback)" — elapsed Driving
+// hours (~16.57h) x the conservative 55 mph fallback speed
+// (proposalValidation.fallbackMph), computed unconditionally in
+// enrichProposalMileage regardless of whether a real destination existed.
+// Fixed via canEstimateMileage(leg): the elapsed-time x speed ESTIMATE is
+// only ever used when destinationKnown && !isOngoing — a real, completed
+// leg whose road-route lookup itself failed. Otherwise mileage stays
+// mileage:null / mileage_source:'unknown', never a fabricated number.
+// ============================================================================
+describe('mileage rule — ongoing/destinationless Driving never gets fabricated mileage', () => {
+  const neverCalled = vi.fn(async () => { throw new Error('routing provider should never be called for an ongoing/destinationless leg'); });
+
+  it('1. ongoing Driving with no destination -> no route mileage (routing provider never even invoked for that leg)', async () => {
+    const events = [
+      event('OFF_DUTY', 0, 6, 'Miami'),
+      event('ON_DUTY', 6, 6.25, 'Miami'),
+      { ...event('DRIVING', 6.25, null, 'Miami'), end_timestamp: null, is_ongoing: true },
+    ];
+    const result = await enrichProposalMileage(events, { routingProvider: neverCalled, now: new Date(iso(22.75)) }); // ~16.5h elapsed
+    expect(neverCalled).not.toHaveBeenCalled();
+    const driving = result.events.find((e) => e.duty_status === 'DRIVING');
+    expect(driving.mileage).toBeNull();
+    expect(driving.mileage_source).toBe('unknown');
+  });
+
+  it('2. destinationless Driving (even if NOT ongoing — no genuine following non-driving event) -> no speed x time fallback mileage', async () => {
+    // The Driving event has an end_timestamp (not ongoing), but nothing
+    // after it supplies a real destination city — getDrivingLegs falls back
+    // to the Driving event's OWN city (destinationKnown: false), which must
+    // never be treated as "we know where this trip ended".
+    const events = [
+      event('OFF_DUTY', 0, 6, 'Miami'),
+      event('DRIVING', 6, 9, 'Miami'), // 3h driving, ends with nothing after it
+    ];
+    const result = await enrichProposalMileage(events, { routingProvider: neverCalled });
+    expect(neverCalled).not.toHaveBeenCalled();
+    const driving = result.events.find((e) => e.duty_status === 'DRIVING');
+    expect(driving.mileage).toBeNull();
+    expect(driving.mileage_source).toBe('unknown');
+  });
+
+  it('3. proposed daily mileage (totalMiles) excludes unknown mileage entirely — never coerces null to a counted 0-that-looks-real or a fabricated number', async () => {
+    const events = [
+      event('OFF_DUTY', 0, 6, 'Miami'),
+      event('ON_DUTY', 6, 6.25, 'Miami'),
+      event('DRIVING', 6.25, 8.25, 'Miami'), // known route leg
+      event('ON_DUTY', 8.25, 8.5, 'Fort Pierce'),
+      { ...event('DRIVING', 8.5, null, 'Fort Pierce'), end_timestamp: null, is_ongoing: true }, // ongoing, no destination
+    ];
+    const knownRouteProvider = vi.fn(async (origin, destination) =>
+      (origin === 'Miami, FL' && destination === 'Fort Pierce, FL') ? { miles: 130, hours: 2 } : null);
+    const result = await enrichProposalMileage(events, { routingProvider: knownRouteProvider, now: new Date(iso(10)) });
+    expect(result.totalMiles).toBe(130); // only the completed, known-destination leg counts
+  });
+
+  it('4. Driving remains ongoing — the mileage fix never touches end_timestamp/is_ongoing', async () => {
+    const events = [{ ...event('DRIVING', 6.25, null, 'Miami'), end_timestamp: null, is_ongoing: true }];
+    const result = await enrichProposalMileage(events, { routingProvider: neverCalled });
+    const driving = result.events[0];
+    expect(driving.end_timestamp).toBeNull();
+    expect(driving.is_ongoing).toBe(true);
+  });
+
+  it('5. HOS still evaluates elapsed Driving time normally for an ongoing, mileage-unknown event', async () => {
+    const events = [
+      event('OFF_DUTY', 0, 6, 'Miami'),
+      event('ON_DUTY', 6, 6.25, 'Miami'),
+      { ...event('DRIVING', 6.25, null, 'Miami'), end_timestamp: null, is_ongoing: true },
+    ];
+    const now = new Date(iso(10)); // 3h45m of elapsed driving
+    const enriched = await enrichProposalMileage(events, { routingProvider: neverCalled, now });
+    const hos = computeHOS(enriched.events, '70_8', TZ, now, { historyComplete: true });
+    expect(hos.calculable).toBe(true);
+    // 11h limit minus ~3.75h driven so far — HOS math is entirely independent
+    // of the (now-null) mileage field.
+    expect(hos.driving.drivingRemainingMs).toBeCloseTo((11 - 3.75) * H, -3);
+  });
+
+  it('6. origin + destination Driving can still use route-estimated mileage (completed leg, real destination)', async () => {
+    const events = [event('DRIVING', 6.25, 8.25, 'Miami'), event('ON_DUTY', 8.25, 8.5, 'Fort Pierce')];
+    const routeProvider = vi.fn(async () => ({ miles: 130, hours: 2 }));
+    const result = await enrichProposalMileage(events, { routingProvider: routeProvider });
+    expect(routeProvider).toHaveBeenCalled();
+    expect(result.events[0].mileage).toBe(130);
+    expect(result.events[0].mileage_source).toBe('route');
+  });
+
+  it('6b. a completed, known-destination leg whose route lookup FAILS still falls back to a labeled speed x time ESTIMATE (never "unknown" for a leg that genuinely happened with a known endpoint)', async () => {
+    const events = [event('DRIVING', 6.25, 8.25, 'Miami'), event('ON_DUTY', 8.25, 8.5, 'Fort Pierce')];
+    const failingProvider = vi.fn(async () => null); // routing service unavailable
+    const result = await enrichProposalMileage(events, { routingProvider: failingProvider });
+    const driving = result.events[0];
+    expect(driving.mileage_source).toBe('estimate');
+    expect(driving.mileage).toBeGreaterThan(0); // 2h x fallback mph — a real, completed, known-destination trip
+  });
+});
