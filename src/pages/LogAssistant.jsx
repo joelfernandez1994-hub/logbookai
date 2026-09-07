@@ -13,6 +13,7 @@ import { validateInterpretResult, isQuestionIntent, shouldOfferApply, replaceDay
 import { isMultiEventNarrative } from '@/lib/narrativeClassifier';
 import { detectFeasibilityQuestion, answerFeasibilityQuestion } from '@/lib/feasibilityQuestion';
 import { describeEvent } from '@/lib/eventReference';
+import { normalizeCandidateTimeline } from '@/lib/timelineNormalization';
 import AssistantInput from '@/components/logAssistant/AssistantInput';
 import ProposalReview from '@/components/logAssistant/ProposalReview';
 import WhatCanIDoPanel from '@/components/logAssistant/WhatCanIDoPanel';
@@ -74,7 +75,16 @@ export default function LogAssistant() {
 
   const prepareProposal = async (value) => {
     if (!value?.proposed_events?.length) { setRouteWarning(null); setReconstructionConflicts([]); return value; }
-    const enriched = await enrichProposalMileage(value.proposed_events, { routingProvider: fetchRoute, speedProfile, now: new Date() });
+    // Normalize the PROPOSED set's own boundaries before anything else runs
+    // (mileage/route calculations, and what the driver sees/edits/applies) —
+    // closes any non-last event with no end against the next one's start and
+    // truncates an inferred/defaulted end that runs past a later boundary.
+    // Never moves an explicit fact. A genuine explicit-vs-explicit conflict
+    // within the proposed set itself is left exactly as stated here; it is
+    // still caught and surfaced by ProposalReview's own validateProposal call
+    // (which re-normalizes the full existing+proposed timeline for warnings).
+    const { events: selfNormalized } = normalizeCandidateTimeline(value.proposed_events);
+    const enriched = await enrichProposalMileage(selfNormalized, { routingProvider: fetchRoute, speedProfile, now: new Date() });
     // Route-aware reconstruction: replace AI-inferred Driving durations with
     // routed truck-realistic travel time and cascade-shift subsequent inferred
     // events (explicit driver timestamps are never moved). Runs at proposal time
