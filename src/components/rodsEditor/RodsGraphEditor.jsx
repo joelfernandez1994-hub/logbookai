@@ -333,11 +333,15 @@ export default function RodsGraphEditor({
         </div>
       )}
 
-      {/* graph — overflow-hidden, not auto: the graph always fits exactly
-          (computeGraphLayout), so there is never a legitimate reason to
-          scroll; leaving overflow-x as "auto" only invited a stray 1px-
-          rounding scrollbar to reappear. */}
-      <div ref={scrollRef} className="overflow-hidden rounded-lg border border-border bg-graph">
+      {/* graph — overflow-hidden by default: the full-day view always fits
+          exactly (computeGraphLayout), so there is never a legitimate reason
+          to scroll there; leaving overflow-x as "auto" only invited a stray
+          1px-rounding scrollbar to reappear. The ONE exception is the
+          explicit Zoom interaction below, which legitimately needs to pan —
+          graph-scroll gives it a themed thin scrollbar instead of the
+          browser's default light-gray track. */}
+      <div ref={scrollRef} className={`rounded-lg border border-border bg-graph ${zoomed ? 'overflow-x-auto overflow-y-hidden touch-pan-x graph-scroll' : 'overflow-hidden'}`}
+        style={zoomed ? { touchAction: 'pan-x' } : undefined}>
         <div ref={contentRef} style={{ width: contentW, position: 'relative', height: TOP_PAD + ROW_H * 4 + 6 }}>
           {/* hour ruler (scrolls) */}
           <div style={{ position: 'absolute', left: LEFT_W, top: 0, width: graphW, height: TOP_PAD }}>
