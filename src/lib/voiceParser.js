@@ -555,11 +555,13 @@ function splitClauses(text) {
   // "and stopped"). Deliberately excludes "and got/woke up" — that phrase is
   // the connector for a same-clause sleep RANGE (parseTimeRange), not a new
   // clause, and a bare "and" is never split (too easy to misfire on plain
-  // descriptive text, e.g. "Miami and Fort Lauderdale").
+  // descriptive text, e.g. "Miami and Fort Lauderdale"). Spanish connectors
+  // ("luego", "después", "y luego") follow the same "then"-equivalent rule.
   return text
-    .replace(/\bthen\b|\bafter that\b/gi, '|')
+    .replace(/\bthen\b|\bafter that\b|\bluego\b|\bdespu[eé]s\b/gi, '|')
     .replace(/,\s*(?=(?:left|fueled|drove|started|stopped|on duty|off duty|driving|sleeper|fuel|pre-trip))/gi, '|')
     .replace(/\band\s+(?=(?:started|left|drove|stopped|resumed|continued|went)\b)/gi, '|')
+    .replace(/\by\s+(?=(?:empec[eé]|sal[ií]|par[eé]|segu[ií]|continu[eé])\b)/gi, '|')
     .split('|')
     .map(s => s.trim())
     .filter(Boolean);
