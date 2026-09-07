@@ -7,11 +7,17 @@ import {
 } from '@/lib/rodsEditor';
 import { applyTimelineOps } from '@/lib/timelineWriter';
 import { computeGraphLayout, getLabelIntervalHours, LEFT_W } from '@/lib/rodsGraphLayout';
+import { xToHour, beginDrawGesture, updateDrawGesture, finalizeDrawGesture, autoScrollDelta } from '@/lib/rodsGraphGesture';
 import EventSheet from './EventSheet';
 import ProposedChangeDialog from './ProposedChangeDialog';
 import TimeBubble from './TimeBubble';
 import { Button } from '@/components/ui/button';
-import { Pencil, Eye, ShieldCheck, GripVertical } from 'lucide-react';
+import { Pencil, Eye, ShieldCheck, GripVertical, ZoomIn, Maximize2 } from 'lucide-react';
+
+// Explicit "zoom in for precise edits" window — the default is always the
+// full day (undefined/null zoomHours); tapping Zoom switches to this many
+// hours visible + horizontally scrollable, tapping "Full Day" resets it.
+const ZOOM_WINDOW_HOURS = 5;
 
 const ROW_ORDER = ['OFF_DUTY', 'SLEEPER_BERTH', 'DRIVING', 'ON_DUTY'];
 const STATUS_COLORS = {
