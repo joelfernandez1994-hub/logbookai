@@ -47,7 +47,7 @@ function clockCandidates(hour, minute, meridiem) {
   }
   return am === pm ? [am] : [am, pm];
 }
-const APPROX_QUALIFIER_RE = /\b(?:about|around|near|roughly|approximately|circa|ish|cerca de(?: las?)?|aproximadamente|casi)\s*$/i;
+const APPROX_QUALIFIER_RE = /\b(?:about|around|near|roughly|approximately|circa|ish|cerca de(?: las?)?|alrededor(?: de(?: las?)?)?|a eso de(?: las?)?|aproximadamente|casi)\s*$/i;
 function isApproximateMention(text, matchIndex) {
   const lookback = text.slice(Math.max(0, matchIndex - 20), matchIndex);
   return APPROX_QUALIFIER_RE.test(lookback);
