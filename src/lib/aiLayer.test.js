@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { planReplaceRange, planInsert } from './timelineEngine';
 import {
-  validateInterpretResult, detectExplicitFactAlterations, isQuestionIntent, shouldOfferApply, replaceDayRange, normalizeStatus,
+  validateInterpretResult, detectExplicitFactAlterations, isQuestionIntent, shouldOfferApply, replaceDayRange, normalizeStatus, neutralizeProposalLanguage,
 } from './aiLayer';
 import { parseVoiceCommand } from './voiceParser';
 
