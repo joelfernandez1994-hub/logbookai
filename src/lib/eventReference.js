@@ -89,6 +89,19 @@ export function describeEvent(e, tz) {
   return [time, label, loc].filter(Boolean).join(' — ');
 }
 
+// Finds the most recent event whose city matches `city` (case-insensitive).
+// Used for corrections like "that was Jacksonville, not Orlando" — resolves
+// against the WRONG value ("Orlando") to find precisely which logged event
+// needs the fix, rather than guessing from recency alone.
+export function findEventByCity(events, city) {
+  const needle = String(city || '').trim().toLowerCase();
+  if (!needle) return null;
+  const matches = (events || [])
+    .filter((e) => e && e.start_timestamp && String(e.city || '').trim().toLowerCase() === needle)
+    .sort((a, b) => new Date(a.start_timestamp) - new Date(b.start_timestamp));
+  return matches[matches.length - 1] || null;
+}
+
 // Resolve `referenceText` against `events` (chronologically ordered, most
 // recent last). Returns:
 //   { candidates, activityKey, ordinal, resolved, ambiguous, reason }
