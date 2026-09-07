@@ -29,7 +29,12 @@
 // top when building contentW, so contentW was always LEFT_W px wider than
 // the space actually available to show it in).
 // ============================================================================
-export const LEFT_W = 84;
+// Presentation-only sizing: how wide the fixed Off/Sleeper/Drive/On label
+// column is. Reduced from the original 84px so a phone-width graph gives
+// more of its available width to the actual 24-hour plotting area rather
+// than the label gutter — 64px is still comfortably wide enough for the
+// longest label ("Sleeper", 10px bold) plus its 6px right padding.
+export const LEFT_W = 64;
 
 export function computeGraphLayout(containerW) {
   const graphAvailW = Math.max(0, containerW - LEFT_W);
