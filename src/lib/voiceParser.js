@@ -633,16 +633,29 @@ export function parseVoiceCommand(text, ctx = {}) {
       start = range.start; end = range.end; timeAmbiguous = range.ambiguous;
     } else {
       const t = parseTime(clause, refDate, tz, timeOpts);
-      if (!t) continue;
       const dur = parseDuration(clause);
-      start = t.date;
-      end = dur ? new Date(start.getTime() + dur) : null;
-      timeAmbiguous = t.ambiguous;
-      // If "left at" / "then" implies previous event ends at this start
-      if (prevEnd && !dur) {
-        // previous event with no end ends here
-        const prev = events[events.length - 1];
-        if (prev && !prev.end_timestamp) prev.end_timestamp = start.toISOString();
+      if (t) {
+        start = t.date;
+        end = dur ? new Date(start.getTime() + dur) : null;
+        timeAmbiguous = t.ambiguous;
+        // If "left at" / "then" implies previous event ends at this start
+        if (prevEnd && !dur) {
+          // previous event with no end ends here
+          const prev = events[events.length - 1];
+          if (prev && !prev.end_timestamp) prev.end_timestamp = start.toISOString();
+        }
+      } else if (prevEnd) {
+        // No explicit time on this clause, but a prior event in THIS
+        // narrative already ended — extremely common trucker phrasing
+        // ("took my 30 ... then got back on the road", no restated time).
+        // The activity naturally starts when the prior one ended. Never
+        // guessed for the FIRST clause (no anchor yet) — that still defers
+        // to AI via the empty-events fallback below.
+        start = prevEnd;
+        end = dur ? new Date(start.getTime() + dur) : null;
+        timeAmbiguous = false;
+      } else {
+        continue;
       }
     }
     const loc = parseLocation(clause) || parseLocation(raw);
