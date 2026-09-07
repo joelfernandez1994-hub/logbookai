@@ -592,6 +592,21 @@ export default function LogAssistant() {
                   <AlertTriangle className="w-4 h-4 inline mr-1" /> LogbookAI will not fabricate or hide events to make a log appear compliant. Review what actually happened.
                 </div>
               )}
+              {proposal.explicit_guard?.blocking && (
+                <div className="rounded-xl border border-error/40 bg-error-surface p-3 text-error-surface-foreground text-sm mb-3">
+                  <div className="font-semibold flex items-center gap-1 mb-1"><AlertTriangle className="w-4 h-4" /> Could not safely build a proposal</div>
+                  <div>
+                    {[...(proposal.explicit_guard.alteredExplicitFacts || []), ...(proposal.explicit_guard.droppedExplicitEvents || [])]
+                      .map(issue => issue.reason || `${issue.field || issue.type}: ${issue.value || 'review required'}`).join(' ')}
+                  </div>
+                  <div className="text-[11px] mt-1 opacity-80">Try rephrasing with a bit more detail, or describe the day in smaller pieces.</div>
+                </div>
+              )}
+              {!proposal.requires_clarification && !proposal.refuses_fabrication && !proposal.explicit_guard?.blocking && (
+                <div className="rounded-xl border border-warning/50 bg-warning-surface p-3 text-warning-surface-foreground text-sm mb-3">
+                  <AlertTriangle className="w-4 h-4 inline mr-1" /> LogbookAI understood your message but did not produce any proposed events to review. Try rephrasing or adding more detail.
+                </div>
+              )}
               <Button variant="outline" onClick={() => setProposal(null)}>Dismiss</Button>
             </div>
           )}
