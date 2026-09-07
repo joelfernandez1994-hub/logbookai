@@ -422,17 +422,28 @@ export default function Trip() {
             <Clock className="w-4 h-4" /> {t('trip.suggestedStopsAlongRoute')}
           </div>
           <p className="text-[11px] text-muted-foreground mb-3">{t('trip.suggestedStopsIntro')}</p>
+          {usingFreshHosFallback && (
+            <div className="rounded-lg border border-warning/40 bg-warning-surface p-2 text-[11px] text-warning-surface-foreground mb-3">
+              {t('trip.freshHosFallbackNote')}
+            </div>
+          )}
+          {resolvingStops && (
+            <div className="text-[11px] text-muted-foreground flex items-center gap-2 mb-2"><RefreshCw className="w-3 h-3 animate-spin" /> {t('trip.resolvingLocations')}</div>
+          )}
           <div className="space-y-2">
-            {routeStops.map((stop, i) => {
+            {displayStops.map((stop, i) => {
               const meta = STOP_META[stop.type];
               const Icon = meta.icon;
+              const locationLabel = stop.verified && stop.city
+                ? `${stop.city}${stop.state ? `, ${stop.state}` : ''}`
+                : t('trip.approxMileOnly', { mile: Math.round(stop.mile) });
               return (
                 <div key={i} className="flex items-center justify-between gap-2 rounded-lg border border-border bg-accent/30 p-2.5 text-xs">
                   <div className="flex items-start gap-2">
                     <Icon className="w-4 h-4 mt-0.5 shrink-0 text-muted-foreground" />
                     <div>
-                      <div className="font-medium text-card-foreground">{meta.label}</div>
-                      <div className="text-muted-foreground">{t('trip.approxMileReason', { mile: Math.round(stop.mile), reason: stop.reason })}</div>
+                      <div className="font-medium text-card-foreground">{meta.label} — {locationLabel}</div>
+                      <div className="text-muted-foreground">{stop.reason}</div>
                     </div>
                   </div>
                   <Button size="sm" variant="outline" className="h-7 px-2 shrink-0" onClick={() => addRouteStopToPlan(stop)}>
