@@ -6,7 +6,7 @@ import {
   validateTimeline, snapHour, hourToX,
 } from '@/lib/rodsEditor';
 import { applyTimelineOps } from '@/lib/timelineWriter';
-import { computeGraphLayout, LEFT_W } from '@/lib/rodsGraphLayout';
+import { computeGraphLayout, getLabelIntervalHours, LEFT_W } from '@/lib/rodsGraphLayout';
 import EventSheet from './EventSheet';
 import ProposedChangeDialog from './ProposedChangeDialog';
 import TimeBubble from './TimeBubble';
@@ -90,6 +90,11 @@ export default function RodsGraphEditor({
     () => computeGraphLayout(containerW),
     [containerW]
   );
+  // Presentation only: how many hours apart a TEXT label is drawn on the
+  // hour ruler. The grid itself (hour tick lines + quarter ticks) is always
+  // full density regardless of this — only which ticks additionally get a
+  // "12A"/"3A"/... label shrinks on a narrow phone so labels never overlap.
+  const labelIntervalHours = useMemo(() => getLabelIntervalHours(containerW), [containerW]);
   const rowTop = (i) => TOP_PAD + i * ROW_H;
   const x = (h) => LEFT_W + hourToX(h, pxPerHour);
 
