@@ -301,12 +301,12 @@ export default function Today() {
       <TimelineGapNotice events={events} dateStr={todayKey} tz={tz} now={now} />
 
       <div className="grid grid-cols-2 gap-2 mb-3">
-        <ClockCard label={t('hos.drivingRemaining')} value={timelineValidation.valid ? fmtDur(hos.driving.drivingRemainingMs) : '--'}
-          sublabel={timelineValidation.valid ? (hos.driving.expiresAt ? t('hos.expiresAt', { time: fmtClock(hos.driving.expiresAt, tz) }) : t('hos.elevenHourLimit')) : t('hos.unavailable')}
-          status={timelineValidation.valid ? clockStatus(hos.driving.drivingRemainingMs) : 'disabled'} icon={Truck} />
-        <ClockCard label={t('hos.window14')} value={timelineValidation.valid ? fmtDur(hos.window14.remainingMs) : '--'}
-          sublabel={timelineValidation.valid ? (hos.window14.windowStart ? t('hos.sinceTime', { time: fmtClock(hos.window14.windowStart, tz) }) : '') : t('hos.unavailable')}
-          status={timelineValidation.valid ? clockStatus(hos.window14.remainingMs) : 'disabled'} icon={Clock} />
+        <ClockCard label={t('hos.drivingRemaining')} value={timelineValidation.valid && hos.driving.applicable ? fmtDur(hos.driving.drivingRemainingMs) : '--'}
+          sublabel={timelineValidation.valid && hos.driving.applicable ? (hos.driving.expiresAt ? t('hos.expiresAt', { time: fmtClock(hos.driving.expiresAt, tz) }) : t('hos.elevenHourLimit')) : t('hos.unavailable')}
+          status={timelineValidation.valid && hos.driving.applicable ? clockStatus(hos.driving.drivingRemainingMs) : 'disabled'} icon={Truck} />
+        <ClockCard label={t('hos.window14')} value={timelineValidation.valid && hos.window14.applicable ? fmtDur(hos.window14.remainingMs) : '--'}
+          sublabel={timelineValidation.valid && hos.window14.applicable ? (hos.window14.windowStart ? t('hos.sinceTime', { time: fmtClock(hos.window14.windowStart, tz) }) : '') : t('hos.unavailable')}
+          status={timelineValidation.valid && hos.window14.applicable ? clockStatus(hos.window14.remainingMs) : 'disabled'} icon={Clock} />
         <ClockCard label={t('hos.break30')} value={timelineValidation.valid ? (hos.break30.satisfied ? t('hos.satisfied') : t('hos.timeLeft', { time: fmtDur(hos.break30.remainingBeforeBreakMs) })) : '--'}
           sublabel={timelineValidation.valid ? (hos.break30.breakRequired ? t('hos.breakRequiredNow') : t('hos.eightHourRule')) : t('hos.unavailable')}
           status={timelineValidation.valid ? (hos.break30.breakRequired ? 'critical' : 'normal') : 'disabled'} icon={Coffee} />
