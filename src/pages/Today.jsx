@@ -54,6 +54,7 @@ export default function Today() {
   const i18nLocale = i18n.language === 'es' ? 'es-US' : 'en-US';
   const { profile, carrier, equipment, events, loading, reload } = useDriverData();
   const navigate = useNavigate();
+  const isMobile = useIsMobile();
   const [statusOpen, setStatusOpen] = useState(false);
   const [pretripOpen, setPretripOpen] = useState(false);
   const [pendingStatus, setPendingStatus] = useState(null);
