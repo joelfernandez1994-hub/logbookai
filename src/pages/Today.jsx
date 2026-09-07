@@ -459,7 +459,7 @@ export default function Today() {
             desktop-oriented max-w-lg default; reduced padding on mobile
             gives the graph itself more real width to work with. Unchanged
             on larger screens (sm:max-w-2xl sm:p-6, the prior sizing). */}
-        <DialogContent className="w-[calc(100%-1.5rem)] p-4 sm:w-full sm:max-w-2xl sm:p-6 max-h-[90vh] overflow-y-auto">
+        <DialogContent className="w-[calc(100%-0.75rem)] p-2 sm:w-full sm:max-w-2xl sm:p-6 max-h-[90vh] overflow-y-auto">
           <DialogHeader><DialogTitle>{t('logs.editLog')}</DialogTitle></DialogHeader>
           <TimezoneIndicator tz={tz} className="mb-1" />
           <RodsGraphEditor events={events} dateStr={todayKey} timezone={tz} carrier={carrier} equipment={equipment} profile={profile} certifications={certifications} reload={reload} />
