@@ -48,13 +48,16 @@ const INTERPRET_SCHEMA = {
   type: 'object',
   additionalProperties: false,
   properties: {
-    intent: { type: 'string', enum: ['add_events', 'edit_events', 'replace_day', 'question', 'hos_question', 'clarification'] },
+    intent: { type: 'string', enum: ['add_events', 'edit_events', 'delete_events', 'replace_day', 'question', 'hos_question', 'clarification'] },
     target_date: { type: 'string' },
     requires_clarification: { type: 'boolean' },
     clarification_question: { type: 'string' },
     summary: { type: 'string' },
     refuses_fabrication: { type: 'boolean' },
     pretrip_ask: { type: 'boolean' },
+    // Only populated for intent "delete_events" — the [index] (from RECENT
+    // ACTUAL EVENTS) of each existing event the driver wants removed.
+    delete_target_indices: { type: 'array', items: { type: 'integer' } },
     proposed_events: {
       type: 'array',
       items: {
