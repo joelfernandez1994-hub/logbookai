@@ -306,12 +306,24 @@ export default function RodsGraphEditor({
             <Button size="sm" variant={editMode ? 'default' : 'outline'} onClick={() => setMode('edit')}><Pencil className="w-3.5 h-3.5 mr-1" />{t('rodsEditor.editLogGraph')}</Button>
           </div>
         )}
-        <div className="text-[11px] text-muted-foreground">{visibleHours >= 24 ? 'Full 24h' : `~${visibleHours}h view · swipe ↔`}</div>
+        {editMode ? (
+          zoomed ? (
+            <Button size="sm" variant="outline" onClick={() => setZoomHours(null)}>
+              <Maximize2 className="w-3.5 h-3.5 mr-1" /> Full Day
+            </Button>
+          ) : (
+            <Button size="sm" variant="outline" onClick={() => setZoomHours(ZOOM_WINDOW_HOURS)}>
+              <ZoomIn className="w-3.5 h-3.5 mr-1" /> Zoom
+            </Button>
+          )
+        ) : (
+          <div className="text-[11px] text-muted-foreground">Full 24h</div>
+        )}
       </div>
 
       {editMode && (
         <div className="text-[11px] text-warning-surface-foreground bg-warning-surface border border-warning/50 rounded-md px-2.5 py-1.5 mb-2">
-          <b>{t('rodsEditor.editMode')}</b> — Press a row and drag to draw. Tap a segment to edit.
+          <b>{t('rodsEditor.editMode')}</b> — {zoomed ? `Zoomed to ~${visibleHours}h — drag near the edge to keep going. ` : ''}Press a row and drag to draw. Tap a segment to edit.
         </div>
       )}
 
