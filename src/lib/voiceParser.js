@@ -633,7 +633,11 @@ export function parseVoiceCommand(text, ctx = {}) {
       start = range.start; end = range.end; timeAmbiguous = range.ambiguous;
     } else {
       const t = parseTime(clause, refDate, tz, timeOpts);
-      const dur = parseDuration(clause);
+      // The mandatory 30-minute break ("my 30", "took my 30") IS 30 minutes
+      // by definition — default its duration the same way pre-trip defaults
+      // to 15 minutes, rather than leaving it open-ended when the driver
+      // doesn't restate "for 30 minutes" (they already said "30").
+      const dur = parseDuration(clause) || (status.activity === '30-Minute Break' ? 30 * MIN : null);
       if (t) {
         start = t.date;
         end = dur ? new Date(start.getTime() + dur) : null;
