@@ -524,6 +524,29 @@ export default function LogAssistant() {
           {/* Deterministic basic commands bypass the AI quota; complex requests fall back to OpenAI. */}
           <AssistantInput onSend={handleTell} disabled={busy} />
           {busy && <div className="text-sm text-muted-foreground text-center py-4"><Bot className="w-4 h-4 inline animate-pulse mr-1" /> Interpreting…</div>}
+          {deleteConfirm && (
+            <div className="rounded-xl border border-error/40 bg-error-surface p-3 mb-3">
+              {deleteConfirm.targets ? (
+                <>
+                  <div className="text-sm font-semibold text-error-surface-foreground mb-2">
+                    Delete {deleteConfirm.targets.length === 1 ? 'this event' : `these ${deleteConfirm.targets.length} events`}? This cannot be undone.
+                  </div>
+                  <ul className="text-xs text-error-surface-foreground mb-3 list-disc ml-4">
+                    {deleteConfirm.targets.map((t, i) => <li key={i}>{t.description}</li>)}
+                  </ul>
+                  <div className="flex gap-2">
+                    <Button className="bg-error hover:bg-error/90 text-white" onClick={applyDeleteConfirmed} disabled={busy}>Delete</Button>
+                    <Button variant="outline" onClick={() => setDeleteConfirm(null)}>Cancel</Button>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className="text-xs text-error-surface-foreground mb-2">{deleteConfirm.question}</div>
+                  <Button variant="outline" onClick={() => setDeleteConfirm(null)}>Dismiss</Button>
+                </>
+              )}
+            </div>
+          )}
           {showProposal && !isQuestion && canApply && (
             <ProposalReview
               key="current-proposal-review-v2"
