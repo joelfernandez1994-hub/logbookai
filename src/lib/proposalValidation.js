@@ -22,6 +22,7 @@ import {
 import { mergeProposedEvents, collectViolations, distanceReasonableness } from './logAssistant';
 import { startOfDayInTz, normalizeTimeline, nextLocalMidnightInTz } from './timelineEngine';
 import { describedMovementCoverage } from './narrativeMovements';
+import { normalizeCandidateTimeline } from './timelineNormalization';
 
 const H = 3600000;
 const MIN = 60000;
@@ -325,9 +326,18 @@ export function recommendBreakInsertion(proposed, now = new Date()) {
 export function validateProposal(existing, proposed, opts = {}) {
   const { cycleType = '70_8', tz = 'UTC', now = new Date(), isFuture = null, enteredPriorHistory = false } = opts;
   const t = now instanceof Date ? now : new Date(now);
-  const merged = mergeProposedEvents(existing, proposed, t);
+  const rawMerged = mergeProposedEvents(existing, proposed, t);
+  // NORMALIZE the candidate timeline before any downstream check runs: close
+  // any still-open event (e.g. a stale existing "current status" the driver
+  // never closed out) against the next event's start, and truncate an
+  // inferred/defaulted end that runs past a later boundary. This never moves
+  // an explicit fact — a genuine explicit-vs-explicit contradiction is
+  // reported as its own blocking conflict instead of silently resolved, and
+  // instead of the generic overlap check's arbitrary, confusing pairing.
+  const { events: merged, conflicts: boundaryConflicts } = normalizeCandidateTimeline(rawMerged, { now: t });
 
   const warnings = [];
+  warnings.push(...boundaryConflicts);
   const explicitGuard = opts.explicitGuard || null;
   // GATE 1 (structural): altered/dropped explicit driver facts remain BLOCKING —
   // they change the legal record. Visible adjustments are review-only (never
