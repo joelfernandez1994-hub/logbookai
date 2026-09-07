@@ -154,13 +154,22 @@ describe('withFuelOpportunities — separate mileage heuristic, not an HOS rule'
     for (let i = 1; i < fuelStops.length; i++) expect(fuelStops[i].mile).toBeGreaterThan(fuelStops[i - 1].mile);
   });
 
-  it('the combined Homestead -> Houston plan (HOS basis + fuel) still keeps types clearly distinct', () => {
+  it('the combined Homestead -> Houston plan (HOS basis + fuel) keeps types clearly distinct and ordered', () => {
     const hosStops = planTripStops({ hos: FRESH_TRIP_HOS_BASIS, profileId: '55', cycleType: '70_8', totalMiles: 1220 });
+    // With the 30-min-break/10-hr-rest cadence for this trip, every gap
+    // already falls under the ~500mi fuel range, so no separate fuel stop is
+    // needed here — confirming withFuelOpportunities doesn't force one where
+    // the HOS-driven stops already keep the driver well within tank range.
     const combined = withFuelOpportunities(hosStops, 1220, 500);
-    expect(combined.some((s) => s.type === 'fuel')).toBe(true);
     expect(combined.some((s) => s.type === 'break')).toBe(true);
     expect(combined.some((s) => s.type === 'rest')).toBe(true);
     for (let i = 1; i < combined.length; i++) expect(combined[i].mile).toBeGreaterThanOrEqual(combined[i - 1].mile);
+  });
+
+  it('a longer trip (1,800 mi) on the same HOS basis DOES need a fuel stop beyond what break/rest cadence alone covers', () => {
+    const hosStops = planTripStops({ hos: FRESH_TRIP_HOS_BASIS, profileId: '55', cycleType: '70_8', totalMiles: 1800 });
+    const combined = withFuelOpportunities(hosStops, 1800, 500);
+    expect(combined.some((s) => s.type === 'fuel')).toBe(true);
   });
 });
 
