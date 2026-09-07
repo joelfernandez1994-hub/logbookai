@@ -5,7 +5,7 @@ import { useDriverData } from '@/hooks/useDriverData';
 import { computeHOS, fmtDur, dateKeyInTz } from '@/lib/hosEngine';
 import { whatCanIDo } from '@/lib/logAssistant';
 import { truckEtaHours, speedProfileLabel } from '@/lib/proposalValidation';
-import { limitingClock, maxDriveMiles, buildComplianceEdits, planTripStops } from '@/lib/complianceStop';
+import { limitingClock, maxDriveMiles, buildComplianceEdits, planTripStops, withFuelOpportunities, FRESH_TRIP_HOS_BASIS } from '@/lib/complianceStop';
 import { firstEventOfDay, loggedFuelStops, getFuelReceipts } from '@/lib/tripSync';
 import DailyMilesCard from '@/components/DailyMilesCard';
 import TimelineGapNotice from '@/components/TimelineGapNotice';
@@ -16,7 +16,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import LocationInput from '@/components/LocationInput';
 import { Switch } from '@/components/ui/switch';
-import { Map, Clock, Check, X, Plus, MapPin, AlertTriangle, Sparkles, Moon, RefreshCw, Coffee, BedDouble } from 'lucide-react';
+import { Map, Clock, Check, X, Plus, MapPin, AlertTriangle, Sparkles, Moon, RefreshCw, Coffee, BedDouble, Fuel } from 'lucide-react';
 
 // Always render durations as X hr YY min — never raw floating point.
 const fmtHM = (h) => {
@@ -132,20 +132,67 @@ export default function Trip() {
   };
   const feasibility = checkFeasibility();
 
-  // Full-route multi-stop plan (breaks / rests / restarts) — restored
+  // Full-route multi-stop plan (breaks / rests / restarts / fuel) — restored
   // automatic suggestion pipeline. Reuses the SAME canonical HOS numbers
   // already computed above (hos.break30 / hos.driving / hos.window14 /
-  // hos.cycle); planTripStops() only converts those hours into route miles.
-  // Suggestion only — nothing here writes an event; adding one to "Planned
-  // Stops" below still requires the driver's explicit tap.
-  const routeStops = (estimate && !estimate.error && hosVerified)
-    ? planTripStops({ hos, profileId: speedProfile, cycleType, totalMiles: estimate.miles })
+  // hos.cycle); planTripStops() only converts those hours into route miles —
+  // it never recomputes an HOS rule of its own.
+  //
+  // When the driver's ACTUAL current HOS cannot be verified (an invalid/
+  // gapped log, not just unverified cycle history), we do NOT silently return
+  // an empty plan. We plan against FRESH_TRIP_HOS_BASIS — the standard
+  // property-carrying limits as if starting a fresh, fully-rested day — and
+  // clearly label the result as an assumption (see freshHosFallbackNote
+  // banner below). This is still the ONE canonical planTripStops() function;
+  // only the input HOS numbers differ, never a second implementation.
+  const usingFreshHosFallback = !!(estimate && !estimate.error && !hosVerified);
+  const stopsHosBasis = hosVerified ? hos : FRESH_TRIP_HOS_BASIS;
+  const rawRouteStops = (estimate && !estimate.error)
+    ? planTripStops({ hos: stopsHosBasis, profileId: speedProfile, cycleType, totalMiles: estimate.miles })
     : [];
+  // Fuel range is a separate, non-HOS mileage heuristic — fills in fuel
+  // opportunities on long stretches the break/rest cadence alone wouldn't cover.
+  const routeStops = (estimate && !estimate.error)
+    ? withFuelOpportunities(rawRouteStops, estimate.miles, 500)
+    : [];
+
+  // Real locations along the actual route (never invented) — resolved via the
+  // same complianceStop backend already used for the single-stop suggestion
+  // below, called once per planned stop mileage.
+  const [resolvedStops, setResolvedStops] = useState([]);
+  const [resolvingStops, setResolvingStops] = useState(false);
+  useEffect(() => {
+    let cancelled = false;
+    async function resolveLocations() {
+      if (!routeStops.length || !pickup.city || !delivery.city) { setResolvedStops([]); return; }
+      setResolvingStops(true);
+      const originStr = `${pickup.city}, ${pickup.state}`;
+      const destStr = `${delivery.city}, ${delivery.state}`;
+      const out = [];
+      for (const stop of routeStops) {
+        if (cancelled) return;
+        try {
+          const res = await base44.functions.invoke('complianceStop', { origin: originStr, destination: destStr, max_drive_miles: stop.mile });
+          const s = res?.data || res;
+          out.push({ ...stop, city: s?.stop_city || '', state: s?.stop_state || '', verified: !!s?.verified });
+        } catch (e) {
+          out.push({ ...stop, city: '', state: '', verified: false });
+        }
+      }
+      if (!cancelled) { setResolvedStops(out); setResolvingStops(false); }
+    }
+    resolveLocations();
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [estimate?.miles, usingFreshHosFallback, pickup.city, pickup.state, delivery.city, delivery.state]);
+
+  const displayStops = resolvedStops.length === routeStops.length ? resolvedStops : routeStops;
 
   const STOP_META = {
     break: { label: t('trip.stopBreakLabel'), icon: Coffee, addType: 'break' },
     rest: { label: t('trip.stopRestLabel'), icon: Moon, addType: 'rest' },
     restart: { label: t('trip.stopRestartLabel'), icon: BedDouble, addType: 'rest' },
+    fuel: { label: t('trip.stopFuelLabel'), icon: Fuel, addType: 'fuel' },
   };
 
   const addRouteStopToPlan = (stop) => {
