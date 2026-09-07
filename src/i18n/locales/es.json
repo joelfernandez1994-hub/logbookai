@@ -214,11 +214,17 @@
     "fromLoggedFuelEvent": "Del evento de combustible registrado",
     "noStopFound": "No se encontró ninguna parada",
     "stopFallback": "parada",
-    "truckStopOption": "Opción de parada de camión",
     "parkingAvailabilityCheck": "Disponibilidad de estacionamiento: Consulte en Trucker Path",
-    "openInTruckerPath": "Abrir en Trucker Path",
     "parkingLocationPending": "Resolviendo la ubicación para la búsqueda de estacionamiento…",
-    "truckerPathRequiresApp": "\"Abrir en Trucker Path\" requiere tener instalada la aplicación Trucker Path en este dispositivo. LogbookAI no muestra disponibilidad de estacionamiento en vivo por sí misma — consulte Trucker Path para información actual de paradas de camión y estacionamiento."
+    "truckerPathRequiresApp": "\"Consultar Estacionamiento\" requiere tener instalada la aplicación Trucker Path en este dispositivo. LogbookAI no muestra disponibilidad de estacionamiento en vivo por sí misma — consulte Trucker Path para información actual de paradas de camión y estacionamiento.",
+    "nearLocation": "cerca de {{location}}",
+    "suggestedTruckStops": "Paradas de camión sugeridas",
+    "milesOffRoute": "{{miles}} mi fuera de la ruta",
+    "goodForOvernight": "buena para descanso nocturno",
+    "goodForFuelBreak": "buena para combustible + descanso",
+    "noTruckStopsFound": "No se encontraron paradas de camión con nombre cerca de este punto en OpenStreetMap. Consulte Trucker Path directamente.",
+    "addToTrip": "Agregar al Viaje",
+    "checkParking": "Consultar Estacionamiento"
   },
   "logs": {
     "title": "Registros Diarios",
