@@ -78,19 +78,30 @@ export function findTimelineGaps(events, dateStr, tz, now = new Date()) {
     .map(s => ({
       start: s.start < dayStart ? dayStart : s.start,
       end: s.end > targetEnd ? targetEnd : s.end,
+      is_ongoing: !!s.is_ongoing,
     }))
     .sort((a, b) => a.start - b.start);
   if (!segments.length) return [];
 
   const gaps = [];
   let cursor = dayStart;
+  let lastIsOngoing = false;
   for (const segment of segments) {
     if (segment.start - cursor > 60000) {
       gaps.push({ start: cursor, end: segment.start, ms: segment.start - cursor });
     }
     if (segment.end > cursor) cursor = segment.end;
+    lastIsOngoing = segment.is_ongoing;
   }
-  if (targetEnd - cursor > 60000) {
+  // A currently open-ended duty status (Live Tracking's active status, or any
+  // status the driver hasn't changed yet) is CONTINUOUS with "now" by
+  // definition — there is no missing time to add a record for. Only report
+  // the trailing gap when the most recent logged segment has a real, closed
+  // end (the driver's status genuinely stopped being tracked and nothing
+  // picked it up). Without this, a driver actively driving/on duty could see
+  // a false "time gap" purely from the live clock ticking a minute or two
+  // ahead of the last re-render, with nothing wrong in the actual log.
+  if (!lastIsOngoing && targetEnd - cursor > 60000) {
     gaps.push({ start: cursor, end: targetEnd, ms: targetEnd - cursor });
   }
   return gaps;
