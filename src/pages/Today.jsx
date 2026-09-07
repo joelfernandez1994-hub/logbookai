@@ -453,7 +453,13 @@ export default function Today() {
           (from useDriverData), so saving here refreshes Today's graph/HOS
           immediately — same canonical timeline, same writer, same validation. */}
       <Dialog open={editLogOpen} onOpenChange={setEditLogOpen}>
-        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+        {/* w-[calc(100%-1.5rem)] uses essentially the full phone viewport
+            (a small 0.75rem side margin, not edge-to-edge against the
+            screen bezel/rounded corners) instead of the dialog primitive's
+            desktop-oriented max-w-lg default; reduced padding on mobile
+            gives the graph itself more real width to work with. Unchanged
+            on larger screens (sm:max-w-2xl sm:p-6, the prior sizing). */}
+        <DialogContent className="w-[calc(100%-1.5rem)] p-4 sm:w-full sm:max-w-2xl sm:p-6 max-h-[90vh] overflow-y-auto">
           <DialogHeader><DialogTitle>{t('logs.editLog')}</DialogTitle></DialogHeader>
           <TimezoneIndicator tz={tz} className="mb-1" />
           <RodsGraphEditor events={events} dateStr={todayKey} timezone={tz} carrier={carrier} equipment={equipment} profile={profile} certifications={certifications} reload={reload} />
