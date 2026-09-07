@@ -12,6 +12,7 @@ import { parseVoiceCommand } from '@/lib/voiceParser';
 import { validateInterpretResult, isQuestionIntent, shouldOfferApply, replaceDayRange, resolveEditTargets } from '@/lib/aiLayer';
 import { isMultiEventNarrative } from '@/lib/narrativeClassifier';
 import { detectFeasibilityQuestion, answerFeasibilityQuestion } from '@/lib/feasibilityQuestion';
+import { describeEvent } from '@/lib/eventReference';
 import AssistantInput from '@/components/logAssistant/AssistantInput';
 import ProposalReview from '@/components/logAssistant/ProposalReview';
 import WhatCanIDoPanel from '@/components/logAssistant/WhatCanIDoPanel';
@@ -41,6 +42,12 @@ export default function LogAssistant() {
   const [now, setNow] = useState(new Date());
   const [routeWarning, setRouteWarning] = useState(null);
   const [reconstructionConflicts, setReconstructionConflicts] = useState([]);
+  // Pending delete-by-reference confirmation ("delete the second fuel stop").
+  // { targets: [{id, description}] } when a real event was resolved (from
+  // either the deterministic parser or a resolved AI delete_events proposal);
+  // { targets: null, question } when it could not be confidently resolved and
+  // the driver needs to rephrase — LogbookAI never deletes a guess.
+  const [deleteConfirm, setDeleteConfirm] = useState(null);
   // In-flight Apply guard: a single Apply flow may not be re-entered. The
   // ProposalReview button also locks visually; this ref defends against any
   // other caller invoking applyProposal/applyReplaceDay while one is running.
