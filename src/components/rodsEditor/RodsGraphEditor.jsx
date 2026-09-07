@@ -288,7 +288,6 @@ export default function RodsGraphEditor({
     reload && reload();
   };
 
-  const editMode = mode === 'edit' && !readOnly;
   const sheetStartHour = sheetValue ? (sheetValue.startMs - dayStartMs) / 3600000 : 0;
   const sheetEndHour = sheetValue ? (sheetValue.endMs - dayStartMs) / 3600000 : 0;
 
