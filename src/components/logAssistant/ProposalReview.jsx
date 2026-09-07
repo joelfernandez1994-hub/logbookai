@@ -357,8 +357,16 @@ export default function ProposalReview({ existing, proposed, cycleType, tz, onAp
                 <div className="flex-1">
                   <div className="font-semibold text-card-foreground">{STATUS_LABELS[e.duty_status] || e.duty_status}{e.activity_type ? ` · ${e.activity_type}` : ''}</div>
                   <div className="text-muted-foreground">{[e.city, e.state].filter(Boolean).join(', ')}{e.remark ? ` — ${e.remark}` : ''}</div>
-                  {e.duty_status === 'DRIVING' && Number.isFinite(Number(e.mileage)) && (
+                  {e.duty_status === 'DRIVING' && e.mileage != null && Number.isFinite(Number(e.mileage)) && (
                     <div className="text-card-foreground mt-1">{Number(e.mileage).toFixed(1)} mi <span className="text-muted-foreground">({e.mileage_source === 'route' ? 'road route' : e.mileage_source === 'manual' ? 'driver edited' : 'estimated fallback'})</span></div>
+                  )}
+                  {e.duty_status === 'DRIVING' && e.mileage == null && (
+                    <div className="mt-1">
+                      <div className="text-card-foreground">Mileage: —</div>
+                      <div className="text-[11px] text-muted-foreground">
+                        {e.end_timestamp ? 'Route mileage available once a destination is known.' : 'Ongoing — route mileage available once a destination is known.'}
+                      </div>
+                    </div>
                   )}
                   {e.confidence && e.confidence !== 'high' && <div className="text-warning">Confidence: {e.confidence}</div>}
                   {e.adjustments?.map((adjustment, adjustmentIndex) => (
