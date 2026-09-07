@@ -21,9 +21,17 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.40';
 
 const UNAVAILABLE_MSG = 'LogbookAI is temporarily unavailable. Your request has not been applied.';
 
+// Indexed so an edit/delete proposal can point back at a SPECIFIC existing
+// event by position (edit_target_index / delete_target_indices) rather than
+// only a fuzzy time-based description. The index is into the FULL `events`
+// array the client sent (not just the last 60 shown here) — note the visible
+// window still only shows the most recent 60 for prompt size, so the index
+// offset accounts for that.
 function eventSummary(events) {
-  return (events || []).slice(-60).map(e =>
-    `${e.start_timestamp || ''} → ${e.end_timestamp || 'ongoing'} | ${e.duty_status} | ${e.city || ''} ${e.state || ''} | ${e.remark || ''} | unit ${e.tractor_number || ''}/${e.trailer_numbers || ''}`
+  const all = events || [];
+  const windowStart = Math.max(0, all.length - 60);
+  return all.slice(windowStart).map((e, i) =>
+    `[${windowStart + i}] ${e.start_timestamp || ''} → ${e.end_timestamp || 'ongoing'} | ${e.duty_status} | ${e.city || ''} ${e.state || ''} | ${e.remark || ''} | unit ${e.tractor_number || ''}/${e.trailer_numbers || ''}`
   ).join('\n');
 }
 
