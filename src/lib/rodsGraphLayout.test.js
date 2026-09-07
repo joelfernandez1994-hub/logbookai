@@ -32,7 +32,7 @@
 //     behavior for the actual drawing/dragging interaction, on purpose.
 // ============================================================================
 import { describe, it, expect } from 'vitest';
-import { computeGraphLayout } from '@/lib/rodsGraphLayout';
+import { computeGraphLayout } from './rodsGraphLayout';
 
 const LEFT_W = 84;
 
