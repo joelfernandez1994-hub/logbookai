@@ -387,7 +387,11 @@ export default function ProposalReview({ existing, proposed, cycleType, tz, onAp
           <div className="text-xs text-muted-foreground">Proposed daily mileage</div>
           <div className="font-semibold text-card-foreground">{dailyMileage.toFixed(1)} mi</div>
         </div>
-        <div className="text-xs text-muted-foreground">{mileageEdited ? 'Manual · driver edited' : hasEstimatedMileage ? 'Auto · includes labeled estimate' : 'Auto · route calculated'}</div>
+        <div className="text-xs text-muted-foreground">
+          {mileageEdited ? 'Manual · driver edited'
+            : hasUnknownMileage ? 'Auto · excludes unknown mileage (destination not yet known)'
+              : hasEstimatedMileage ? 'Auto · includes labeled estimate' : 'Auto · route calculated'}
+        </div>
       </div>
 
       <div className={`rounded-lg border p-2 mb-2 flex items-start gap-2 ${sevStyle}`}>
