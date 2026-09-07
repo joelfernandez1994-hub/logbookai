@@ -435,7 +435,9 @@ export function parseVoiceCommand(text, ctx = {}) {
   }
 
   // Question detection → not a voice-log command; route to Ask LogbookAI.
-  if (/\b(how many|do i have|why|does my|will i|can i|review my|check my|what does|what can|is it|are there|any issues|compliant)\b/i.test(lower)) {
+  // Bilingual so a Spanish question doesn't get misread as a log command.
+  if (/\b(how many|do i have|why|does my|will i|can i|could i|review my|check my|what does|what can|is it|are there|any issues|compliant)\b/i.test(lower)
+    || /\b(cuantas|cuántas|cuanto|cuánto|por qu[eé]|puedo|podr[ií]a|revisa mi|verifica mi|hay alg[uú]n|cumplo)\b/i.test(lower)) {
     return { handled: false, reason: 'question', fallback: 'ai' };
   }
 
