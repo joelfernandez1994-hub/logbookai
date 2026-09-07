@@ -514,14 +514,15 @@ export function parseVoiceCommand(text, ctx = {}) {
     // context for (e.g. no resolvable target locally).
   }
 
-  // "That was Jacksonville, not Orlando." — resolves against the WRONG value
-  // ("Orlando") when a matching logged event exists, else the most recent
-  // event with any city, so the fix lands on the actual event described.
+  // "That was Jacksonville, not Orlando." — resolves ONLY against the WRONG
+  // value ("Orlando") — never falls back to "the most recent event" here,
+  // since that could silently mislabel an unrelated correct event when the
+  // stated wrong city genuinely isn't on record (e.g. driver misremembered).
   const wasNotMatch = raw.match(/\bthat was\s+([A-Za-z][A-Za-z\s]*?)\s*,?\s*not\s+([A-Za-z][A-Za-z\s]*?)[.?!]*$/i);
   if (wasNotMatch) {
     const correctCity = wasNotMatch[1].trim();
     const wrongCity = wasNotMatch[2].trim();
-    const target = findEventByCity(ctx.events || [], wrongCity) || resolveEventReference(ctx.events || [], 'that', { tz }).resolved;
+    const target = findEventByCity(ctx.events || [], wrongCity);
     if (target) {
       return {
         handled: true, edit: true, correction: true,
