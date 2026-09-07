@@ -277,25 +277,65 @@ export default function LogAssistant() {
     ...(p.field_provenance ? { field_provenance: p.field_provenance } : {}),
   });
 
-  // --- TELL: apply proposed events (canonical batch insert) ---
+  // --- TELL: apply proposed events. A proposed event carrying
+  // target_event_id is a CORRECTION to a real existing event (resolved by
+  // eventReference.js or the AI's edit_target_index) — it is routed through
+  // the canonical editEvent() writer so it replaces that record in place
+  // rather than being inserted as a new, duplicate/overlapping event. Only
+  // events WITHOUT a target are genuinely new activity and go through the
+  // batch inserter. ---
   const applyProposal = async (proposedEvents, mileageMeta = {}) => {
     if (applyingRef.current) return false;
     if (!proposedEvents?.length) { setProposal(null); reload(); return true; }
     applyingRef.current = true;
-    const shaped = proposedEvents.map((p, i) => shapeEvent(p, i === proposedEvents.length - 1));
     try {
-      const res = await insertEventsBatch(events, shaped, {
-        carrierName: carrier?.carrier_name,
-        methodOfCreation: 'Typed AI',
-        editedBy: profile?.legal_name,
-        reason: 'AI Apply',
-      });
-      if (res?.error) { setError(res.error); return false; }
+      const edits = proposedEvents.filter((p) => p.target_event_id);
+      const inserts = proposedEvents.filter((p) => !p.target_event_id);
+      for (const p of edits) {
+        const res = await editEvent(events, p.target_event_id, shapeEvent(p, false), {
+          carrierName: carrier?.carrier_name,
+          methodOfCreation: 'Typed AI',
+          editedBy: profile?.legal_name,
+          reason: 'AI Correction',
+        });
+        if (res?.error) { setError(res.error); return false; }
+      }
+      if (inserts.length) {
+        const shaped = inserts.map((p, i) => shapeEvent(p, i === inserts.length - 1));
+        const res = await insertEventsBatch(events, shaped, {
+          carrierName: carrier?.carrier_name,
+          methodOfCreation: 'Typed AI',
+          editedBy: profile?.legal_name,
+          reason: 'AI Apply',
+        });
+        if (res?.error) { setError(res.error); return false; }
+      }
       const date = proposedEvents[0]?.start_timestamp ? dateKeyInTz(new Date(proposedEvents[0].start_timestamp), tz) : proposal?.target_date;
       if (date && Number.isFinite(mileageMeta.dailyMileage)) await saveProposalMiles(date, mileageMeta.dailyMileage, mileageMeta.mileageEdited);
       setProposal(null); reload();
       return true;
     } catch (e) { setError(e?.message || 'Failed to apply proposed events.'); return false; }
+    finally { applyingRef.current = false; }
+  };
+
+  // --- TELL: delete-by-reference confirmation ("delete the second fuel stop").
+  // Routes through the canonical deleteEventById writer — same writer manual
+  // Logs deletion would use. Only ever called with a real, resolved event id.
+  const applyDeleteConfirmed = async () => {
+    if (applyingRef.current || !deleteConfirm?.targets?.length) return;
+    applyingRef.current = true;
+    try {
+      for (const t of deleteConfirm.targets) {
+        const res = await deleteEventById(events, t.id, {
+          carrierName: carrier?.carrier_name,
+          methodOfCreation: 'Typed AI',
+          editedBy: profile?.legal_name,
+          reason: 'AI Delete',
+        });
+        if (res?.error) { setError(res.error); return; }
+      }
+      setDeleteConfirm(null); reload();
+    } catch (e) { setError(e?.message || 'Failed to delete the event.'); }
     finally { applyingRef.current = false; }
   };
 
