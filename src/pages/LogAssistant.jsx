@@ -12,7 +12,6 @@ import { parseVoiceCommand } from '@/lib/voiceParser';
 import { validateInterpretResult, isQuestionIntent, shouldOfferApply, replaceDayRange, resolveEditTargets } from '@/lib/aiLayer';
 import { isMultiEventNarrative } from '@/lib/narrativeClassifier';
 import { detectFeasibilityQuestion, answerFeasibilityQuestion } from '@/lib/feasibilityQuestion';
-import { earliestLegalEta } from '@/lib/logAssistant';
 import AssistantInput from '@/components/logAssistant/AssistantInput';
 import ProposalReview from '@/components/logAssistant/ProposalReview';
 import WhatCanIDoPanel from '@/components/logAssistant/WhatCanIDoPanel';
