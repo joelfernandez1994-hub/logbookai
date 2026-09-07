@@ -458,7 +458,7 @@ export default function Trip() {
                       <Plus className="w-3 h-3 mr-1" /> {t('common.add')}
                     </Button>
                   </div>
-                  {(stop.type === 'break' || stop.type === 'rest' || stop.type === 'restart') && (
+                  {(stop.type === 'break' || stop.type === 'rest' || stop.type === 'restart' || stop.type === 'fuel') && (
                     <div className="mt-2 pt-2 border-t border-border/60 flex items-center justify-between gap-2">
                       <div className="text-[10px] text-muted-foreground">
                         <div>{t('trip.truckStopOption')}</div>
