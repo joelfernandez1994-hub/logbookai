@@ -13,7 +13,15 @@
 //     the modularity check in parkingProvider.test.js for the Trucker Path
 //     half of this — this file covers the truck-stop-discovery half)
 // ============================================================================
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
+
+// truckStopProvider.js imports base44 (for findTruckStopsNearStop's network
+// call) at module scope; the pure ranking/classification functions under
+// test here never touch it, but the import graph still needs a stand-in
+// under vitest's node environment (base44Client reads `window` at import
+// time) — same pattern as tripSync.test.js.
+vi.mock('@/api/base44Client', () => ({ base44: { functions: { invoke: vi.fn() } } }));
+
 import { rankTruckStops, classifyFit, pickTopStopsForType, buildPlannedStopFromTruckStop } from './truckStopProvider';
 import tripSource from '../pages/Trip.jsx?raw';
 
