@@ -462,7 +462,7 @@ export default function Today() {
         <div className="fixed inset-0 z-50 bg-background flex flex-col">
           <div className="flex items-center justify-between px-4 py-3 border-b border-border safe-top shrink-0">
             <div className="font-semibold text-foreground">{t('logs.editLog')}</div>
-            <button type="button" onClick={() => setEditLogOpen(false)} aria-label={t('common.close') || 'Close'} className="p-1 -mr-1 text-muted-foreground">
+            <button type="button" onClick={() => setEditLogOpen(false)} aria-label={t('common.close')} className="p-1 -mr-1 text-muted-foreground">
               <X className="w-5 h-5" />
             </button>
           </div>
@@ -477,10 +477,10 @@ export default function Today() {
               full-screen editor, they don't hold back a batch of changes. */}
           <div className="shrink-0 border-t border-border bg-background px-4 py-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] flex gap-2">
             <Button variant="outline" className="flex-1" onClick={() => setEditLogOpen(false)}>
-              <X className="w-4 h-4 mr-1" /> {t('common.cancel') || 'Cancel'}
+              <X className="w-4 h-4 mr-1" /> {t('common.cancel')}
             </Button>
             <Button className="flex-1" onClick={() => setEditLogOpen(false)}>
-              <Check className="w-4 h-4 mr-1" /> {t('common.done') || 'Done'}
+              <Check className="w-4 h-4 mr-1" /> {t('common.save')}
             </Button>
           </div>
         </div>
