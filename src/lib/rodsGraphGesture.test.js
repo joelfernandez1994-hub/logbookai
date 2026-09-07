@@ -49,12 +49,15 @@ describe('swipe across multiple hour boundaries never breaks the gesture', () =>
     expect(result).toEqual({ status: 'ON_DUTY', lo: 1, hi: 9 });
   });
 
-  it('reversing direction mid-swipe still resolves to one min/max range, not two', () => {
+  it('reversing direction mid-swipe tracks the CURRENT finger position (like a normal drag-select), not the farthest point ever reached', () => {
     let gesture = beginDrawGesture('OFF_DUTY', xFor(2), 50, 2);
-    gesture = updateDrawGesture(gesture, xFor(6), 50, 6); // forward
-    gesture = updateDrawGesture(gesture, xFor(4), 50, 4); // back up a bit
+    gesture = updateDrawGesture(gesture, xFor(6), 50, 6); // forward to 6
+    gesture = updateDrawGesture(gesture, xFor(4), 50, 4); // back up to 4
     const result = finalizeDrawGesture(gesture);
-    expect(result).toEqual({ status: 'OFF_DUTY', lo: 2, hi: 6 });
+    // Still exactly ONE result (not two, not a leftover 6) — the range is
+    // [start, current-end], the same single-value endHour the original
+    // implementation always tracked.
+    expect(result).toEqual({ status: 'OFF_DUTY', lo: 2, hi: 4 });
   });
 });
 
