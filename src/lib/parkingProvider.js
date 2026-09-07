@@ -34,7 +34,8 @@ const truckerPath = {
   label: 'Trucker Path',
   // { lat, lng } must be REAL, route-derived coordinates (e.g. from the
   // complianceStop backend's stop_lat/stop_lng) — never a fabricated point.
-  buildHandoffUrl({ lat, lng } = {}) {
+  buildHandoffUrl(stop) {
+    const { lat, lng } = stop || {};
     if (lat == null || lng == null || !Number.isFinite(lat) || !Number.isFinite(lng)) return null;
     return `truckerpath://cal_route?daddr=${lat},${lng}`;
   },
