@@ -201,9 +201,10 @@ export default function Register() {
 
   return (
     <AuthLayout
+      brand
       icon={UserPlus}
       title="Create your account"
-      subtitle="Sign up to get started"
+      subtitle="Manual logs, HOS tracking, and AI-assisted logging for drivers"
       footer={
         <>
           Already have an account?{" "}
