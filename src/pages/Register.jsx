@@ -109,16 +109,17 @@ export default function Register() {
   if (showOtp) {
     return (
       <AuthLayout
+        brand
         icon={Mail}
         title="Verify your email"
-        subtitle={`We sent a code to ${email}`}
+        subtitle={<>We sent a 6-digit code to <span className="text-foreground font-medium">{email}</span></>}
       >
         {error && (
           <div className="mb-4 p-3 rounded-lg bg-destructive/10 text-destructive text-sm">
             {error}
           </div>
         )}
-        <div className="flex justify-center mb-6">
+        <div className="flex justify-center mb-2">
           <InputOTP
             maxLength={6}
             value={otpCode}
@@ -136,6 +137,9 @@ export default function Register() {
             </InputOTPGroup>
           </InputOTP>
         </div>
+        <p className="text-center text-xs text-muted-foreground mb-6">
+          Enter the code to finish creating your account.
+        </p>
         <Button
           className="w-full h-12 font-medium"
           onClick={handleVerify}
@@ -150,12 +154,47 @@ export default function Register() {
             "Verify"
           )}
         </Button>
-        <p className="text-center text-sm text-muted-foreground mt-4">
-          Didn't receive the code?{" "}
-          <button onClick={handleResend} className="text-primary font-medium hover:underline">
-            Resend
+
+        <div className="mt-6 pt-5 border-t border-border space-y-3">
+          <div className="flex items-center justify-between gap-3">
+            <p className="text-sm text-muted-foreground">
+              Didn't get a code?
+            </p>
+            <button
+              onClick={handleResend}
+              disabled={resendCooldown > 0 || resendLoading}
+              className="text-sm text-primary font-medium hover:underline disabled:no-underline disabled:text-muted-foreground disabled:cursor-not-allowed shrink-0"
+            >
+              {resendLoading ? (
+                <span className="inline-flex items-center gap-1.5">
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" /> Sending...
+                </span>
+              ) : resendCooldown > 0 ? (
+                `Resend in ${resendCooldown}s`
+              ) : (
+                "Resend code"
+              )}
+            </button>
+          </div>
+
+          {resendCount > 0 && (
+            <div className="flex items-start gap-2 text-xs text-muted-foreground bg-secondary/50 rounded-lg p-3">
+              <CheckCircle2 className="w-3.5 h-3.5 mt-0.5 shrink-0 text-primary" aria-hidden="true" />
+              <span>
+                Sent again. Still nothing after a few minutes? Check your spam or
+                junk folder, and make sure {email} is spelled correctly.
+              </span>
+            </div>
+          )}
+
+          <button
+            onClick={handleUseDifferentEmail}
+            className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground"
+          >
+            <ArrowLeft className="w-3.5 h-3.5" aria-hidden="true" />
+            Use a different email
           </button>
-        </p>
+        </div>
       </AuthLayout>
     );
   }
