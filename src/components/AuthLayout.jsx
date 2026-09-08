@@ -14,7 +14,7 @@ export default function AuthLayout({ icon: Icon, title, subtitle, footer, childr
             <div className="inline-flex items-center justify-center w-8 h-8 rounded-lg bg-primary">
               <NotebookPen className="w-4 h-4 text-primary-foreground" aria-hidden="true" />
             </div>
-            <span className="text-base font-bold tracking-tight text-foreground" data-no-translate>
+            <span className="text-base font-bold tracking-tight text-foreground">
               LogbookAI
             </span>
           </div>
