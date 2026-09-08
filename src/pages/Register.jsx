@@ -1,10 +1,10 @@
-import React, { useState } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { Link } from "react-router-dom";
 import { base44 } from "@/api/base44Client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { UserPlus, Mail, Lock, Loader2 } from "lucide-react";
+import { UserPlus, Mail, Lock, Loader2, CheckCircle2, ArrowLeft } from "lucide-react";
 import { InputOTP, InputOTPGroup, InputOTPSlot } from "@/components/ui/input-otp";
 import AuthLayout from "@/components/AuthLayout";
 import GoogleIcon from "@/components/GoogleIcon";
@@ -19,6 +19,19 @@ export default function Register() {
   const [loading, setLoading] = useState(false);
   const [showOtp, setShowOtp] = useState(false);
   const [otpCode, setOtpCode] = useState("");
+  // Cooldown prevents hammering resend-otp (and makes the button's disabled
+  // state legible) rather than being purely decorative.
+  const [resendCooldown, setResendCooldown] = useState(0);
+  const [resendLoading, setResendLoading] = useState(false);
+  const [resendCount, setResendCount] = useState(0);
+  const RESEND_COOLDOWN_SECONDS = 30;
+  const cooldownTimer = useRef(null);
+
+  useEffect(() => {
+    if (resendCooldown <= 0) return;
+    cooldownTimer.current = setTimeout(() => setResendCooldown((s) => s - 1), 1000);
+    return () => clearTimeout(cooldownTimer.current);
+  }, [resendCooldown]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -55,16 +68,38 @@ export default function Register() {
   };
 
   const handleResend = async () => {
+    if (resendCooldown > 0 || resendLoading) return;
     setError("");
+    setResendLoading(true);
     try {
       await base44.auth.resendOtp(email);
+      setResendCount((c) => c + 1);
+      setResendCooldown(RESEND_COOLDOWN_SECONDS);
       toast({
         title: "Code sent",
-        description: "Check your email for the new code.",
+        description: `A new code was sent to ${email}.`,
       });
     } catch (err) {
-      setError(err.message || "Failed to resend code");
+      const message = err.message || "Failed to resend code. Please try again in a moment.";
+      setError(message);
+      toast({
+        variant: "destructive",
+        title: "Couldn't resend the code",
+        description: message,
+      });
+    } finally {
+      setResendLoading(false);
     }
+  };
+
+  // Lets the driver back out of a mistyped email instead of being stuck
+  // waiting on a code that can never arrive.
+  const handleUseDifferentEmail = () => {
+    setShowOtp(false);
+    setOtpCode("");
+    setError("");
+    setResendCooldown(0);
+    setResendCount(0);
   };
 
   const handleGoogle = () => {
