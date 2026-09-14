@@ -243,17 +243,17 @@ describe('REGRESSION — zoomed tablet width (768-1024px) drag-to-draw', () => {
 
 describe('REGRESSION — Edit Log Graph chrome routing (the actual tablet bug)', () => {
   it('phone (isMobile width) gets the full-screen chrome — unchanged from before this fix', () => {
-    expect(shouldUseFullScreenEditGraph({ isMobileWidth: true, isCoarsePointer: true })).toBe(true);
-    // Even a phone somehow reporting a non-coarse pointer still gets it, since
+    expect(shouldUseFullScreenEditGraph({ isMobileWidth: true, isTouchCapable: true })).toBe(true);
+    // Even a phone somehow reporting no touch capability still gets it, since
     // isMobileWidth alone was always sufficient before this fix.
-    expect(shouldUseFullScreenEditGraph({ isMobileWidth: true, isCoarsePointer: false })).toBe(true);
+    expect(shouldUseFullScreenEditGraph({ isMobileWidth: true, isTouchCapable: false })).toBe(true);
   });
 
-  it('tablet (>=768px, touch-primary) now gets the full-screen chrome instead of the Dialog — this is the fix', () => {
-    expect(shouldUseFullScreenEditGraph({ isMobileWidth: false, isCoarsePointer: true })).toBe(true);
+  it('tablet (>=768px, touch capable) now gets the full-screen chrome instead of the Dialog — this is the fix', () => {
+    expect(shouldUseFullScreenEditGraph({ isMobileWidth: false, isTouchCapable: true })).toBe(true);
   });
 
-  it('desktop mouse (wide viewport, fine pointer) keeps the existing Dialog — unchanged', () => {
-    expect(shouldUseFullScreenEditGraph({ isMobileWidth: false, isCoarsePointer: false })).toBe(false);
+  it('desktop mouse (wide viewport, no touch capability) keeps the existing Dialog — unchanged', () => {
+    expect(shouldUseFullScreenEditGraph({ isMobileWidth: false, isTouchCapable: false })).toBe(false);
   });
 });
