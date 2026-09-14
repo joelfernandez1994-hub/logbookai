@@ -3,6 +3,7 @@ import { Button } from '@/components/ui/button';
 import { AlertTriangle, Check, Pencil, ShieldAlert } from 'lucide-react';
 import { fmtDur, fmtHours } from '@/lib/hosEngine';
 import { formatHour } from '@/lib/rodsEditor';
+import { deriveHosDisplay } from '@/lib/proposalValidation';
 
 const ROW_ORDER = ['OFF_DUTY', 'SLEEPER_BERTH', 'DRIVING', 'ON_DUTY'];
 const STATUS_COLORS = {
@@ -40,29 +41,45 @@ function MiniGraph({ segs, label }) {
   );
 }
 
-function HosRow({ before, after }) {
-  const cell = (v) => <span className="tabular-nums">{v == null ? '--' : v}</span>;
+function HosCell({ cell, strong }) {
+  if (!cell) return <span className="tabular-nums text-[#64748B]">—</span>;
+  const unavail = cell.state === 'unavailable' || cell.state === 'unverified';
+  const exhausted = cell.state === 'exhausted';
   return (
-    <div className="grid grid-cols-3 gap-1 text-xs py-0.5">
-      <div className="text-muted-foreground">{before.label}</div>
-      <div className="text-muted-foreground line-through text-right">{before.val}</div>
-      <div className="font-semibold text-right text-card-foreground">{after.val}</div>
-    </div>
+    <span className="block leading-tight">
+      <span className={`tabular-nums ${unavail ? 'font-mono text-[#64748B]' : (exhausted ? 'text-error ' : (strong ? 'font-semibold ' : ''))}text-card-foreground`}>{unavail ? '—' : cell.value}</span>
+      {unavail && <span className="block text-[10px] text-muted-foreground">{cell.state === 'unverified' ? 'Unverified' : 'Unavailable'}</span>}
+    </span>
   );
 }
 
-export default function ProposedChangeDialog({ open, isCertified, beforeSegs, afterSegs, beforeHos, afterHos, warnings, violations, onApply, onEdit, onCancel }) {
+export default function ProposedChangeDialog({ open, isCertified, beforeSegs, afterSegs, beforeHos, afterHos, historyComplete, warnings, violations, onApply, onEdit, onCancel }) {
   const blocking = (warnings || []).filter((w) => w.severity === 'blocking');
-  const fmt = (ms) => fmtDur(ms);
-  const beforeHosRow = (label, val) => ({ label, val });
-  const hosSummary = (hos) => hos ? [
-    { label: 'Driving remaining', val: fmt(hos.driving?.drivingRemainingMs) },
-    { label: '14-hr window remaining', val: fmt(hos.window14?.remainingMs) },
-    { label: 'Cycle remaining', val: `${fmtHours(hos.cycle?.cycleRemainingHours)}` },
-    { label: '30-min break', val: hos.break30?.breakRequired ? 'Required' : 'OK' },
-    { label: 'Split sleeper', val: hos.split?.status === 'active' ? 'Active' : (hos.split?.status === 'available' ? 'Available' : 'None') },
-    { label: '34h restart', val: hos.restart?.completed ? 'Completed' : (hos.restart?.inProgress ? 'In progress' : '—') },
-  ] : [];
+  // Canonical three-state HOS display (proposalValidation.deriveHosDisplay):
+  // unavailable / unverified → '—' (never coerced to 0). This is the same
+  // helper Today / Compliance / What-Can-I-Do use, so the Proposed Log Change
+  // dialog can never again label an uncalculable placeholder zero as confirmed
+  // exhaustion or "OK". HOS math (hosEngine) is untouched.
+  const hosSummary = (hos) => {
+    if (!hos) return [];
+    const d = deriveHosDisplay(hos, historyComplete);
+    const calc = !!d.calculable;
+    const dash = { value: '—', state: 'unavailable', note: '' };
+    const split = !calc ? dash : { value: hos.split?.status === 'active' ? 'Active' : (hos.split?.status === 'available' ? 'Available' : 'None'), state: 'real', note: '' };
+    const restart = !calc ? dash : { value: hos.restart?.completed ? 'Completed' : (hos.restart?.inProgress ? 'In progress' : '—'), state: 'real', note: '' };
+    return [
+      { label: 'Driving remaining', cell: d.driving },
+      { label: '14-hr window remaining', cell: d.window14 },
+      { label: 'Cycle remaining', cell: d.cycle },
+      { label: '30-min break', cell: d.break },
+      { label: 'Split sleeper', cell: split },
+      { label: '34h restart', cell: restart },
+    ];
+  };
+  const beforeRows = hosSummary(beforeHos);
+  const afterRows = hosSummary(afterHos);
+  const hosUnavailable = beforeRows.some((r) => r.cell?.state === 'unavailable' || r.cell?.state === 'unverified')
+    || afterRows.some((r) => r.cell?.state === 'unavailable' || r.cell?.state === 'unverified');
 
   return (
     <Dialog open={open} onOpenChange={(o) => !o && onCancel()}>
@@ -88,8 +105,12 @@ export default function ProposedChangeDialog({ open, isCertified, beforeSegs, af
           <div className="grid grid-cols-3 gap-1 text-[11px] font-semibold text-muted-foreground mb-1">
             <div>HOS</div><div className="text-right">Before</div><div className="text-right">After</div>
           </div>
-          {hosSummary(beforeHos).map((r, i) => (
-            <HosRow key={r.label} before={r} after={(hosSummary(afterHos)[i] || r)} />
+          {beforeRows.map((r, i) => (
+            <div key={r.label} className="grid grid-cols-3 gap-1 text-xs py-0.5 items-center">
+              <div className="text-muted-foreground">{r.label}</div>
+              <div className="text-right"><HosCell cell={r.cell} /></div>
+              <div className="text-right"><HosCell cell={(afterRows[i] || {}).cell} strong /></div>
+            </div>
           ))}
         </div>
 
@@ -118,6 +139,11 @@ export default function ProposedChangeDialog({ open, isCertified, beforeSegs, af
           </div>
         )}
 
+        {hosUnavailable && (
+          <div className="rounded-md border border-error/50 bg-error-surface px-2.5 py-1.5 text-[11px] text-error-surface-foreground">
+            HOS unavailable until the timeline is corrected — Apply remains enabled to allow this log correction.
+          </div>
+        )}
         <DialogFooter className="flex-col sm:flex-row gap-2">
           <Button variant="outline" className="flex-1" onClick={onCancel}>Cancel</Button>
           <Button variant="secondary" className="flex-1" onClick={onEdit}><Pencil className="w-4 h-4 mr-1" /> Edit</Button>

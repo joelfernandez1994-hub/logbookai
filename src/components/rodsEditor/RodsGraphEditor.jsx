@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
-import { getDailyGrid, computeHOS } from '@/lib/hosEngine';
+import { getDailyGrid, computeHOS, hasSufficientCycleHistory } from '@/lib/hosEngine';
 import {
   daySegments, planDayInsertion, planEdit, applyOps, buildAfterEvents,
   validateTimeline, snapHour, hourToX,
@@ -116,8 +116,15 @@ export default function RodsGraphEditor({
 
   const evalNow = useMemo(() => dayEndMs <= Date.now() ? new Date(dayEndMs) : new Date(),
     [dayEndMs]);
-  const beforeHos = useMemo(() => computeHOS(events, cycleType, tz, evalNow, { historyComplete: true }),
-    [events, cycleType, tz, evalNow]);
+  // Same history-complete signal Today uses (hasSufficientCycleHistory): a
+  // truly fresh account with no prior records is distinguished from a driver
+  // who has older history but then an unlogged multi-day gap. computeHOS needs
+  // this so the Proposed Log Change dialog's HOS preview renders cycle as "—"
+  // (Unverified) for a fresh account instead of coercing it to a placeholder 0.
+  const historyComplete = useMemo(() => hasSufficientCycleHistory(events, cycleType, profile?.entered_prior_history, tz, evalNow),
+    [events, cycleType, profile, tz, evalNow]);
+  const beforeHos = useMemo(() => computeHOS(events, cycleType, tz, evalNow, { historyComplete }),
+    [events, cycleType, tz, evalNow, historyComplete]);
 
   // Pure coordinate math (rodsGraphGesture.js) — same formula as before,
   // just extracted so it's independently unit-testable.
@@ -259,7 +266,7 @@ export default function RodsGraphEditor({
     };
     const ops = sv.eventId ? planEdit(dayEvents, sv.eventId, newEvent) : planDayInsertion(dayEvents, newEvent);
     const afterEvents = buildAfterEvents(events, dayEvents, ops);
-    const afterHos = computeHOS(afterEvents, cycleType, tz, evalNow, { historyComplete: true });
+    const afterHos = computeHOS(afterEvents, cycleType, tz, evalNow, { historyComplete });
     const val = validateTimeline(afterEvents, { cycleType, tz, now: evalNow });
     setProposed({
       ops,
@@ -439,6 +446,7 @@ export default function RodsGraphEditor({
       <ProposedChangeDialog open={!!proposed} isCertified={proposed?.isCertified}
         beforeSegs={proposed?.beforeSegs} afterSegs={proposed?.afterSegs}
         beforeHos={proposed?.beforeHos} afterHos={proposed?.afterHos}
+        historyComplete={historyComplete}
         warnings={proposed?.warnings} violations={proposed?.violations}
         onApply={applyProposed} onEdit={() => setProposed(null)} onCancel={() => { setProposed(null); setSheetValue(null); }} />
     </div>
