@@ -21,7 +21,7 @@ import PreTripDialog from '@/components/PreTripDialog';
 // edit workflow, EventSheet, canonical timelineWriter calls (applyTimelineOps)
 // and validation; Today and Logs are just two entry points into it.
 import RodsGraphEditor from '@/components/rodsEditor/RodsGraphEditor';
-import { useIsMobile, useIsCoarsePointer } from '@/hooks/use-mobile';
+import { useIsMobile, useIsTouchCapable } from '@/hooks/use-mobile';
 import { shouldUseFullScreenEditGraph } from '@/lib/editLogChrome';
 import { Truck, Clock, Coffee, RotateCcw, AlertTriangle, MapPin, Bot, ClipboardList, ClipboardCheck, Gauge, Moon, HelpCircle, ShieldCheck, Plus, PencilLine, X, Check } from 'lucide-react';
 import DailyMilesCard from '@/components/DailyMilesCard';
@@ -60,8 +60,8 @@ export default function Today() {
   // capability, not viewport width alone — an iPad is >=768px (not
   // "isMobile") but is still touch-primary, and routing it into the Dialog
   // below broke drag-to-draw (see src/lib/editLogChrome.js for why).
-  const isCoarsePointer = useIsCoarsePointer();
-  const useFullScreenEditGraph = shouldUseFullScreenEditGraph({ isMobileWidth: isMobile, isCoarsePointer });
+  const isTouchCapable = useIsTouchCapable();
+  const useFullScreenEditGraph = shouldUseFullScreenEditGraph({ isMobileWidth: isMobile, isTouchCapable });
   const [statusOpen, setStatusOpen] = useState(false);
   const [pretripOpen, setPretripOpen] = useState(false);
   const [pendingStatus, setPendingStatus] = useState(null);
