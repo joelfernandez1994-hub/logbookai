@@ -461,8 +461,11 @@ export default function Today() {
           fed with Today's own data. Its own reload prop is Today's reload
           (from useDriverData), so saving here refreshes Today's graph/HOS
           immediately — same canonical timeline, same writer, same validation.
-          On mobile it opens as a dedicated full-screen editor instead of a
-          card-sized modal (touch accuracy over fitting into a card); desktop
+          On any touch-primary device (phone OR tablet — see
+          shouldUseFullScreenEditGraph in @/lib/editLogChrome) it opens as a
+          dedicated full-screen editor instead of a card-sized modal (touch
+          accuracy over fitting into a card, and it sidesteps the Radix
+          Dialog scroll-lock that broke tablet drag-to-draw); desktop mouse
           keeps the existing centered dialog. Either way it's the exact same
           RodsGraphEditor + event-writing path, just different chrome. */}
       {editLogOpen && useFullScreenEditGraph ? (
