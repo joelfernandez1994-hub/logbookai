@@ -34,12 +34,21 @@
 // A mouse on desktop is unaffected either way, since `touchmove` never fires
 // for mouse input — hence "desktop keeps the Dialog" was never the bug.
 //
-// FIX: route by touch capability (`pointer: coarse`, see useIsCoarsePointer
-// in src/hooks/use-mobile.jsx), not by viewport width alone, so any
-// touch-primary device — phone AND tablet — gets the Dialog-free full-screen
-// chrome that was already correct, while a real desktop mouse keeps the
-// existing centered Dialog. No new "tablet" branch/component is introduced;
-// tablets simply take the same branch phones already did.
+// FIX: route by touch capability (see useIsTouchCapable in
+// src/hooks/use-mobile.jsx), not by viewport width alone, so any touch
+// device — phone AND tablet — gets the Dialog-free full-screen chrome that
+// was already correct, while a real desktop mouse keeps the existing
+// centered Dialog. No new "tablet" branch/component is introduced; tablets
+// simply take the same branch phones already did.
+//
+// NOTE on a first attempt at this fix: touch capability was originally
+// detected purely via the CSS `pointer: coarse` media feature. That's wrong
+// on iPadOS — Safari's default "Request Desktop Website" mode spoofs
+// pointer/hover media features to report `pointer: fine` ("this is a Mac")
+// on a real iPad, so that check silently evaluated to false on a stock iPad
+// and shipped a no-op fix. useIsTouchCapable() also checks
+// `navigator.maxTouchPoints`, a hardware-capability API iPadOS does not
+// spoof, and trusts either signal.
 // ============================================================================
 export function shouldUseFullScreenEditGraph({ isMobileWidth, isTouchCapable }) {
   return !!isMobileWidth || !!isTouchCapable;
