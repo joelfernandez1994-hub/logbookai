@@ -496,7 +496,19 @@ export default function Today() {
         </div>
       ) : (
         <Dialog open={editLogOpen} onOpenChange={setEditLogOpen}>
-          <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
+          {/* grid-cols-1 gives the dialog's grid a DEFINITE column track
+              (minmax(0,1fr) = the dialog's own width). Without it the implicit
+              auto track sizes itself to the graph content's max-content, and
+              RodsGraphEditor's Zoom mode makes content ~4.8x wider than the
+              container — so the track grows, the ResizeObserver measures the
+              grown container, computeGraphLayout scales content up again, and
+              the width runs away to the browser's ~33.5M px layout clamp.
+              Result: zoomed pxPerHour becomes millions of px/hour, the
+              scrollable range collapses to a few px, and drag-near-edge /
+              drag-to-draw stop responding (the exact "zoomed iPad Edit Log
+              doesn't respond" bug). A definite track pins the container to
+              the dialog width so zoom produces a real ~5h scrollable window. */}
+          <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto grid-cols-1">
             <DialogHeader><DialogTitle>{t('logs.editLog')}</DialogTitle></DialogHeader>
             <TimezoneIndicator tz={tz} className="mb-1" />
             <RodsGraphEditor events={events} dateStr={todayKey} timezone={tz} carrier={carrier} equipment={equipment} profile={profile} certifications={certifications} reload={reload} />
