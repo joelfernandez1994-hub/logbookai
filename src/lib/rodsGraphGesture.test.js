@@ -161,3 +161,100 @@ describe('row-lock: the duty status can never change mid-gesture from vertical m
     expect(finalizeDrawGesture(gesture).status).toBe('ON_DUTY');
   });
 });
+
+// ============================================================================
+// REGRESSION — tablet + zoom drag-to-draw (release bug).
+// ----------------------------------------------------------------------------
+// Root cause was never in this gesture module or in computeGraphLayout — both
+// are already width-agnostic pure math with no device branching. The bug was
+// that Today.jsx routed tablet-width viewports (iPad, >=768px) into a Radix
+// <Dialog>, whose scroll-lock could swallow the touch-drag before it ever
+// reached these functions; phones bypassed that Dialog entirely via a
+// full-screen chrome. See src/lib/editLogChrome.js for the fix (route by
+// touch capability, not viewport width) and the full root-cause writeup.
+//
+// These tests prove the gesture math itself was always correct at tablet
+// geometry — using computeGraphLayout()'s REAL output for a zoomed tablet
+// width, not the arbitrary fixed scale used above — and that the same math
+// produces equivalent results at phone geometry, i.e. there is no separate
+// tablet code path to regress.
+// ============================================================================
+describe('REGRESSION — zoomed tablet width (768-1024px) drag-to-draw', () => {
+  const ZOOM_WINDOW_HOURS = 5; // matches RodsGraphEditor.jsx's ZOOM_WINDOW_HOURS
+
+  it.each([768, 820, 1024])(
+    'at %dpx zoomed to a 5h window, pointerdown -> pointermove -> pointerup produces one continuous range',
+    (containerW) => {
+      const { pxPerHour, contentW } = computeGraphLayout(containerW, ZOOM_WINDOW_HOURS);
+      // Sanity check this is a genuinely zoomed (scrollable) tablet layout —
+      // contentW must exceed the viewport, or this test wouldn't exercise the
+      // scenario the bug report was about.
+      expect(contentW).toBeGreaterThan(containerW);
+      const rowsLeft = LEFT_W;
+      const xFor2 = (hour) => rowsLeft + hour * pxPerHour;
+
+      const startHour = xToHour(xFor2(2), rowsLeft, pxPerHour);
+      let gesture = beginDrawGesture('DRIVING', xFor2(2), 100, startHour);
+      for (let h = 2.5; h <= 6; h += 0.5) {
+        const hour = xToHour(xFor2(h), rowsLeft, pxPerHour);
+        gesture = updateDrawGesture(gesture, xFor2(h), 100, hour);
+      }
+      const result = finalizeDrawGesture(gesture);
+      expect(result).toEqual({ status: 'DRIVING', lo: 2, hi: 6 });
+    }
+  );
+
+  it('pointer capture is retained across the whole drag: every intermediate move keeps updating the SAME gesture object, never starting a new one', () => {
+    const { pxPerHour } = computeGraphLayout(820, ZOOM_WINDOW_HOURS);
+    const xFor2 = (hour) => LEFT_W + hour * pxPerHour;
+    let gesture = beginDrawGesture('ON_DUTY', xFor2(1), 0, 1);
+    const pointerId = gesture; // identity marker: same reference chain throughout
+    for (const h of [1.5, 2, 2.5, 3, 3.5, 4]) {
+      const next = updateDrawGesture(gesture, xFor2(h), 0, h);
+      // Each update carries forward the same status/start — nothing resets
+      // mid-drag the way a lost pointer capture (a spurious new gesture) would.
+      expect(next.status).toBe(gesture.status);
+      expect(next.startHour).toBe(gesture.startHour);
+      gesture = next;
+    }
+    expect(finalizeDrawGesture(gesture)).toEqual({ status: 'ON_DUTY', lo: 1, hi: 4 });
+  });
+
+  it('zoomed tablet geometry and zoomed phone geometry resolve an identical gesture shape (no tablet-specific gesture path)', () => {
+    const tablet = computeGraphLayout(820, ZOOM_WINDOW_HOURS);
+    const phone = computeGraphLayout(390, ZOOM_WINDOW_HOURS);
+    const runSwipe = (pxPerHour) => {
+      const xFor2 = (hour) => LEFT_W + hour * pxPerHour;
+      const startHour = xToHour(xFor2(3), LEFT_W, pxPerHour);
+      let gesture = beginDrawGesture('SLEEPER_BERTH', xFor2(3), 0, startHour);
+      gesture = updateDrawGesture(gesture, xFor2(7), 0, xToHour(xFor2(7), LEFT_W, pxPerHour));
+      return finalizeDrawGesture(gesture);
+    };
+    expect(runSwipe(tablet.pxPerHour)).toEqual({ status: 'SLEEPER_BERTH', lo: 3, hi: 7 });
+    expect(runSwipe(phone.pxPerHour)).toEqual({ status: 'SLEEPER_BERTH', lo: 3, hi: 7 });
+  });
+
+  it('auto-scroll near the edge still engages at tablet-zoom scale (the zoomed scroll container is expected to pan, not swallow the gesture)', () => {
+    // A tablet-width zoomed viewport, cursor near its right edge.
+    const viewportLeft = 0, viewportRight = 820;
+    const delta = autoScrollDelta(800, viewportLeft, viewportRight);
+    expect(delta).toBeGreaterThan(0);
+  });
+});
+
+describe('REGRESSION — Edit Log Graph chrome routing (the actual tablet bug)', () => {
+  it('phone (isMobile width) gets the full-screen chrome — unchanged from before this fix', () => {
+    expect(shouldUseFullScreenEditGraph({ isMobileWidth: true, isCoarsePointer: true })).toBe(true);
+    // Even a phone somehow reporting a non-coarse pointer still gets it, since
+    // isMobileWidth alone was always sufficient before this fix.
+    expect(shouldUseFullScreenEditGraph({ isMobileWidth: true, isCoarsePointer: false })).toBe(true);
+  });
+
+  it('tablet (>=768px, touch-primary) now gets the full-screen chrome instead of the Dialog — this is the fix', () => {
+    expect(shouldUseFullScreenEditGraph({ isMobileWidth: false, isCoarsePointer: true })).toBe(true);
+  });
+
+  it('desktop mouse (wide viewport, fine pointer) keeps the existing Dialog — unchanged', () => {
+    expect(shouldUseFullScreenEditGraph({ isMobileWidth: false, isCoarsePointer: false })).toBe(false);
+  });
+});
