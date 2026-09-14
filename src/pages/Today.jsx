@@ -21,7 +21,8 @@ import PreTripDialog from '@/components/PreTripDialog';
 // edit workflow, EventSheet, canonical timelineWriter calls (applyTimelineOps)
 // and validation; Today and Logs are just two entry points into it.
 import RodsGraphEditor from '@/components/rodsEditor/RodsGraphEditor';
-import { useIsMobile } from '@/hooks/use-mobile';
+import { useIsMobile, useIsCoarsePointer } from '@/hooks/use-mobile';
+import { shouldUseFullScreenEditGraph } from '@/lib/editLogChrome';
 import { Truck, Clock, Coffee, RotateCcw, AlertTriangle, MapPin, Bot, ClipboardList, ClipboardCheck, Gauge, Moon, HelpCircle, ShieldCheck, Plus, PencilLine, X, Check } from 'lucide-react';
 import DailyMilesCard from '@/components/DailyMilesCard';
 import TimezoneIndicator from '@/components/TimezoneIndicator';
@@ -55,6 +56,12 @@ export default function Today() {
   const { profile, carrier, equipment, events, loading, reload } = useDriverData();
   const navigate = useNavigate();
   const isMobile = useIsMobile();
+  // Which chrome the Edit Log Graph opens in must be decided by touch
+  // capability, not viewport width alone — an iPad is >=768px (not
+  // "isMobile") but is still touch-primary, and routing it into the Dialog
+  // below broke drag-to-draw (see src/lib/editLogChrome.js for why).
+  const isCoarsePointer = useIsCoarsePointer();
+  const useFullScreenEditGraph = shouldUseFullScreenEditGraph({ isMobileWidth: isMobile, isCoarsePointer });
   const [statusOpen, setStatusOpen] = useState(false);
   const [pretripOpen, setPretripOpen] = useState(false);
   const [pendingStatus, setPendingStatus] = useState(null);
@@ -458,7 +465,7 @@ export default function Today() {
           card-sized modal (touch accuracy over fitting into a card); desktop
           keeps the existing centered dialog. Either way it's the exact same
           RodsGraphEditor + event-writing path, just different chrome. */}
-      {editLogOpen && isMobile ? (
+      {editLogOpen && useFullScreenEditGraph ? (
         <div className="fixed inset-0 z-50 bg-background flex flex-col">
           <div className="flex items-center justify-between px-4 py-3 border-b border-border safe-top shrink-0">
             <div className="font-semibold text-foreground">{t('logs.editLog')}</div>
