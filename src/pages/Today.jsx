@@ -303,12 +303,12 @@ export default function Today() {
       </div>
 
       {!timelineValidation.valid && (
-        <div className="rounded-xl border border-error/40 bg-error-surface p-3 mb-3 flex gap-2">
-          <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5 text-error" />
+        <div className="rounded-xl border border-warning/50 bg-warning-surface p-3 mb-3 flex gap-2">
+          <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5 text-warning" />
           <div className="flex-1">
-            <div className="text-xs font-medium text-error-surface-foreground">{t('today.timelineCorrectionRequired')}</div>
-            <div className="text-xs text-error-surface-foreground opacity-80 mt-0.5 mb-2">{t('today.timelineCorrectionRequiredHelp')}</div>
-            <Button size="sm" variant="outline" className="h-7 text-[11px] px-2" onClick={() => setEditLogOpen(true)}>
+            <div className="text-xs font-medium text-warning-surface-foreground">{t('today.timelineCorrectionRequired')}</div>
+            <div className="text-xs text-warning-surface-foreground opacity-80 mt-0.5 mb-2">{t('today.timelineCorrectionRequiredHelp')}</div>
+            <Button size="sm" variant="outline" className="h-7 text-[11px] px-2 border-warning/50 text-warning-surface-foreground hover:bg-warning/10" onClick={() => setEditLogOpen(true)}>
               <PencilLine className="w-3 h-3 mr-1" /> {t('logs.editLog')}
             </Button>
           </div>
