@@ -41,6 +41,6 @@
 // existing centered Dialog. No new "tablet" branch/component is introduced;
 // tablets simply take the same branch phones already did.
 // ============================================================================
-export function shouldUseFullScreenEditGraph({ isMobileWidth, isCoarsePointer }) {
-  return !!isMobileWidth || !!isCoarsePointer;
+export function shouldUseFullScreenEditGraph({ isMobileWidth, isTouchCapable }) {
+  return !!isMobileWidth || !!isTouchCapable;
 }
