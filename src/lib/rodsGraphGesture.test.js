@@ -208,7 +208,6 @@ describe('REGRESSION — zoomed tablet width (768-1024px) drag-to-draw', () => {
     const { pxPerHour } = computeGraphLayout(820, ZOOM_WINDOW_HOURS);
     const xFor2 = (hour) => LEFT_W + hour * pxPerHour;
     let gesture = beginDrawGesture('ON_DUTY', xFor2(1), 0, 1);
-    const pointerId = gesture; // identity marker: same reference chain throughout
     for (const h of [1.5, 2, 2.5, 3, 3.5, 4]) {
       const next = updateDrawGesture(gesture, xFor2(h), 0, h);
       // Each update carries forward the same status/start — nothing resets
