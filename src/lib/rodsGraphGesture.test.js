@@ -12,6 +12,8 @@ import {
   xToHour, beginDrawGesture, updateDrawGesture, finalizeDrawGesture, autoScrollDelta,
 } from './rodsGraphGesture';
 import { planDayInsertion, applyOps, daySegments } from './rodsEditor';
+import { computeGraphLayout, LEFT_W } from './rodsGraphLayout';
+import { shouldUseFullScreenEditGraph } from './editLogChrome';
 
 const ROWS_LEFT = 64; // matches LEFT_W in rodsGraphLayout.js
 const PX_PER_HOUR = 20; // arbitrary fixed scale for the coordinate math below
