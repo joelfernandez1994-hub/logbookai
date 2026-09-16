@@ -9,7 +9,8 @@ const TZ = 'America/New_York';
 const H = 3600000;
 
 function tzHour(iso) {
-  return Number(new Date(iso).toLocaleString('en-US', { hour: '2-digit', hour12: false, timeZone: TZ }).slice(0, 2));
+  const h = Number(new Date(iso).toLocaleString('en-US', { hour: '2-digit', hour12: false, timeZone: TZ }).slice(0, 2));
+  return h === 24 ? 0 : h; // en-US hour12:false renders midnight as "24"
 }
 function tzDate(iso) {
   return new Date(iso).toLocaleDateString('en-CA', { timeZone: TZ });
