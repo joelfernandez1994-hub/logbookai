@@ -37,7 +37,15 @@ const H = 3600000;
 // Genuine-travel verbs — when ANY of these is present, this rule does NOT apply
 // and the narrative goes through normal AI + movement validation. Mirrors the
 // verbs the movement guard treats as a described driving movement.
+//
+// Exported as describesTravel() below so narrativeMovements.js's AI-provenance
+// backstop can apply the SAME "did the driver's own words mention travel at
+// all" gate — see that file for why it needs it too.
 const TRAVEL_RE = /\b(?:drove|driven|driving|drive|headed|head\s+to|left|leave|leaving|arrived|arrive|continued|manej\w*|conduc\w*|viaj\w*|sal[ií]\w*)\b/i;
+
+export function describesTravel(text) {
+  return TRAVEL_RE.test(String(text || ''));
+}
 
 const FULL_DAY_RE = /\b(?:off[\s-]?duty|sleeper(?:\s+berth)?|fuera\s+de\s+servicio|litera|dormitorio)\b\s+(?:all\s+day|todo\s+el\s+d[ií]a)\b\s+(?:in|en)\s+(.+)/i;
 const ALL_NIGHT_RE = /\b(?:off[\s-]?duty|fuera\s+de\s+servicio)\b\s+(?:all\s+night|toda\s+la\s+noche)\b\s+(?:in|en)\s+(.+)/i;
