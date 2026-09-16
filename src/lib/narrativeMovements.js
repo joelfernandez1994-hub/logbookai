@@ -14,7 +14,12 @@
 //   1. PRIMARY — deterministic regex over the original narrative text.
 //   2. BACKSTOP — AI provenance (interpretation summary / location_confirmations)
 //      used only when the regex finds nothing, to catch a described city
-//      transition the regex missed.
+//      transition the regex missed. This backstop only ever runs when the
+//      driver's OWN narrative contains some travel language in the first
+//      place (describesTravel(), shared with stationaryDayRule.js) — a
+//      purely stationary narrative ("off duty all day in Houston, TX") must
+//      never be reinterpreted as a movement just because the AI backend
+//      attached a location_confirmation or paraphrase mentioning that city.
 // ============================================================================
 
 import { describesTravel } from './stationaryDayRule';
