@@ -1,3 +1,4 @@
+import { PencilLine } from 'lucide-react';
 import { fmtHours } from '@/lib/hosEngine';
 import { getDisplayGrid } from '@/lib/timelineDisplay';
 import { validateTimeline } from '@/lib/timelineEngine';
@@ -19,7 +20,7 @@ const STATUS_COLORS = {
 
 const ROW_ORDER = ['OFF_DUTY', 'SLEEPER_BERTH', 'DRIVING', 'ON_DUTY'];
 
-export default function LogGraph({ events, dateStr, timezone, interactive = true, totalsOverride = null }) {
+export default function LogGraph({ events, dateStr, timezone, interactive = true, totalsOverride = null, onEditEvent }) {
   const now = new Date();
   const grid = getDisplayGrid(events, dateStr, timezone, now);
   const displayedTotals = totalsOverride || grid.totals;
@@ -108,12 +109,17 @@ export default function LogGraph({ events, dateStr, timezone, interactive = true
       </div>
       <div className="mt-3 space-y-1">
         {grid.remarks.map((r, i) => (
-          <div key={i} className="flex gap-2 text-xs text-muted-foreground">
+          <div key={i} className="flex items-center gap-2 text-xs text-muted-foreground">
             <span className="font-mono w-16 shrink-0">
               {r.time.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', timeZone: timezone })}
             </span>
             <span className="font-semibold" style={{ color: STATUS_COLORS[r.status] }}>{STATUS_LABELS[r.status]}</span>
-            <span className="truncate">{[r.city, r.state].filter(Boolean).join(', ')}{r.remark ? ` — ${r.remark}` : ''}</span>
+            <span className="truncate flex-1">{[r.city, r.state].filter(Boolean).join(', ')}{r.remark ? ` — ${r.remark}` : ''}</span>
+            {onEditEvent && r.id && (
+              <button type="button" onClick={() => onEditEvent(r.id)} aria-label="Edit event" className="shrink-0 inline-flex items-center justify-center min-h-[36px] min-w-[36px] text-muted-foreground hover:text-foreground">
+                <PencilLine className="w-3.5 h-3.5" />
+              </button>
+            )}
           </div>
         ))}
       </div>

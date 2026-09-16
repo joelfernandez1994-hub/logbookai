@@ -7,7 +7,7 @@ import { computeHOS, fmtDur, fmtClock, dateKeyInTz, hasSufficientCycleHistory } 
 import LogGraph from '@/components/LogGraph';
 import ClockCard from '@/components/ClockCard';
 import StatusChangeSheet from '@/components/StatusChangeSheet';
-import { changeStatus, insertEvent, updateEventFields } from '@/lib/timelineWriter';
+import { changeStatus, insertEvent, editEvent, updateEventFields } from '@/lib/timelineWriter';
 import { validateTimeline } from '@/lib/timelineEngine';
 import { getDvirs, saveDvir } from '@/lib/dvirData';
 import { saveDriverProfile, getCertifications } from '@/lib/driverData';
@@ -21,6 +21,7 @@ import PreTripDialog from '@/components/PreTripDialog';
 // edit workflow, EventSheet, canonical timelineWriter calls (applyTimelineOps)
 // and validation; Today and Logs are just two entry points into it.
 import RodsGraphEditor from '@/components/rodsEditor/RodsGraphEditor';
+import EventEditor from '@/components/EventEditor';
 import { useIsMobile, useIsTouchCapable } from '@/hooks/use-mobile';
 import { shouldUseFullScreenEditGraph } from '@/lib/editLogChrome';
 import { Truck, Clock, Coffee, RotateCcw, AlertTriangle, MapPin, Bot, ClipboardList, ClipboardCheck, Gauge, Moon, HelpCircle, ShieldCheck, Plus, PencilLine, X, Check } from 'lucide-react';
@@ -74,6 +75,9 @@ export default function Today() {
   const [bolSaving, setBolSaving] = useState(false);
   const [certifications, setCertifications] = useState([]);
   const [editLogOpen, setEditLogOpen] = useState(false);
+  const [editingEvent, setEditingEvent] = useState(null);
+  const [eventSaving, setEventSaving] = useState(false);
+  const [eventSaveError, setEventSaveError] = useState('');
 
   const tz = carrier?.home_terminal_timezone || 'America/Chicago';
   const cycleType = carrier?.hos_cycle || '70_8';
@@ -179,6 +183,23 @@ export default function Today() {
       await reload();
     } finally {
       setBolSaving(false);
+    }
+  };
+
+  const handleSaveEventEdit = async (data) => {
+    if (!editingEvent?.id) return;
+    setEventSaving(true); setEventSaveError('');
+    try {
+      const res = await editEvent(events, editingEvent.id, data, {
+        editedBy: profile?.legal_name, reason: 'Manual status edit', carrierName: carrier?.carrier_name,
+      });
+      if (res?.error) { setEventSaveError(res.error); return; }
+      setEditingEvent(null);
+      await reload();
+    } catch (e) {
+      setEventSaveError(e?.message || t('logs.saveEventError'));
+    } finally {
+      setEventSaving(false);
     }
   };
 
@@ -296,7 +317,7 @@ export default function Today() {
           logic below is untouched). */}
       <div className="rounded-xl border border-border bg-card p-3 mb-4">
         <div className="flex items-center justify-between mb-2"><div className="text-sm font-semibold text-card-foreground">{t('today.todaysLog')}</div><TimezoneIndicator tz={tz} /></div>
-        <LogGraph events={events} dateStr={todayKey} timezone={tz} />
+        <LogGraph events={events} dateStr={todayKey} timezone={tz} onEditEvent={(id) => setEditingEvent(events.find(e => e.id === id))} />
         <Button variant="outline" size="sm" className="w-full mt-3" onClick={() => setEditLogOpen(true)}>
           <PencilLine className="w-3.5 h-3.5 mr-1" /> {t('logs.editLog')}
         </Button>
@@ -515,6 +536,19 @@ export default function Today() {
           </DialogContent>
         </Dialog>
       )}
+
+      <EventEditor
+        open={!!editingEvent}
+        event={editingEvent}
+        saving={eventSaving}
+        saveError={eventSaveError}
+        onClose={() => { setEditingEvent(null); setEventSaveError(''); }}
+        onSave={handleSaveEventEdit}
+        tz={tz}
+        carrier={carrier}
+        isCertified={false}
+        dateStr={todayKey}
+      />
 
       <Dialog open={dvirDialogOpen} onOpenChange={setDvirDialogOpen}>
         <DialogContent className="max-w-md max-h-[85vh] overflow-y-auto">
