@@ -17,6 +17,8 @@
 //      transition the regex missed.
 // ============================================================================
 
+import { describesTravel } from './stationaryDayRule';
+
 function normCity(v) { return String(v == null ? '' : v).trim().toLowerCase(); }
 function normState(v) { return String(v == null ? '' : v).trim().toUpperCase(); }
 
@@ -81,6 +83,22 @@ export function extractDescribedMovements(narrative, provenance = {}) {
     }
   }
   if (moves.length) return moves;
+
+  // The backstop below only ever fires when the DRIVER'S OWN words describe
+  // travel at all. Without that, it's not "AI interpretation" evidence of a
+  // described movement — it's the AI backend attaching a location_confirmation
+  // (even just a formatting/state-normalization entry) or a paraphrase to a
+  // narrative that never mentioned driving anywhere, e.g. "log me off duty
+  // all day in Houston, TX". That narrative has no travel verb, so it can
+  // only ever describe a STATIONARY location, never a destination — exactly
+  // the case stationaryDayRule.js's deterministic path exists to catch, but
+  // this guard is needed here too because the AI path is still reachable
+  // whenever the driver's exact phrasing doesn't match that rule's stricter
+  // pattern and the request falls through to the AI backend. This is a real
+  // reported bug: a purely stationary "off duty all day in <city>" request
+  // was blocked on "DESCRIBED DRIVING MISSING" with no travel described
+  // anywhere in the narrative.
+  if (!describesTravel(text)) return [];
 
   // BACKSTOP: AI provenance. Only when the regex over the original narrative
   // found nothing — use the AI's own interpretation summary / location
