@@ -103,7 +103,11 @@ export function extractDescribedMovements(narrative, provenance = {}) {
   // reported bug: a purely stationary "off duty all day in <city>" request
   // was blocked on "DESCRIBED DRIVING MISSING" with no travel described
   // anywhere in the narrative.
-  if (!describesTravel(text)) return [];
+  //
+  // Only gates when narrative text actually exists: some callers pass an
+  // empty narrative (e.g. re-validating a proposal without new text) and
+  // rely on location_confirmations alone — that existing use is preserved.
+  if (text && !describesTravel(text)) return [];
 
   // BACKSTOP: AI provenance. Only when the regex over the original narrative
   // found nothing — use the AI's own interpretation summary / location
