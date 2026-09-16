@@ -162,6 +162,12 @@ export function movementCovered(proposed, movement) {
 // This intentionally still never blocks on a bare city difference alone —
 // only when the narrative/provenance actually described that movement.
 export function describedMovementCoverage(proposed, narrative, provenance = {}) {
+  // A stationary full-day/night status (deterministic stationaryDayRule) treats
+  // its location as a STATIONARY EVENT location, never a travel destination —
+  // emit zero movement warnings regardless of any provenance backstop content.
+  // This is a specific stationary rule, NOT a weakening of movement validation:
+  // genuine travel narratives never reach here with the stationary flag.
+  if ((proposed || []).some(p => p && p.stationary)) return [];
   const moves = extractDescribedMovements(narrative, provenance);
   const warnings = [];
   for (const m of moves) {

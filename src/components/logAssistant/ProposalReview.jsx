@@ -140,6 +140,10 @@ export default function ProposalReview({ existing, proposed, cycleType, tz, onAp
   // odometer reading, or driver entry exists. Surfaced distinctly so the
   // total's footer never implies a real number is quietly missing.
   const hasUnknownMileage = events.some(event => event.duty_status === 'DRIVING' && event.mileage == null);
+  // A stationary full-day/night proposal has no Driving at all — its 0 mi total
+  // is the actual posted value, not a route calculation. Labeled distinctly so
+  // the footer never implies a real route was (or should be) computed.
+  const isStationary = events.some(event => event.stationary) && !events.some(event => event.duty_status === 'DRIVING');
 
   const updateField = (i, field, val) => setEvents(prev => prev.map((e, idx) => idx === i ? { ...e, [field]: val } : e));
   const updateMileage = (i, val) => {
@@ -389,8 +393,9 @@ export default function ProposalReview({ existing, proposed, cycleType, tz, onAp
         </div>
         <div className="text-xs text-muted-foreground">
           {mileageEdited ? 'Manual · driver edited'
-            : hasUnknownMileage ? 'Auto · excludes unknown mileage (destination not yet known)'
-              : hasEstimatedMileage ? 'Auto · includes labeled estimate' : 'Auto · route calculated'}
+            : isStationary ? 'Stationary · no driving'
+              : hasUnknownMileage ? 'Auto · excludes unknown mileage (destination not yet known)'
+                : hasEstimatedMileage ? 'Auto · includes labeled estimate' : 'Auto · route calculated'}
         </div>
       </div>
 

@@ -11,6 +11,7 @@ import { insertEventsBatch, editEvent, deleteEventById, replaceRangeEvents } fro
 import { parseVoiceCommand } from '@/lib/voiceParser';
 import { validateInterpretResult, isQuestionIntent, shouldOfferApply, replaceDayRange, resolveEditTargets } from '@/lib/aiLayer';
 import { isMultiEventNarrative } from '@/lib/narrativeClassifier';
+import { parseStationaryDay } from '@/lib/stationaryDayRule';
 import { detectFeasibilityQuestion, answerFeasibilityQuestion } from '@/lib/feasibilityQuestion';
 import { describeEvent } from '@/lib/eventReference';
 import { normalizeCandidateTimeline } from '@/lib/timelineNormalization';
@@ -145,6 +146,43 @@ export default function LogAssistant() {
         return true;
       }
       // Not confidently answerable deterministically — fall through to AI.
+    }
+
+    // 1b. DETERMINISTIC STATIONARY FULL-DAY / ALL-NIGHT STATUS — single
+    //     stationary intent (e.g. "off duty all day in X", "sleeper all day in
+    //     X", "off duty all night in X"). The stated location is a STATIONARY
+    //     EVENT location, never a travel destination, so it can never trigger
+    //     the DESCRIBED_DRIVING_MISSING false positive the movement guard's
+    //     provenance backstop produced. Zero AI cost, zero routing. A genuine
+    //     travel narrative (drove/headed/left/...) is rejected inside the rule
+    //     and falls through to the normal AI + movement validation below.
+    //     Runs before the multi-event classifier so a full-day stationary
+    //     status is never sent to the LLM.
+    const stat = parseStationaryDay(text, { now: new Date(), timezone: tz });
+    if (stat?.matched) {
+      const statEvents = (stat.proposed_events || []).map((e) => ({
+        ...e,
+        source: type === 'voice' ? 'voice' : 'manual',
+        confidence: 'high',
+        ambiguous_fields: [],
+      }));
+      setRouteWarning(null);
+      setReconstructionConflicts([]);
+      setProposal({
+        intent: stat.intent,
+        target_date: stat.target_date,
+        requires_clarification: !!stat.requires_clarification,
+        clarification_question: stat.clarification_question || '',
+        interpretation: stat.interpretation,
+        proposed_events: statEvents,
+        clarifications: [],
+        refuses_fabrication: false,
+        original_input: text,
+        location_confirmations: [],
+        _deterministic: true,
+        _stationary: true,
+      });
+      return true;
     }
 
     // AI-first routing: any narrative describing more than one event/activity
