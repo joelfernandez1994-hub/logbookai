@@ -109,13 +109,27 @@ export function extractDescribedMovements(narrative, provenance = {}) {
   // destination change ("Gary" -> "Chicago, IL") — every location_confirmation
   // gains a state suffix by design, so comparing the raw strings previously
   // flagged EVERY confirmed location as a "described movement."
-  const confirms = Array.isArray(provenance.location_confirmations) ? provenance.location_confirmations : [];
-  for (const c of confirms) {
-    const oRaw = String((c && c.original) || ''), intrRaw = String((c && c.interpreted) || '');
-    if (!oRaw || !intrRaw) continue;
-    const o = splitCityState(oRaw), intr = splitCityState(intrRaw);
-    if (normCity(o.city) === normCity(intr.city)) continue; // same city, state merely added — not a movement
-    moves.push({ from: null, to: { city: intr.city, state: intr.state }, evidence: 'ai_provenance' });
+  //
+  // Unlike the summary check above, a location_confirmation is NOT on its own
+  // reliable evidence of a described movement — it is very often nothing
+  // more than a formatting/state-normalization echo of a STATIONARY location
+  // the driver named ("log me off duty all day in Houston, TX" can still
+  // produce a location_confirmation naming Houston). Only trust it as
+  // movement evidence when the driver's own narrative text actually mentions
+  // travel too (describesTravel) — or when no narrative text is available at
+  // all, preserving the existing behavior some callers rely on (e.g.
+  // re-validating a proposal without new text). This is the fix for a real
+  // reported bug: a purely stationary day request was blocked on "DESCRIBED
+  // DRIVING MISSING" though the driver never described driving anywhere.
+  if (!text || describesTravel(text)) {
+    const confirms = Array.isArray(provenance.location_confirmations) ? provenance.location_confirmations : [];
+    for (const c of confirms) {
+      const oRaw = String((c && c.original) || ''), intrRaw = String((c && c.interpreted) || '');
+      if (!oRaw || !intrRaw) continue;
+      const o = splitCityState(oRaw), intr = splitCityState(intrRaw);
+      if (normCity(o.city) === normCity(intr.city)) continue; // same city, state merely added — not a movement
+      moves.push({ from: null, to: { city: intr.city, state: intr.state }, evidence: 'ai_provenance' });
+    }
   }
   return moves;
 }
