@@ -35,6 +35,14 @@ export function isTravelNarrative(text) {
   return false;
 }
 
+// "here" / "this location" as a PLACE ("I loaded here at 8"). The app has no
+// confirmed device location in the Tell flow, so "here" can never be resolved
+// to a city — callers must ask instead of leaving a silent blank or a guess.
+export function referencesHere(text) {
+  return /\b(?:here|this (?:location|spot|place)|my (?:current )?location|current location)\b/i.test(String(text || ''))
+    && !/\bhere(?:'s|\s+is)\b/i.test(String(text || ''));
+}
+
 // Detects narratives that describe more than one event/activity and should go
 // straight to the AI instead of the deterministic single-intent parser.
 export function isMultiEventNarrative(text) {
