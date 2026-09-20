@@ -241,7 +241,12 @@ function parseTime(text, refDate, tz, opts = {}) {
   // las", "cerca de las", "alrededor de las", "a eso de las") — a bare hour with no colon/meridian is only ever
   // treated as a time when introduced by one of these, never floating loose
   // in prose (see the module header note on "stopped for my 30").
-  const m = lower.match(/\b(?:at|around|about|near|a las|cerca de las|alrededor de las?|a eso de las?)\s+(\d{1,2}(?::\d{2})?)\s*(a\.?m\.?|p\.?m\.?)?\b|(\d{1,2}:\d{2})\s*(a\.?m\.?|p\.?m\.?)?|(\d{1,2})\s*(a\.?m\.?|p\.?m\.?)\b/i);
+  // "about 3 hours" / "around 30 minutes" / "about 150 miles" are DURATIONS or
+  // distances, never a clock time — the lookahead after the number stops the
+  // approximate-time prefix ("about"/"around") from turning them into 3 o'clock
+  // (which then fabricated a 3-hour Driving event starting at 3 PM from "drove
+  // for about 3 hours").
+  const m = lower.match(/\b(?:at|around|about|near|a las|cerca de las|alrededor de las?|a eso de las?)\s+(\d{1,2}(?::\d{2})?)(?!\s*(?:hours?|hrs?|h\b|minutes?|mins?|miles?|mi\b|mph|gallons?|gal\b))\s*(a\.?m\.?|p\.?m\.?)?\b|(\d{1,2}:\d{2})\s*(a\.?m\.?|p\.?m\.?)?|(\d{1,2})\s*(a\.?m\.?|p\.?m\.?)\b/i);
   if (!m) return null;
   const tok = m[1] || m[3] || m[5];
   const merTok = m[2] || m[4] || m[6];
