@@ -375,6 +375,18 @@ export function validateProposal(existing, proposed, opts = {}) {
   if (opts.narrative) {
     warnings.push(...describedMovementCoverage(proposed, opts.narrative, opts.provenance || {}));
   }
+  // Ambiguous-city gate: a city that exists in several states with no state
+  // given/supported is never silently resolved — the driver picks the state.
+  // Otherwise the log, mileage and route-time check would all describe
+  // whichever place the geocoder happened to rank first.
+  for (const issue of findAmbiguousCityIssues(proposed, existing, opts.narrative || '')) {
+    warnings.push({
+      type: 'ambiguous_city', severity: 'blocking', title: 'WHICH STATE?',
+      message: `${issue.reason} Edit the proposal and set the correct city/state before confirming — LogbookAI will not guess.`,
+      eventIndex: issue.eventIndex,
+      city: issue.city,
+    });
+  }
   // A pair already reported as an explicit-vs-explicit boundary conflict
   // above is deliberately left un-truncated (rule 4/5) so the driver sees
   // exactly what's wrong — suppress the generic overlap check's duplicate,
@@ -482,6 +494,22 @@ export function validateProposal(existing, proposed, opts = {}) {
       type: 'rest_history_unverified', severity: 'review', title: 'HOS REST HISTORY UNVERIFIED',
       message: 'The rest history immediately before your driving could not be verified contiguously (a gap or conflict in the timeline). The 14-hour window and 11-hour driving clocks are shown as unverified until the timeline is continuous back to a qualifying reset or split-sleeper pair.',
     });
+  }
+
+  // Future-dated ACTUAL event (review only): the Tell flow records what
+  // already happened, so a proposed start in the future usually means a
+  // past-tense statement ("went to bed at 10 pm", said in the morning) was
+  // resolved to TONIGHT instead of last night. Only when the caller did not
+  // explicitly mark this a plan (isFuture opt unset).
+  const FUTURE_TOL_MS = 10 * 60000;
+  if (isFuture == null) {
+    const firstFuture = (proposed || []).find((p) => p && p.start_timestamp && new Date(p.start_timestamp).getTime() > t.getTime() + FUTURE_TOL_MS);
+    if (firstFuture) {
+      warnings.push({
+        type: 'future_event', severity: 'review', title: 'FUTURE-DATED EVENT',
+        message: `An event starts at ${fmtClock(new Date(firstFuture.start_timestamp))}, which is still in the future. LogbookAI logs what already happened — if you meant earlier (e.g. last night), edit the time before confirming.`,
+      });
+    }
   }
 
   return { merged, warnings, violations, hos, break: br, pretrip, evalNow, isFuture: future, historyComplete, contiguousGov };
