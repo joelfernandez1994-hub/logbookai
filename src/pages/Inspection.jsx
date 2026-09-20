@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { useDriverData } from '@/hooks/useDriverData';
 import { getDailyGrid, computeHOS, hasSufficientCycleHistory, dateKeyInTz } from '@/lib/hosEngine';
 import { deriveHosDisplay } from '@/lib/proposalValidation';
-import RodsGraphEditor from '@/components/rodsEditor/RodsGraphEditor';
+import LogGraph from '@/components/LogGraph';
 import LogExportSheet from '@/components/LogExportSheet';
 import { getCertifications, getAllEvents, getDocuments } from '@/lib/driverData';
 import { getDvirs } from '@/lib/dvirData';
@@ -157,7 +157,10 @@ export default function Inspection() {
           theme variables) in both light and dark, instead of one hardcoded
           fixed color that only happened to line up in one theme. */}
       <div className="bg-card text-card-foreground rounded-xl p-3 mb-3">
-        <RodsGraphEditor events={events} dateStr={selectedKey} timezone={tz} readOnly carrier={carrier} />
+        <div className="flex items-center gap-2 text-xs font-semibold text-primary bg-accent border border-border rounded-lg px-3 py-1.5 mb-2">
+          <ShieldCheck className="w-4 h-4" /> READ ONLY — INSPECTION MODE
+        </div>
+        <LogGraph events={events} dateStr={selectedKey} timezone={tz} />
       </div>
 
       {/* Recap — all values sourced from hosForDay.cycle via recapDisplay */}

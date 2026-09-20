@@ -4,39 +4,13 @@ import { AlertTriangle, Check, Pencil, ShieldAlert } from 'lucide-react';
 import { fmtDur, fmtHours } from '@/lib/hosEngine';
 import { formatHour } from '@/lib/rodsEditor';
 import { deriveHosDisplay } from '@/lib/proposalValidation';
-
-const ROW_ORDER = ['OFF_DUTY', 'SLEEPER_BERTH', 'DRIVING', 'ON_DUTY'];
-const STATUS_COLORS = {
-  OFF_DUTY: '#64748b', SLEEPER_BERTH: '#7c3aed', DRIVING: '#2563eb', ON_DUTY: '#ea580c',
-};
+import RodsGrid from '@/components/RodsGrid';
 
 function MiniGraph({ segs, label }) {
-  const W = 280, H = 96, pad = 4, rowH = 18;
-  const x = (h) => pad + (h / 24) * (W - pad * 2);
-  const grid = 'hsl(var(--graph-grid))';
-  const rowLine = 'hsl(var(--graph-grid) / 0.5)';
   return (
     <div>
       <div className="text-[11px] font-medium text-muted-foreground mb-1">{label}</div>
-      <svg viewBox={`0 0 ${W} ${H}`} className="w-full rounded-md border border-border bg-graph">
-        {[0, 6, 12, 18, 24].map((h) => (
-          <line key={h} x1={x(h)} y1={pad} x2={x(h)} y2={H - pad} stroke={grid} strokeWidth={0.8} />
-        ))}
-        {ROW_ORDER.map((s, i) => (
-          <g key={s}>
-            <line x1={pad} y1={pad + i * rowH + rowH / 2} x2={W - pad} y2={pad + i * rowH + rowH / 2} stroke={rowLine} strokeWidth={rowH - 2} />
-          </g>
-        ))}
-        {segs.map((sg, i) => {
-          const ri = ROW_ORDER.indexOf(sg.status);
-          if (ri < 0) return null;
-          return (
-            <rect key={i} x={x(sg.startHour)} y={pad + ri * rowH + 1}
-              width={Math.max(1.5, x(sg.endHour) - x(sg.startHour))} height={rowH - 2}
-              fill={STATUS_COLORS[sg.status]} opacity={0.55} rx={1.5} />
-          );
-        })}
-      </svg>
+      <RodsGrid segments={segs || []} compact />
     </div>
   );
 }

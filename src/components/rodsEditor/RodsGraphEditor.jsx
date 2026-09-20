@@ -11,6 +11,7 @@ import { xToHour, beginDrawGesture, updateDrawGesture, finalizeDrawGesture, auto
 import EventSheet from './EventSheet';
 import ProposedChangeDialog from './ProposedChangeDialog';
 import TimeBubble from './TimeBubble';
+import RodsGrid from '@/components/RodsGrid';
 import { Button } from '@/components/ui/button';
 import { Pencil, Eye, ShieldCheck, GripVertical, ZoomIn, Maximize2 } from 'lucide-react';
 
@@ -340,94 +341,21 @@ export default function RodsGraphEditor({
         </div>
       )}
 
-      {/* graph — overflow-hidden by default: the full-day view always fits
-          exactly (computeGraphLayout), so there is never a legitimate reason
-          to scroll there; leaving overflow-x as "auto" only invited a stray
-          1px-rounding scrollbar to reappear. The ONE exception is the
-          explicit Zoom interaction below, which legitimately needs to pan —
-          graph-scroll gives it a themed thin scrollbar instead of the
-          browser's default light-gray track. */}
+      {/* Graph: view-mode renders the shared canonical RodsGrid (identical to
+          Today / Logs / Inspection) so the read-only timeline never drifts.
+          Edit-mode renders the interactive HTML grid below — the only place
+          with drag/draw/resize affordances, which a read-only SVG cannot
+          provide. The visual grid language (lanes, ticks, labels) is shared. */}
+      {!editMode ? (
+        <RodsGrid segments={daySegs.map((s) => ({ status: s.status, startHour: s.startHour, endHour: s.endHour }))} />
+      ) : (
       <div ref={scrollRef} className={`rounded-lg border border-border bg-graph ${zoomed ? 'overflow-x-auto overflow-y-hidden touch-pan-x graph-scroll' : 'overflow-hidden'}`}
         style={zoomed ? { touchAction: 'pan-x' } : undefined}>
         <div ref={contentRef} style={{ width: contentW, position: 'relative', height: TOP_PAD + ROW_H * 4 + 6 }}>
-          {/* hour ruler (scrolls) */}
-          <div style={{ position: 'absolute', left: LEFT_W, top: 0, width: graphW, height: TOP_PAD }}>
-            {hourLabels.map((h) => (
-              <div key={h}>
-                <div style={{ position: 'absolute', left: hourToX(h, pxPerHour) - 0.5, top: 0, width: 1, height: TOP_PAD, background: h % 6 === 0 ? C.gridStrong : (h % 2 === 0 ? C.gridMid : C.gridFaint) }} />
-                {h < 24 && h % labelIntervalHours === 0 && (
-                  <span style={{ position: 'absolute', left: hourToX(h, pxPerHour) + 3, top: 4, fontSize: 10, color: C.labels }}>
-                    {h === 0 ? '12A' : h === 12 ? 'Noon' : h < 12 ? `${h}A` : `${h - 12}P`}
-                  </span>
-                )}
-              </div>
-            ))}
-            {/* quarter ticks */}
-            {Array.from({ length: 96 }).map((_, i) => (
-              <div key={`q${i}`} style={{ position: 'absolute', left: hourToX(i / 4, pxPerHour), top: TOP_PAD - 4, width: 1, height: 4, background: i % 4 === 0 ? C.gridMid : C.gridFaint }} />
-            ))}
-          </div>
-
-          {/* rows background + vertical grid + segments */}
-          <div ref={rowsRef} style={{ position: 'absolute', left: LEFT_W, top: TOP_PAD, width: graphW, height: ROW_H * 4, touchAction: editMode ? 'none' : 'pan-x' }}>
-            {ROW_ORDER.map((s, i) => (
-              <div key={s} style={{ position: 'absolute', left: 0, top: i * ROW_H, width: graphW, height: ROW_H, background: i % 2 === 0 ? C.bg : C.bgAlt, borderBottom: `1px solid ${C.rowBorder}` }}>
-                {hourLabels.map((h) => (
-                  <div key={h} style={{ position: 'absolute', left: hourToX(h, pxPerHour), top: 0, width: 1, height: ROW_H, background: h % 6 === 0 ? C.gridStrong : (h % 2 === 0 ? C.gridFaint : 'transparent') }} />
-                ))}
-              </div>
-            ))}
-            {/* existing segments */}
-            {daySegs.map((seg, i) => {
-              const ri = ROW_ORDER.indexOf(seg.status); if (ri < 0) return null;
-              return (
-                <div key={`seg${i}`} style={{
-                  position: 'absolute', left: hourToX(seg.startHour, pxPerHour), top: ri * ROW_H + 4,
-                  width: Math.max(2, hourToX(seg.endHour, pxPerHour) - hourToX(seg.startHour, pxPerHour)),
-                  height: ROW_H - 8, background: STATUS_COLORS[seg.status], opacity: 0.2, borderRadius: 3,
-                }} />
-              );
-            })}
-            {/* live draft */}
-            {draft && !sheetValue && (() => {
-              const ri = ROW_ORDER.indexOf(draft.status); if (ri < 0) return null;
-              const lo = Math.min(draft.startHour, draft.endHour), hi = Math.max(draft.startHour, draft.endHour);
-              return <div style={{ position: 'absolute', left: hourToX(lo, pxPerHour), top: ri * ROW_H + 4, width: Math.max(2, hourToX(hi, pxPerHour) - hourToX(lo, pxPerHour)), height: ROW_H - 8, background: STATUS_COLORS[draft.status], opacity: 0.5, borderRadius: 3, border: `2px solid ${C.fg}` }} />;
-            })()}
-            {/* pending (sheet open) highlight + handles */}
-            {sheetValue && editMode && (() => {
-              const ri = ROW_ORDER.indexOf(sheetValue.status); if (ri < 0) return null;
-              const lo = Math.min(sheetStartHour, sheetEndHour), hi = Math.max(sheetStartHour, sheetEndHour);
-              return (<>
-                <div style={{ position: 'absolute', left: hourToX(lo, pxPerHour), top: ri * ROW_H + 4, width: Math.max(2, hourToX(hi, pxPerHour) - hourToX(lo, pxPerHour)), height: ROW_H - 8, background: STATUS_COLORS[sheetValue.status], opacity: 0.45, borderRadius: 3, border: `2px dashed ${C.fg}` }} />
-                {['start', 'end'].map((which) => {
-                  const hh = which === 'start' ? lo : hi;
-                  return (
-                    <div key={which} onPointerDown={(e) => onHandleDown(e, which)} onPointerMove={onPointerMove} onPointerUp={onPointerUp}
-                      style={{ position: 'absolute', left: hourToX(hh, pxPerHour) - 18, top: ri * ROW_H + ROW_H / 2 - 18, width: 36, height: 36, cursor: 'ew-resize', touchAction: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                      <GripVertical style={{ width: 16, height: 16, color: C.gripFg, background: C.gripBg, borderRadius: 9, boxShadow: '0 1px 3px rgba(0,0,0,0.3)' }} />
-                    </div>
-                  );
-                })}
-              </>);
-            })()}
-            {/* row pointer capture layer (edit mode only) */}
-            {editMode && ROW_ORDER.map((s, i) => (
-              <div key={`cap${s}`} onPointerDown={(e) => onPointerDownRow(e, s)} onPointerMove={onPointerMove} onPointerUp={onPointerUp}
-                style={{ position: 'absolute', left: 0, top: i * ROW_H, width: graphW, height: ROW_H, touchAction: 'none', cursor: 'crosshair' }} />
-            ))}
-          </div>
-
-          {/* frozen status labels */}
-          <div style={{ position: 'sticky', left: 0, top: 0, width: LEFT_W, height: TOP_PAD + ROW_H * 4, background: C.bg, borderRight: `1px solid ${C.rowBorder}`, zIndex: 5 }}>
-            {ROW_ORDER.map((s, i) => (
-              <div key={s} style={{ position: 'absolute', top: TOP_PAD + i * ROW_H, width: LEFT_W, height: ROW_H, display: 'flex', alignItems: 'center', justifyContent: 'flex-end', paddingRight: 6 }}>
-                <span style={{ fontSize: 10, fontWeight: 700, color: STATUS_COLORS[s] }}>{STATUS_LABELS[s]}</span>
-              </div>
-            ))}
-          </div>
+...
         </div>
       </div>
+      )}
 
       {/* totals */}
       <div className="grid grid-cols-4 gap-2 mt-3 text-center text-xs">
