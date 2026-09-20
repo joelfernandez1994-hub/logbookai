@@ -10,7 +10,7 @@ import { saveProposalMiles } from '@/lib/tripSync';
 import { insertEventsBatch, editEvent, deleteEventById, replaceRangeEvents } from '@/lib/timelineWriter';
 import { parseVoiceCommand } from '@/lib/voiceParser';
 import { validateInterpretResult, isQuestionIntent, shouldOfferApply, replaceDayRange, resolveEditTargets } from '@/lib/aiLayer';
-import { isMultiEventNarrative } from '@/lib/narrativeClassifier';
+import { isMultiEventNarrative, referencesHere } from '@/lib/narrativeClassifier';
 import { parseStationaryDay } from '@/lib/stationaryDayRule';
 import { detectFeasibilityQuestion, answerFeasibilityQuestion } from '@/lib/feasibilityQuestion';
 import { describeEvent } from '@/lib/eventReference';
@@ -217,14 +217,20 @@ export default function LogAssistant() {
         confidence: 'high',
         ambiguous_fields: [e._ambiguous?.time && 'start_timestamp', e._ambiguous?.location && 'state', e._ambiguous?.duty_status && 'duty_status'].filter(Boolean),
       }));
+      // "here" can never be resolved in this flow (no confirmed current
+      // location) — ask instead of leaving a silent blank location.
+      const hereClarifications = referencesHere(text) && !detEvents.some((e) => e.city)
+        ? [{ type: 'location_here', question: 'Where is "here"? Enter the city and state for this event in Edit Proposal before applying — LogbookAI will not guess your location.' }]
+        : [];
+      const detClarifications = [...(det.clarifications || []), ...hereClarifications];
       const prepared = await prepareProposal({
         intent: det.edit ? 'edit_events' : 'add_events',
         target_date: detEvents[0]?.date || dateKeyInTz(new Date(), tz),
-        requires_clarification: (det.clarifications || []).length > 0,
-        clarification_question: det.clarifications?.[0]?.question || '',
+        requires_clarification: detClarifications.length > 0,
+        clarification_question: detClarifications[0]?.question || '',
         interpretation: det.correction ? 'I understood this as a correction to an existing event:' : 'I understood:',
         proposed_events: detEvents,
-        clarifications: det.clarifications || [],
+        clarifications: detClarifications,
         refuses_fabrication: false,
         _deterministic: true,
       });
