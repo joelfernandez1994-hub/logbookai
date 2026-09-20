@@ -94,6 +94,8 @@ export function findAmbiguousCityIssues(proposed, existing = [], narrative = '')
     if (seen.has(key)) return;
     if (narrativeStatesCity(narrative, ev.city)) return;
     const st = stateCode(ev.state);
+    // The driver set this location themselves in Edit Proposal.
+    if (st && ev.driver_confirmed_location) return;
     const explicitState = st && ev.field_provenance && ev.field_provenance.state === 'explicit';
     // An "explicit" state is only trusted if the narrative actually states it
     // (the model can mislabel provenance); with no narrative available
