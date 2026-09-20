@@ -145,7 +145,12 @@ export default function ProposalReview({ existing, proposed, cycleType, tz, onAp
   // the footer never implies a real route was (or should be) computed.
   const isStationary = events.some(event => event.stationary) && !events.some(event => event.duty_status === 'DRIVING');
 
-  const updateField = (i, field, val) => setEvents(prev => prev.map((e, idx) => idx === i ? { ...e, [field]: val } : e));
+  // A driver typing a city/state in Edit Proposal is the authoritative source
+  // of that location — flag it so the ambiguous-city guard (which blocks a
+  // model-chosen state) accepts the driver's own choice.
+  const updateField = (i, field, val) => setEvents(prev => prev.map((e, idx) => idx === i
+    ? { ...e, [field]: val, ...((field === 'city' || field === 'state') ? { driver_confirmed_location: true } : {}) }
+    : e));
   const updateMileage = (i, val) => {
     const mileage = val === '' ? '' : Math.max(0, Number(val));
     setMileageEdited(true);
