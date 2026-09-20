@@ -9,7 +9,7 @@
 // clock time, a status or a common activity object ("to sleeper", "to bed",
 // "from 8 to 11", "at the dock"). Anything else after a movement cue is treated
 // as a place name.
-const NOT_A_PLACE = '(?:\\d|noon\\b|midnight\\b|about\\b|around\\b|now\\b|it\\b|then\\b|sleeper\\b|sleep\\b|bed\\b|driving\\b|drive\\b|duty\\b|off\\b|on\\b|work\\b|lunch\\b|dinner\\b|break\\b|rest\\b|the\\b|a\\b|an\\b|my\\b|this\\b|that\\b|today\\b|tonight\\b|home\\b|the\\s+(?:dock|scale|scales|shop|yard))';
+const NOT_A_PLACE = '(?:\\d|one\\b|two\\b|three\\b|four\\b|five\\b|six\\b|seven\\b|eight\\b|nine\\b|ten\\b|half\\b|noon\\b|midnight\\b|about\\b|around\\b|now\\b|it\\b|then\\b|sleeper\\b|sleep\\b|bed\\b|driving\\b|drive\\b|duty\\b|off\\b|on\\b|work\\b|lunch\\b|dinner\\b|break\\b|rest\\b|the\\b|a\\b|an\\b|my\\b|this\\b|that\\b|today\\b|tonight\\b|home\\b|the\\s+(?:dock|scale|scales|shop|yard))';
 
 // A travel narrative: the driver names where they came FROM / went TO / arrived
 // ("left Atlanta ... headed to Nashville", "got to Orlando at 9", "arrived in
@@ -31,7 +31,7 @@ export function isTravelNarrative(text) {
   // Movement verb + preposition + place (origin or destination).
   if (new RegExp(`\\b(?:left|leave|leaving|headed|heading|drove|drive|driving|ran|run|running|rolled|rolling|went|go|going|got|get|came|come|moved)\\b[^.;!?]{0,40}?\\b(?:from|to|into|toward|towards|for)\\s+(?!${NOT_A_PLACE})[a-z]`).test(t)) return true;
   // "left <Place>" with no preposition.
-  if (new RegExp(`\\b(?:left|leaving)\\s+(?!(?:at|around|about|by|early|late|on|for|out|here|home|${NOT_A_PLACE.slice(3, -1)})\\b)[a-z]{3,}`).test(t)) return true;
+  if (new RegExp(`\\b(?:left|leaving)\\s+(?!(?:at|around|about|by|early|late|on|for|out|here|home)\\b)(?!${NOT_A_PLACE})[a-z]{3,}`).test(t)) return true;
   return false;
 }
 
