@@ -22,6 +22,7 @@ import {
 import { mergeProposedEvents, collectViolations, distanceReasonableness } from './logAssistant';
 import { startOfDayInTz, normalizeTimeline, nextLocalMidnightInTz } from './timelineEngine';
 import { describedMovementCoverage } from './narrativeMovements';
+import { findAmbiguousCityIssues } from './ambiguousLocations';
 import { normalizeCandidateTimeline } from './timelineNormalization';
 
 const H = 3600000;
