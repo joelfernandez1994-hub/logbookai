@@ -35,11 +35,13 @@ export const AMBIGUOUS_CITY_NAMES = new Set([
   'riverside', 'centerville', 'chester', 'mount vernon', 'princeton', 'shelby', 'troy',
 ]);
 
+const VALID_CODES = new Set(Object.values(US_STATE_TO_CODE));
 const norm = (v) => String(v == null ? '' : v).trim().toLowerCase().replace(/\s+/g, ' ');
 const stateCode = (v) => {
   const s = String(v == null ? '' : v).trim().toUpperCase();
   if (!s) return '';
-  return US_STATE_TO_CODE[s] || (s.length === 2 ? s : '');
+  if (US_STATE_TO_CODE[s]) return US_STATE_TO_CODE[s];
+  return VALID_CODES.has(s) ? s : '';
 };
 
 export function isAmbiguousCityName(city) {
