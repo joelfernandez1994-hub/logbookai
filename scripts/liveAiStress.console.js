@@ -47,6 +47,8 @@
 //       edit_target_index}], delete_target_indices, location_confirmations }
 // ============================================================================
 
+import { isPlaceholderLocation } from './locationPlaceholders';
+
 function localHM(iso, tz) {
   if (!iso) return null;
   const parts = new Intl.DateTimeFormat('en-GB', { timeZone: tz, hour: '2-digit', minute: '2-digit', hour12: false }).formatToParts(new Date(iso));
@@ -117,7 +119,24 @@ function evaluateLive(spec, res, tz) {
 
   if (spec.notRefuse && res.refuses_fabrication) F(CATEGORY.SHAPE, 'refused / rewrote a factual statement it should have preserved');
   (spec.includeCities || []).forEach((c) => {
-    if (!events.some((ev) => norm(ev.city) === norm(c))) F(CATEGORY.LOCATION, `city "${c}" was dropped (origin/destination not preserved)`);
+    // A city is preserved when it sits on an event (origin, or a stop) OR is the stated
+    // destination of a DRIVING event (destination_city) — the arrival place of a drive has no
+    // other event to live on unless the driver described one.
+    if (!events.some((ev) => norm(ev.city) === norm(c) || (ev.duty_status === 'DRIVING' && norm(ev.destination_city) === norm(c)))) {
+      F(CATEGORY.LOCATION, `city "${c}" was dropped (origin/destination not preserved)`);
+    }
+  });
+
+  // Every event must run forward in time (a live midnight-crossing prompt once returned a 4 AM end
+  // dated BEFORE its 10 PM start and the hour-of-day comparison below could not see it), and no
+  // event may carry a placeholder such as "Unknown" as its location.
+  events.forEach((ev, i) => {
+    if (ev.end_timestamp && new Date(ev.end_timestamp) <= new Date(ev.start_timestamp)) {
+      F(CATEGORY.TIME, `event #${i + 1} ends (${ev.end_timestamp}) at or before it starts (${ev.start_timestamp})`);
+    }
+    for (const k of ['city', 'state', 'destination_city', 'destination_state']) {
+      if (isPlaceholderLocation(ev[k])) F(CATEGORY.LOCATION, `event #${i + 1} ${k} is the placeholder "${ev[k]}" (must be empty)`);
+    }
   });
 
   (spec.eventsIfPresent && events.length === 0 ? [] : (spec.events || [])).forEach((exp, i) => {
@@ -290,7 +309,7 @@ const PROMPTS = [
   { id: 'C11', cat: 'multi', prompt: 'I drove from Miami to Orlando', includeCities: ['Miami', 'Orlando'], events: [E('DRIVING', 'Miami', 'FL')] },
   { id: 'C12', cat: 'here', prompt: 'loaded here, drove there, unloaded, went to sleeper', clarify: true, emptyLocation: true },
   { id: 'C13', cat: 'multi-long', prompt: 'I was off duty until 5 AM in Homestead, went on duty for my pretrip, left at 5:30, drove to Orlando, stopped for 30 minutes, drove to Jacksonville, unloaded for an hour and then went sleeper.', count: { min: 7 }, includeCities: ['Homestead', 'Orlando', 'Jacksonville'], events: [E('OFF_DUTY', 'Homestead', undefined, undefined, '05:00'), E('ON_DUTY', 'Homestead', undefined, '05:00'), E('DRIVING', undefined, undefined, '05:30')] },
-  { id: 'C14', cat: 'multi-long', prompt: 'Started in Dallas at 6 AM, did a 20 minute pretrip, drove to Houston, fueled for 15 minutes, then drove to San Antonio and shut down.', includeCities: ['Dallas', 'Houston', 'San Antonio'], count: { min: 6 }, events: [E('ON_DUTY', 'Dallas', 'TX', '06:00', '06:20'), E('DRIVING', undefined, undefined, '06:20')] },
+  { id: 'C14', cat: 'multi-long', prompt: 'Started in Dallas at 6 AM, did a 20 minute pretrip, drove to Houston, fueled for 15 minutes, then drove to San Antonio and shut down.', includeCities: ['Dallas', 'Houston', 'San Antonio'], count: { min: 5 }, events: [E('ON_DUTY', 'Dallas', 'TX', '06:00', '06:20'), E('DRIVING', undefined, undefined, '06:20')] },
   { id: 'C15', cat: 'multi-long', prompt: 'I loaded in Atlanta at 7, left at 8, drove to Chattanooga, stopped for lunch, then continued to Nashville and unloaded.', includeCities: ['Atlanta', 'Chattanooga', 'Nashville'], count: { min: 5 }, events: [E('ON_DUTY', 'Atlanta', 'GA', '07:00', '08:00'), E('DRIVING', undefined, undefined, '08:00')] },
   { id: 'C16', cat: 'multi-long', prompt: 'I loaded in Miami from 6 to 7, drove to Orlando, unloaded for an hour, then went sleeper.', includeCities: ['Miami', 'Orlando'], count: { min: 4 }, events: [E('ON_DUTY', 'Miami', 'FL', '06:00', '07:00'), E('DRIVING', undefined, undefined, '07:00'), E('ON_DUTY', 'Orlando', 'FL'), E('SLEEPER_BERTH')] },
 
@@ -423,11 +442,22 @@ const mk = (hm, dayOffset = 0) => {
 };
 
 // ---- the one real call: manualLogAssistant in interpret mode, SYNTHETIC events only ----
+// A provider rate limit (HTTP 500 {"error":"Rate limit exceeded","unavailable":true}) is not a
+// model result: back off and retry the SAME prompt (no usage is consumed by a failed call), so a
+// burst of requests can't be scored as if the model had failed.
 async function callModel(spec, fixture) {
-  const r = await api('POST', '/functions/manualLogAssistant', {
-    mode: 'interpret', input: spec.prompt, source: 'typed', events: fixture, documents: [],
-    currentLocation: '', tractor: '', trailer: '', hosSummary: '(synthetic stress-test context)',
-  });
+  let r;
+  for (let attempt = 0; attempt < 5; attempt++) {
+    r = await api('POST', '/functions/manualLogAssistant', {
+      mode: 'interpret', input: spec.prompt, source: 'typed', events: fixture, documents: [],
+      currentLocation: '', tractor: '', trailer: '', hosSummary: '(synthetic stress-test context)',
+    });
+    const limited = !r.ok && r.status !== 429 && /rate limit/i.test(JSON.stringify(r.data || ''));
+    if (!limited) break;
+    const wait = 4000 * Math.pow(2, attempt);
+    console.warn(`rate limited on ${spec.id}; retry ${attempt + 1}/4 in ${wait / 1000}s`);
+    await sleep(wait);
+  }
   return r;
 }
 
@@ -454,6 +484,8 @@ async function routeLegs(events) {
     if (!origin) origin = loc(ev);
     let destination = null;
     for (let j = i + 1; j < sorted.length; j++) { if (sorted[j].duty_status === 'DRIVING') continue; if (String(sorted[j].city || '').trim()) { destination = loc(sorted[j]); break; } }
+    // mirrors getDrivingLegs: a following event wins, else the destination stated for this leg
+    if (!destination && String(ev.destination_city || '').trim()) destination = loc({ city: ev.destination_city, state: ev.destination_state });
     const leg = { origin: fmtLoc(origin), destination: destination ? fmtLoc(destination) : '', ongoing: !ev.end_timestamp, evaluated: false };
     if (ev.end_timestamp && destination && leg.origin && leg.destination && leg.origin.toLowerCase() !== leg.destination.toLowerCase()) {
       const drivingHours = (new Date(ev.end_timestamp) - new Date(ev.start_timestamp)) / 3600000;
@@ -494,6 +526,7 @@ if (mode === 'smoke') {
   console.log('SMOKE TEST: one real manualLogAssistant call (1 AI request), prompt: "' + SMOKE.prompt + '"');
   const r = await callModel(SMOKE, []);
   console.log('HTTP', r.status);
+  console.log('PROMPT VERSION served: ' + ((r.data && r.data.prompt_version) || 'NONE (function not redeployed with the r3 prompt)'));
   console.log('RAW STRUCTURED RESPONSE:\n' + JSON.stringify(r.data, null, 2));
   const d = r.data;
   const structured = r.ok && d && !d.error && typeof d.intent === 'string' && Array.isArray(d.proposed_events);
@@ -542,7 +575,7 @@ for (const spec of list) {
 
   const fails = [...live.fails, ...downRes.fails];
   rows.push({ id: spec.id, cat: spec.cat, prompt: spec.prompt, pass: fails.length === 0, asked: live.clarified, expectedAsk: spec.clarify === true, fails: fails.map((f) => `[${f.cat}] ${f.msg}`), down, hosDeferred: spec.violations || null });
-  raw[spec.id] = { input: spec.prompt, http: r.status, response: data, fixture, replay: { nowIso: new Date().toISOString(), tz, cycle } };
+  raw[spec.id] = { input: spec.prompt, http: r.status, promptVersion: (data && data.prompt_version) || null, response: data, fixture, replay: { nowIso: new Date().toISOString(), tz, cycle } };
   console.log(`${fails.length ? 'FAIL' : 'PASS'}  ${spec.id}  ${spec.prompt}${fails.length ? '\n      ' + fails.map((f) => f.msg).join('\n      ') : ''}`);
   await sleep(cfg.delayMs);
 }
@@ -558,6 +591,10 @@ const totals = {
   incorrectLocationResolutions: catFails('location'), incorrectTimeInterpretations: catFails('time'),
   timelineOverlaps: catFails('timeline_overlap'), timelineGaps: catFails('timeline_gap'),
   correctionDeleteFailures: catFails('correction_delete'), routeValidationFailures: catFails('route'),
+  // impossibleTravelWarnings counts D-category prompts that PASSED (i.e. destination preserved AND the
+  // route check flagged the impossible leg); impossibleTravelFlagged counts those where the route check flagged.
+  impossibleTravelFlagged: by((r) => r.cat === 'impossible-route' && r.down && r.down.routeConflict),
+  promptVersions: [...new Set(Object.values(raw).map((x) => x.promptVersion || 'NONE'))].join(','),
   hosValidation: 'replayed offline from window.__liveAiResults.raw', saveLeg: 'not run',
 };
 console.table(rows.map((r) => ({ id: r.id, cat: r.cat, result: r.pass ? 'PASS' : 'FAIL', issues: (r.fails || []).join(' | ') })));
