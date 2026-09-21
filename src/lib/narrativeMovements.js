@@ -161,6 +161,16 @@ export function movementCovered(proposed, movement) {
     .sort((a, b) => new Date(a.start_timestamp) - new Date(b.start_timestamp));
   for (let i = 0; i < sorted.length; i++) {
     if (sorted[i].duty_status !== 'DRIVING') continue;
+    // The DRIVING event itself states where it arrives (AI destination_city/
+    // destination_state) — that IS the described movement, even with no later
+    // event at the destination ("I drove from Miami to Orlando").
+    if (sorted[i].destination_city
+      && locMatch(sorted[i].destination_city, sorted[i].destination_state, movement.to)) {
+      if (!(movement.from && movement.from.city)) return true;
+      const prevEv = sorted[i - 1];
+      if (locMatch(sorted[i].city, sorted[i].state, movement.from)
+        || (prevEv && locMatch(prevEv.city, prevEv.state, movement.from))) return true;
+    }
     const next = sorted[i + 1];
     if (!next) {
       if (!sorted[i].end_timestamp && locMatch(sorted[i].city, sorted[i].state, movement.to)) return true;
