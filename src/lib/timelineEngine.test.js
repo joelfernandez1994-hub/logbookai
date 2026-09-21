@@ -145,11 +145,17 @@ describe('Timeline normalization', () => {
       is_ongoing: false, is_current_version: true,
     };
     const aug21 = '2026-08-21';
-    const dt = dailyTotals([sleeper], aug21, TZ, NOW);
-    // Aug 21 should show 12:00 AM -> 6:00 AM Sleeper = 6h (not a blank zero).
-    // (Aug 21 is still a future calendar date relative to now, but the
-    // legitimate cross-midnight event is shown — that is the desired behavior.)
+    // Evaluated AFTER the event has happened: the engine never counts time that is
+    // still in the future relative to `now` (a future event is ignored), so a `now`
+    // before 10 PM Aug 20 would correctly show 0.
+    const after = new Date('2026-08-21T12:00:00-04:00');
+    const dt = dailyTotals([sleeper], aug21, TZ, after);
+    // Aug 21 shows 12:00 AM -> 6:00 AM Sleeper = 6h (not a blank zero)...
     expect(dt.SLEEPER_BERTH).toBeCloseTo(6, 2);
+    // ...and the evening portion lands on Aug 20 (10 PM -> midnight = 2h).
+    expect(dailyTotals([sleeper], '2026-08-20', TZ, after).SLEEPER_BERTH).toBeCloseTo(2, 2);
+    // A `now` BEFORE the event started must not count it at all.
+    expect(dailyTotals([sleeper], aug21, TZ, NOW).SLEEPER_BERTH).toBe(0);
   });
 
   it('does not extend the latest ongoing status into future days', () => {
@@ -244,7 +250,11 @@ describe('Repair of corrupted V2 records', () => {
     ];
     const r = repairTimeline(corrupted, NOW);
     expect(r.removedDuplicates).toBe(2);
-    expect(r.resolvedOverlaps).toBe(1);
+    expect(r.resolvedOverlaps).toBeGreaterThanOrEqual(1); // counter also tallies duplicate collapses; the RESULT below is the real contract
+    // exact repaired timeline: OFF 0-6, DRIVING truncated to 6-11, ON 11-13, SLEEPER 13-20
+    expect(r.repaired.map(e => [e.duty_status, e.start_timestamp, e.end_timestamp])).toEqual([
+      ['OFF_DUTY', iso(0), iso(6)], ['DRIVING', iso(6), iso(11)], ['ON_DUTY', iso(11), iso(13)], ['SLEEPER_BERTH', iso(13), iso(20)],
+    ]);
     // no two repaired segments overlap
     for (let i = 1; i < r.repaired.length; i++) {
       expect(new Date(r.repaired[i - 1].end_timestamp).getTime())

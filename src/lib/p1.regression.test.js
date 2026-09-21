@@ -45,6 +45,19 @@ function ev(startH, endH, status, extra = {}) {
   };
 }
 
+
+// NOW-relative event helper (hours AGO). Fixtures below are deliberately GAP-FREE:
+// under the canonical timeline rule an unlogged interval makes HOS unavailable, so
+// a fixture with holes would test "unavailable", not the behavior named in the test.
+function rel(id, startAgoH, endAgoH, status) {
+  return {
+    id, log_date: new Date(NOW.getTime() - startAgoH * H).toISOString().slice(0, 10),
+    start_timestamp: new Date(NOW.getTime() - startAgoH * H).toISOString(),
+    end_timestamp: endAgoH == null ? null : new Date(NOW.getTime() - endAgoH * H).toISOString(),
+    duty_status: status, city: 'Miami', state: 'FL', is_ongoing: endAgoH == null, is_current_version: true,
+  };
+}
+
 describe('HOS "Can Drive" explanation', () => {
   it('returns the exact blocker reason when the 11-hour driving limit is reached', () => {
     // 11 hours of driving already done this tour
@@ -86,34 +99,26 @@ describe('HOS "Can Drive" explanation', () => {
   });
 
   it('returns the 70-hour cycle blocker when the cycle is exhausted', () => {
-    // Build 8 days of 9 on-duty hours = 72h (> 70). Simplest: 8 ON_DUTY days.
-    const events = [];
-    for (let d = 7; d >= 1; d--) {
-      const dayBase = new Date(NOW.getTime() - d * 24 * H);
-      const start = new Date(dayBase.getTime() + 8 * H);
-      events.push({
-        id: `on-${d}`,
-        log_date: new Date(dayBase.getTime()).toISOString().slice(0, 10),
-        start_timestamp: start.toISOString(),
-        end_timestamp: new Date(start.getTime() + 9 * H).toISOString(),
-        duty_status: 'ON_DUTY', city: 'Miami', state: 'FL',
-        is_ongoing: false, is_current_version: true,
-      });
+    // 8 consecutive days of 9h on duty (72h > 70) with the 15h between them LOGGED
+    // as off duty (no 34h restart, no unlogged gaps), ending in an open off-duty.
+    const events = [rel('pre', 8 * 24 + 8, 8 * 24 - 16, 'OFF_DUTY')];
+    for (let d = 8; d >= 1; d--) {
+      const start = d * 24 - 16;
+      events.push(rel(`on-${d}`, start, start - 9, 'ON_DUTY'));
+      events.push(rel(`off-${d}`, start - 9, d > 1 ? (d - 1) * 24 - 16 : null, 'OFF_DUTY'));
     }
     const info = whatCanIDo(events, '70_8', 'America/New_York', NOW);
+    expect(info.unavailable).toBe(false);
     expect(info.canDrive).toBe(false);
     expect(info.driveBlockers.some(b => /cycle/i.test(b.rule))).toBe(true);
   });
 
   it('returns eligibleAt (earliest legal drive time) when blocked by an in-progress rest', () => {
-    // Driver is 7h into a 10h rest at 2 PM -> eligible at 5 PM.
-    const restStart = new Date(NOW.getTime() - 7 * H);
-    const events = [
-      { id: 'rest', log_date: '2026-08-20', start_timestamp: restStart.toISOString(), end_timestamp: null,
-        duty_status: 'OFF_DUTY', city: 'Miami', state: 'FL', is_ongoing: true, is_current_version: true },
-    ];
+    // 7h on duty, then 7h into a 10h rest at 2 PM -> eligible at 5 PM.
+    const events = [rel('work', 14, 7, 'ON_DUTY'), rel('rest', 7, null, 'OFF_DUTY')];
     const info = whatCanIDo(events, '70_8', 'America/New_York', NOW);
-    // No 10h reset yet -> driving not applicable -> blocked by 11h/14h, eligibleAt the 10h completion.
+    expect(info.unavailable).toBe(false);
+    // No 10h reset yet -> blocked; eligibleAt is the 10h completion.
     expect(info.canDrive).toBe(false);
     expect(info.tenHourCompletesAt).toBeTruthy();
     expect(info.driveEligibleAt).toBeTruthy();
@@ -141,54 +146,41 @@ describe('HOS "Can Drive" explanation', () => {
 
 describe('Split sleeper — partial split is informational only', () => {
   it('a single 7h35 qualifying sleeper period does NOT set canDrive=false by itself', () => {
-    // Full 10h reset, then drive, then a 7h35 sleeper (no second qualifying period yet),
-    // then currently driving. No HOS limit exceeded.
+    // Full 10h reset, a short drive, a 7h36 sleeper (no second qualifying period yet),
+    // then driving again — all inside the 14h window and under 11h driving.
     const events = [
-      { id: 'reset', log_date: '2026-08-19', start_timestamp: new Date(NOW.getTime() - 30 * H).toISOString(), end_timestamp: new Date(NOW.getTime() - 20 * H).toISOString(), duty_status: 'OFF_DUTY', city: 'Miami', state: 'FL', is_ongoing: false, is_current_version: true },
-      { id: 'd1', log_date: '2026-08-19', start_timestamp: new Date(NOW.getTime() - 20 * H).toISOString(), end_timestamp: new Date(NOW.getTime() - 12 * H).toISOString(), duty_status: 'DRIVING', city: 'Miami', state: 'FL', is_ongoing: false, is_current_version: true },
-      { id: 'split1', log_date: '2026-08-20', start_timestamp: new Date(NOW.getTime() - 12 * H).toISOString(), end_timestamp: new Date(NOW.getTime() - 4.4166667 * H).toISOString(), duty_status: 'SLEEPER_BERTH', city: 'Miami', state: 'FL', is_ongoing: false, is_current_version: true }, // ~7h35
-      { id: 'd2', log_date: '2026-08-20', start_timestamp: new Date(NOW.getTime() - 4.4166667 * H).toISOString(), end_timestamp: new Date(NOW.getTime() - 1 * H).toISOString(), duty_status: 'DRIVING', city: 'Miami', state: 'FL', is_ongoing: false, is_current_version: true },
+      rel('reset', 20, 10, 'OFF_DUTY'), rel('d1', 10, 8.6, 'DRIVING'),
+      rel('split1', 8.6, 1, 'SLEEPER_BERTH'), rel('d2', 1, null, 'DRIVING'),
     ];
     const hos = computeHOS(events, '70_8', 'America/New_York', NOW, { historyComplete: true });
-    // The engine should report split status 'available' (not a violation).
-    expect(hos.split.status).toBe('available');
+    expect(hos.split.status).toBe('available'); // informational, not a violation
     const issues = runComplianceCheck(events, '70_8', 'America/New_York', NOW, { historyComplete: true });
     expect(issues.hos.filter(h => /split/i.test(h.rule))).toHaveLength(0);
-    // canDrive must be true (the partial split alone does not block driving)
-    const info = whatCanIDo(events, '70_8', 'America/New_York', NOW);
+    const info = whatCanIDo(events, '70_8', 'America/New_York', NOW, true);
     expect(info.canDrive).toBe(true);
   });
 
   it('does not force split-sleeper completion — no warning is raised', () => {
-    const events = [
-      { id: 'reset', log_date: '2026-08-19', start_timestamp: new Date(NOW.getTime() - 30 * H).toISOString(), end_timestamp: new Date(NOW.getTime() - 20 * H).toISOString(), duty_status: 'OFF_DUTY', city: 'Miami', state: 'FL', is_ongoing: false, is_current_version: true },
-      { id: 'd1', log_date: '2026-08-19', start_timestamp: new Date(NOW.getTime() - 20 * H).toISOString(), end_timestamp: new Date(NOW.getTime() - 12 * H).toISOString(), duty_status: 'DRIVING', city: 'Miami', state: 'FL', is_ongoing: false, is_current_version: true },
-      { id: 'split1', log_date: '2026-08-20', start_timestamp: new Date(NOW.getTime() - 12 * H).toISOString(), end_timestamp: new Date(NOW.getTime() - 4 * H).toISOString(), duty_status: 'SLEEPER_BERTH', city: 'Miami', state: 'FL', is_ongoing: false, is_current_version: true }, // 8h sleeper
-    ];
-    const info = whatCanIDo(events, '70_8', 'America/New_York', NOW);
-    // 8h sleeper with no driving after -> resting now, but split is optional, no blocker from split
+    // 8h sleeper still in progress: resting now; the split is optional, no split blocker.
+    const events = [rel('reset', 20, 10, 'OFF_DUTY'), rel('d1', 10, 8, 'DRIVING'), rel('split1', 8, null, 'SLEEPER_BERTH')];
+    const info = whatCanIDo(events, '70_8', 'America/New_York', NOW, true);
     expect(info.splitConditional).toBeTruthy();
-    // blockers, if any, must NOT include a split rule
     expect(info.driveBlockers.some(b => /split/i.test(b.rule))).toBe(false);
   });
 
   it('split does not reset the 70-hour cycle', () => {
-    // A valid 7+3 split: cycle used is unchanged by the split (still counts all on-duty/drive).
-    const splitEvents = [
-      { id: 'reset', log_date: '2026-08-18', start_timestamp: new Date(NOW.getTime() - 40 * H).toISOString(), end_timestamp: new Date(NOW.getTime() - 30 * H).toISOString(), duty_status: 'OFF_DUTY', city: 'Miami', state: 'FL', is_ongoing: false, is_current_version: true },
-      { id: 's1', log_date: '2026-08-19', start_timestamp: new Date(NOW.getTime() - 30 * H).toISOString(), end_timestamp: new Date(NOW.getTime() - 23 * H).toISOString(), duty_status: 'SLEEPER_BERTH', city: 'Miami', state: 'FL', is_ongoing: false, is_current_version: true }, // 7h
-      { id: 'd1', log_date: '2026-08-19', start_timestamp: new Date(NOW.getTime() - 23 * H).toISOString(), end_timestamp: new Date(NOW.getTime() - 20 * H).toISOString(), duty_status: 'DRIVING', city: 'Miami', state: 'FL', is_ongoing: false, is_current_version: true },
-      { id: 'o1', log_date: '2026-08-19', start_timestamp: new Date(NOW.getTime() - 20 * H).toISOString(), end_timestamp: new Date(NOW.getTime() - 17 * H).toISOString(), duty_status: 'OFF_DUTY', city: 'Miami', state: 'FL', is_ongoing: false, is_current_version: true }, // 3h
-      { id: 'd2', log_date: '2026-08-20', start_timestamp: new Date(NOW.getTime() - 17 * H).toISOString(), end_timestamp: new Date(NOW.getTime() - 10 * H).toISOString(), duty_status: 'DRIVING', city: 'Miami', state: 'FL', is_ongoing: false, is_current_version: true },
+    // A valid 7+3 split with driving between/after: cycle used is unchanged by the split.
+    const events = [
+      rel('reset', 30, 20, 'OFF_DUTY'), rel('d0', 20, 19, 'DRIVING'), rel('s1', 19, 12, 'SLEEPER_BERTH'),
+      rel('d1', 12, 10, 'DRIVING'), rel('o1', 10, 7, 'OFF_DUTY'), rel('d2', 7, null, 'DRIVING'),
     ];
-    const hos = computeHOS(splitEvents, '70_8', 'America/New_York', NOW, { historyComplete: true });
+    const hos = computeHOS(events, '70_8', 'America/New_York', NOW, { historyComplete: true });
     expect(hos.split.status).toBe('active');
-    // Cycle counts ALL on-duty + driving across the 8-day window regardless of split.
-    // The split only changes 11h/14h, never the cycle.
-    expect(hos.cycle.cycleRemainingHours).toBeLessThanOrEqual(70);
-    expect(hos.cycle.cycleRemainingHours).toBeGreaterThan(0);
+    // Cycle counts ALL driving (1+2+7=10h) regardless of the split: 70 - 10 = 60.
+    expect(hos.cycle.cycleRemainingHours).toBeCloseTo(60, 1);
   });
 });
+
 
 describe('GPS — single resolver, standardized City, ST', () => {
   it('normalizes full state names to the correct 2-letter abbreviation', () => {

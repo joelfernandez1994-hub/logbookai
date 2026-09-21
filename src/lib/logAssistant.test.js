@@ -130,7 +130,8 @@ describe('Manual Log Assistant — deterministic safety', () => {
 
   // 8. "What Can I Do?" distinguishes current vs conditional availability.
   it('reports conditional rest completion when resting but not yet at 10h', () => {
-    const resting = [ev(2, 0, 'SLEEPER_BERTH', { is_ongoing: true, end_timestamp: null })];
+    // gap-free: prior on-duty work, then the sleeper rest in progress (2h so far)
+    const resting = [ev(14, 2, 'ON_DUTY'), ev(2, 0, 'SLEEPER_BERTH', { is_ongoing: true, end_timestamp: null })];
     const info = whatCanIDo(resting, CYCLE, TZ, NOW);
     expect(info.canDrive).toBe(false);
     expect(info.restingNow).toBe(true);
@@ -207,7 +208,8 @@ describe('Manual Log Assistant — deterministic safety', () => {
 
   // 11. Deterministic clock questions do not require an AI request.
   it('whatCanIDo driveRemainingMs matches the deterministic engine', () => {
-    const events = [ev(5, 4, 'SLEEPER_BERTH'), ev(4, 1, 'DRIVING'), ev(1, 0, 'ON_DUTY', { is_ongoing: true, end_timestamp: null })];
+    // gap-free: a prior 10h+ rest so the timeline is continuous back to a verified reset
+    const events = [ev(30, 5, 'OFF_DUTY'), ev(5, 4, 'SLEEPER_BERTH'), ev(4, 1, 'DRIVING'), ev(1, 0, 'ON_DUTY', { is_ongoing: true, end_timestamp: null })];
     const info = whatCanIDo(events, CYCLE, TZ, NOW, true);
     const hos = computeHOS(events, CYCLE, TZ, NOW, { historyComplete: true });
     expect(info.unavailable).toBe(false);
