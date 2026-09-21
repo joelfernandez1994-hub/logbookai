@@ -251,9 +251,9 @@ describe('Repair of corrupted V2 records', () => {
     const r = repairTimeline(corrupted, NOW);
     expect(r.removedDuplicates).toBe(2);
     expect(r.resolvedOverlaps).toBeGreaterThanOrEqual(1); // counter also tallies duplicate collapses; the RESULT below is the real contract
-    // exact repaired timeline: OFF 0-6, DRIVING truncated to 6-11, ON 11-13, SLEEPER 13-20
+    // exact repaired timeline: OFF 0-6, DRIVING truncated to 6-11, ON 11-13, SLEEPER 13-(now=18)
     expect(r.repaired.map(e => [e.duty_status, e.start_timestamp, e.end_timestamp])).toEqual([
-      ['OFF_DUTY', iso(0), iso(6)], ['DRIVING', iso(6), iso(11)], ['ON_DUTY', iso(11), iso(13)], ['SLEEPER_BERTH', iso(13), iso(20)],
+      ['OFF_DUTY', iso(0), iso(6)], ['DRIVING', iso(6), iso(11)], ['ON_DUTY', iso(11), iso(13)], ['SLEEPER_BERTH', iso(13), iso(18)], // 13-20 clipped at NOW (6 PM): future time is never counted
     ]);
     // no two repaired segments overlap
     for (let i = 1; i < r.repaired.length; i++) {
