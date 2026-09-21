@@ -10,6 +10,7 @@
 // ============================================================================
 
 import { startOfDayInTz } from './hosEngine';
+import { cleanLocationText } from './locationPlaceholders';
 
 export const DUTY_STATUSES = ['OFF_DUTY', 'SLEEPER_BERTH', 'DRIVING', 'ON_DUTY'];
 const INTENTS = ['add_events', 'edit_events', 'delete_events', 'replace_day', 'question', 'hos_question', 'clarification'];
@@ -253,6 +254,23 @@ export function existingOutsideReplacedDay(existing, targetDate, tz) {
   });
 }
 
+// A stated time range that crosses midnight ("from 10 PM to 4 AM") must end
+// on the NEXT calendar day. The live model sometimes puts the 4 AM on the same
+// date as the 10 PM start, producing an end BEFORE the start (seen live on
+// "I drove from Miami to Orlando from 10 PM to 4 AM"). When an end is not
+// after its start but is after it once moved forward one day (i.e. the result
+// is a positive duration under 24 h), that is unambiguously an overnight range.
+// Anything else is left exactly as given for the validator to block.
+export function rollOverEndAcrossMidnight(startIso, endIso) {
+  if (!startIso || !endIso) return endIso;
+  const s = new Date(startIso).getTime();
+  const e = new Date(endIso).getTime();
+  if (!Number.isFinite(s) || !Number.isFinite(e) || e > s) return endIso;
+  const rolled = e + 24 * 3600000;
+  if (rolled <= s || rolled - s > 24 * 3600000) return endIso;
+  return new Date(rolled).toISOString();
+}
+
 // Validate + normalize an interpret response from the backend. Returns
 // { valid, errors, normalized }. Defensively coerces SLEEPER→SLEEPER_BERTH,
 // start_time→start_timestamp, end_time→end_timestamp so the UI/writer always
@@ -267,7 +285,8 @@ export function validateInterpretResult(data) {
   const proposed = Array.isArray(data.proposed_events) ? data.proposed_events : [];
   const normalizedEvents = proposed.map((p, i) => {
     const start = p.start_timestamp || p.start_time || '';
-    const end = p.end_timestamp != null ? p.end_timestamp : (p.end_time != null ? p.end_time : null);
+    const rawEnd = p.end_timestamp != null ? p.end_timestamp : (p.end_time != null ? p.end_time : null);
+    const end = rawEnd ? rollOverEndAcrossMidnight(start, rawEnd) : rawEnd;
     const status = normalizeStatus(p.duty_status || p.status);
     if (!start) errors.push(`Event ${i + 1} is missing a start time.`);
     if (!DUTY_STATUSES.includes(status)) errors.push(`Event ${i + 1} has an invalid duty status "${status}".`);
@@ -278,8 +297,14 @@ export function validateInterpretResult(data) {
       start_time_local: p.start_time_local || p.start_time || '',
       end_time_local: p.end_time_local != null ? p.end_time_local : (p.end_time != null ? p.end_time : null),
       duty_status: status,
-      city: p.city || '',
-      state: p.state || '',
+      city: cleanLocationText(p.city),
+      state: cleanLocationText(p.state),
+      // Where a DRIVING event ARRIVES, when the driver stated/implied it. A
+      // Driving event's own city/state is its START; without this the arrival
+      // place has nowhere to live when no later event exists, so route,
+      // mileage and impossible-travel checks silently never ran.
+      destination_city: cleanLocationText(p.destination_city),
+      destination_state: cleanLocationText(p.destination_state),
       activity_type: p.activity_type || p.activity || '',
       remark: p.remark || p.activity_type || p.activity || '',
       ambiguous_fields: p.ambiguous_fields || [],
