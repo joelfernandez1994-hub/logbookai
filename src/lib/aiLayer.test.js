@@ -185,9 +185,10 @@ describe('planReplaceRange (replace-day must REPLACE, not append)', () => {
     const ops = planReplaceRange(cross, '2026-08-20T13:00:00Z', '2026-08-20T17:00:00Z', replacement);
     // x straddles the right edge -> its start is moved to rangeEnd (preserved), not deleted
     expect(ops.deletes).not.toContain('x');
-    expect(ops.updates.some((u) => u.id === 'x' && u.data.start_timestamp === '2026-08-20T17:00:00Z')).toBe(true);
+    // (planReplaceRange emits canonical toISOString() values, i.e. with .000Z)
+    expect(ops.updates.some((u) => u.id === 'x' && new Date(u.data.start_timestamp).getTime() === new Date('2026-08-20T17:00:00Z').getTime())).toBe(true);
     // the replacement event is inserted at the range start
-    expect(ops.creates.some((c) => c.start_timestamp === '2026-08-20T13:00:00Z')).toBe(true);
+    expect(ops.creates.some((c) => new Date(c.start_timestamp).getTime() === new Date('2026-08-20T13:00:00Z').getTime())).toBe(true);
   });
 });
 
