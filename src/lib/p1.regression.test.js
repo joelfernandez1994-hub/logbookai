@@ -15,7 +15,11 @@
 //     base44 client (zero AI requests).
 // ============================================================================
 
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
+
+// tripSync/locationService import the base44 client, which touches `window` at module
+// scope; this suite is pure logic, so stub it (same convention as the other suites).
+vi.mock('@/api/base44Client', () => ({ base44: { entities: {}, functions: {}, auth: {} } }));
 import { whatCanIDo, computeProposedHOS } from './logAssistant';
 import { runComplianceCheck, computeHOS, fmtDur } from './hosEngine';
 import { normalizeState } from './locationService';

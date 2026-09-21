@@ -2,7 +2,11 @@
 // LogbookAI — Canonical Timeline Engine regression tests (vitest).
 // Mirrors the required V3 regression suite (items 42 & 43).
 // ============================================================================
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
+
+// tripSync/locationService import the base44 client, which touches `window` at module
+// scope; this suite is pure logic, so stub it (same convention as the other suites).
+vi.mock('@/api/base44Client', () => ({ base44: { entities: {}, functions: {}, auth: {} } }));
 import {
   normalizedSegments, normalizeTimeline, findDuplicates,
   dailyTotals, validateTimeline, canComputeHOS,
