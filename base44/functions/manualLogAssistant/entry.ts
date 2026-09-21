@@ -21,6 +21,19 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.40';
 
 const UNAVAILABLE_MSG = 'LogbookAI is temporarily unavailable. Your request has not been applied.';
 
+// Echoed on every interpret response so a test run can prove WHICH prompt/schema
+// revision actually served the call (the live stress test found prompt edits
+// that were not verifiably deployed). Bump when the prompt or schema changes.
+const PROMPT_VERSION = 'r3-2026-09-21-driving-destination';
+
+// The strict output schema requires city/state strings, so the model sometimes
+// writes a literal placeholder for an unknown location. A placeholder is not a
+// place: normalize it to '' (mirrors src/lib/locationPlaceholders.js).
+function cleanLoc(v) {
+  const s = String(v == null ? '' : v).trim();
+  return s.split(/\s*,\s*/).every((x) => /^(?:unknown|unk|n\/?a|none|null|undefined|unspecified|not specified|not provided|tbd|tba|\?+|[-–—]+)$/i.test(x)) && s ? '' : s;
+}
+
 // Indexed so an edit/delete proposal can point back at a SPECIFIC existing
 // event by position (edit_target_index / delete_target_indices) rather than
 // only a fuzzy time-based description. The index is into the FULL `events`
@@ -69,6 +82,11 @@ const INTERPRET_SCHEMA = {
           status: { type: 'string', enum: ['OFF_DUTY', 'SLEEPER', 'SLEEPER_BERTH', 'DRIVING', 'ON_DUTY'] },
           city: { type: 'string' },
           state: { type: 'string' },
+          // DRIVING only: where the drive ARRIVES, when the driver stated or
+          // clearly implied it. city/state above are where the event STARTS.
+          // Empty strings when there is no stated destination (or not DRIVING).
+          destination_city: { type: 'string' },
+          destination_state: { type: 'string' },
           activity: { type: 'string' },
           remark: { type: 'string' },
           ambiguous_fields: { type: 'array', items: { type: 'string' } },
@@ -103,7 +121,7 @@ const INTERPRET_SCHEMA = {
           // (leave -1) for add_events/replace_day.
           edit_target_index: { type: 'integer' },
         },
-        required: ['start_time', 'end_time', 'status', 'city', 'state', 'activity', 'remark', 'ambiguous_fields', 'field_provenance', 'adjustments', 'edit_target_index'],
+        required: ['start_time', 'end_time', 'status', 'city', 'state', 'destination_city', 'destination_state', 'activity', 'remark', 'ambiguous_fields', 'field_provenance', 'adjustments', 'edit_target_index'],
       },
     },
     clarifications: {
@@ -208,7 +226,7 @@ function buildInterpretSystem() {
 LANGUAGE:
 - The driver may write in English or Spanish (or mix them). Understand either natively — do not require translation and do not ask the driver to switch languages.
 - Regardless of the input language, "status" MUST always be one of the exact English enum values OFF_DUTY, SLEEPER (or SLEEPER_BERTH), DRIVING, ON_DUTY — never translate or localize these codes; they are stored exactly as returned. "Fuera de servicio" -> OFF_DUTY, "conduciendo"/"manejando" -> DRIVING, "en servicio" -> ON_DUTY, "litera"/"dormitorio" -> SLEEPER_BERTH.
-- Write summary and clarification_question in the SAME language the driver used for THIS message, so the driver reads the response in their own language. activity/remark may also be in that language. This is presentation only — it never changes the fixed English status/field names in the schema.
+- Write summary and clarification_question in the SAME language the driver used for THIS message, so the driver reads the response in their own language. If the message is English, or its language is unclear (short fragments like "left around 7" or "I loaded here at 8"), answer in ENGLISH. Only switch to Spanish when the driver's own message is clearly Spanish. activity/remark may also be in that language. This is presentation only — it never changes the fixed English status/field names in the schema.
 - summary describes a PROPOSAL the driver has not yet saved — nothing is written to the log until the driver taps Apply. NEVER phrase summary as something already done ("I have logged...", "I've recorded...", "Logged your day...", "Processed your log...", or the Spanish equivalents "He registrado..."/"Ya guardé..."). Always use forward-looking / proposal language instead ("Here's what I'll log if you approve:", "This will record...", "Ready to add:", or the Spanish "Esto registrará..."/"Voy a proponer...").
 
 ABSOLUTE SAFETY RULES:
@@ -216,7 +234,11 @@ ABSOLUTE SAFETY RULES:
 - NEVER convert Driving to another status, or alter an explicitly stated time/location/status, merely to make a log HOS-compliant. Preserve the facts; let the deterministic compliance review surface any violation.
 - NEVER invent a pre-trip. If the driver describes driving but did not mention a pre-trip, do NOT add a pre-trip event (the deterministic review will offer one).
 - If the driver DOES say they did a pre-trip (or "pre-trip inspection") but does not state how long it took, default its duration to 15 minutes — LogbookAI's standard pre-trip duration, not a claimed federal requirement. Mark that event's end_time (and start_time if likewise unstated) field_provenance "inferred", add it to ambiguous_fields, and say in summary that a 15-minute default was used. If the driver states an explicit duration or end time for the pre-trip, use that instead and mark it "explicit".
-- A DRIVING segment the driver says is current/ongoing ("then I started driving", "then go to driving", no stated arrival) MUST be proposed with end_time=null and status=DRIVING marked "explicit" — it does not need a destination. Do NOT invent a destination city for it, and do NOT copy the start city into a separate destination field just to appear complete; city/state should simply be its own starting location.
+- A DRIVING segment the driver says is current/ongoing ("then I started driving", "then go to driving", no stated arrival) MUST be proposed with end_time=null and status=DRIVING marked "explicit" — it does not need a destination. Do NOT invent a destination city for it, and do NOT copy the start city into destination_city just to appear complete; city/state should simply be its own starting location, and destination_city/destination_state stay EMPTY.
+- DRIVING DESTINATION: when the driver states or clearly implies where a DRIVING segment ARRIVES ("drove to Orlando", "left Miami ... got to Orlando at 9", "from Miami to Orlando", "headed to Tampa", "arrived in Houston"), set that DRIVING event's destination_city/destination_state to the arrival place, resolved by the same LOCATION PRECEDENCE as any other location. city/state remain where the segment STARTS (the origin). NEVER drop a stated destination and NEVER move it into city. Do NOT create an extra On Duty/Off Duty event at the destination unless the driver described one (that would fabricate an activity), and never change the driver's stated departure/arrival times to make the trip look feasible. If the driver named no destination for a segment, leave destination_city and destination_state empty.
+- UNKNOWN LOCATION: when a city or state is unknown, return the EMPTY STRING "" — never the words "Unknown", "N/A", "None" or any placeholder — and follow LOCATION PRECEDENCE step 4 (ask).
+- OVERNIGHT RANGES: a stated range whose end clock time is earlier than its start ("from 10 PM to 4 AM") crosses midnight — the end is on the NEXT calendar date. An end must never precede its start.
+- DEPARTURE WORDS: "left", "departed", "pulled out", "rolled out", "headed out" mean the driver started DRIVING at that time (status DRIVING, explicit) — not On Duty.
 - You do NOT calculate HOS. A deterministic HOS summary is provided for context only. Your job is to interpret what the driver said, not to compute clock math.
 - LOCATION PRECEDENCE (this is the ONLY rule for deciding any event's city/state; it supersedes every other mention of inferring a location in this prompt). Apply in this order; the FIRST step that applies wins:
   1. EXPLICIT: a city/state the driver stated. Mark field_provenance "explicit".
@@ -444,8 +466,10 @@ function mapInterpret(parsed, source, timezone, originalInput) {
       start_time_local: p.start_time || '',
       end_time_local: p.end_time || null,
       duty_status: normalizeStatus(p.status),
-      city: p.city || '',
-      state: p.state || '',
+      city: cleanLoc(p.city),
+      state: cleanLoc(p.state),
+      destination_city: cleanLoc(p.destination_city),
+      destination_state: cleanLoc(p.destination_state),
       activity_type: normalizeStatus(p.status) === 'OFF_DUTY' && /sleeper/i.test(p.activity || '') ? 'Off Duty' : (p.activity || ''),
       remark: normalizeStatus(p.status) === 'OFF_DUTY' && /sleeper/i.test(p.remark || '') ? 'Off Duty' : (p.remark || p.activity || ''),
       ambiguous_fields: p.ambiguous_fields || [],
@@ -458,6 +482,7 @@ function mapInterpret(parsed, source, timezone, originalInput) {
     };
   });
   return {
+    prompt_version: PROMPT_VERSION,
     intent: parsed.intent || 'add_events',
     target_date: parsed.target_date || '',
     requires_clarification: !!parsed.requires_clarification,
