@@ -82,11 +82,17 @@ export function evaluateLive(spec, res, tz) {
     if (events.length < min || events.length > (max ?? Infinity)) F(CATEGORY.SHAPE, `expected ${min}-${max ?? '+'} events, got ${events.length}`);
   }
 
-  (spec.events || []).forEach((exp, i) => {
+  if (spec.notRefuse && res.refuses_fabrication) F(CATEGORY.SHAPE, 'refused / rewrote a factual statement it should have preserved');
+  (spec.includeCities || []).forEach((c) => {
+    if (!events.some((ev) => norm(ev.city) === norm(c))) F(CATEGORY.LOCATION, `city "${c}" was dropped (origin/destination not preserved)`);
+  });
+
+  (spec.eventsIfPresent && events.length === 0 ? [] : (spec.events || [])).forEach((exp, i) => {
     const ev = events[i];
     if (!ev) { F(CATEGORY.SHAPE, `missing event #${i + 1} (${exp.status || ''} ${exp.city || ''})`); return; }
     const tag = `event #${i + 1}`;
     if (exp.status && ev.duty_status !== exp.status) F(CATEGORY.STATUS, `${tag} status ${ev.duty_status} != ${exp.status}`);
+    if (exp.statusAny && !exp.statusAny.includes(ev.duty_status)) F(CATEGORY.STATUS, `${tag} status ${ev.duty_status} not in ${exp.statusAny.join('|')}`);
     if (exp.city != null && norm(ev.city) !== norm(exp.city)) F(CATEGORY.LOCATION, `${tag} city "${ev.city}" != "${exp.city}"`);
     if (exp.state != null && stateNorm(ev.state) !== stateNorm(exp.state)) F(CATEGORY.LOCATION, `${tag} state "${ev.state}" != "${exp.state}"`);
     if (exp.start) {
@@ -157,6 +163,8 @@ export function evaluateDownstream(spec, down) {
   const fails = [];
   if (spec.routeConflict === true && !down.routeConflict) fails.push({ cat: CATEGORY.ROUTE, msg: 'impossible travel time was NOT flagged by route validation' });
   if (spec.routeConflict === false && down.routeConflict) fails.push({ cat: CATEGORY.ROUTE, msg: 'plausible trip was falsely flagged as a route conflict' });
+  if (spec.mileageWarn === true && !(down.warningTypes || []).includes('stated_mileage_mismatch')) fails.push({ cat: CATEGORY.ROUTE, msg: 'large stated-vs-route mileage discrepancy was NOT flagged' });
+  if (spec.mileageWarn === false && (down.warningTypes || []).includes('stated_mileage_mismatch')) fails.push({ cat: CATEGORY.ROUTE, msg: 'small mileage difference was falsely flagged' });
   for (const v of spec.violations || []) {
     if (!(down.violations || []).includes(v)) fails.push({ cat: CATEGORY.HOS, msg: `expected HOS violation "${v}" was not reported` });
   }
