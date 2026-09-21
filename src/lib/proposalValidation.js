@@ -23,6 +23,7 @@ import { mergeProposedEvents, collectViolations, distanceReasonableness } from '
 import { startOfDayInTz, normalizeTimeline, nextLocalMidnightInTz } from './timelineEngine';
 import { describedMovementCoverage } from './narrativeMovements';
 import { findAmbiguousCityIssues } from './ambiguousLocations';
+import { applyStatedMileage } from './statedMileage';
 import { normalizeCandidateTimeline } from './timelineNormalization';
 
 const H = 3600000;
@@ -679,7 +680,7 @@ function canEstimateMileage(leg) {
 export async function enrichProposalMileage(proposed, opts = {}) {
   const legs = await inspectProposalRoutes(proposed, opts);
   const speed = fallbackMph(opts.speedProfile || DEFAULT_SPEED_PROFILE);
-  const events = (proposed || []).map(event => ({ ...event }));
+  let events = (proposed || []).map(event => ({ ...event }));
   for (const leg of legs) {
     const routeMiles = Number(leg.route?.miles);
     const hasRoadMiles = Number.isFinite(routeMiles) && routeMiles > 0.5;
@@ -692,6 +693,10 @@ export async function enrichProposalMileage(proposed, opts = {}) {
       route_destination: leg.destination,
     };
   }
+  // A mileage figure the DRIVER stated ("I drove 230 miles from Miami to
+  // Orlando") is kept as the event's mileage — never overwritten by the map's
+  // number. It is only compared to the route (see statedMileageWarnings).
+  if (opts.narrative) events = applyStatedMileage(events, legs, opts.narrative);
   return {
     events,
     legs,
