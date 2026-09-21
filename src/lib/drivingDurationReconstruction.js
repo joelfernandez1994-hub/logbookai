@@ -53,6 +53,27 @@ function buildGapConflict(anchorEv, gapMs) {
   };
 }
 
+// A route-extended Driving block can push a following event's INFERRED start past
+// that event's own EXPLICIT end (live C14: "fueled for 15 minutes" came back with
+// start inferred / end explicit). Explicit ends never move, so shifting the start
+// past it would create an event that ends before it starts. When that would
+// happen the reconstruction that caused the shift is NOT applied: the AI's
+// original inferred times are kept, the route check still flags the leg on its
+// own, and this review note explains why the times were left alone.
+function buildAnchorConflict(sources, anchorEv) {
+  const legs = sources.map((leg) => (leg?.origin && leg?.destination ? `${leg.origin} → ${leg.destination}` : 'a driving leg')).join(', ');
+  const hrs = sources.map((leg) => leg?.evaluation?.requiredTruckTime).filter((h) => typeof h === 'number');
+  const need = hrs.length ? ` (realistic truck time ~${hrs.reduce((a, b) => a + b, 0).toFixed(1)} h)` : '';
+  return {
+    type: 'route_time_anchor',
+    severity: 'review',
+    title: 'ROUTE TIME CONFLICTS WITH A STATED TIME — REVIEW',
+    message:
+      `Routing ${legs}${need} would run past the stated end of ${fmtLoc(anchorEv)} at ${fmtClock(anchorEv.end_timestamp)}. ` +
+      'Your stated time was kept and the driving time was NOT stretched to fit the route — review the times or add the missing stop.',
+  };
+}
+
 // events: proposed events (already mileage-enriched), each carrying
 //   field_provenance.{start_time,end_time} ∈ {'explicit','inferred'}.
 // legs:   the routed legs from enrichProposalMileage — each has eventIndex and
@@ -62,8 +83,25 @@ function buildGapConflict(anchorEv, gapMs) {
 //                subsequent inferred events cascade-shifted.
 //   conflicts  — review-level route/time gaps before explicit anchors.
 export function reconstructDrivingDurations(events, legs, opts = {}) {
+  // Each pass either completes, or reports the Driving legs whose reconstruction
+  // pushed an inferred start past an explicit end. Those legs are then skipped
+  // (their AI-inferred duration kept) and the pass re-run. At most one skip per
+  // Driving event, so this always terminates.
+  const skip = new Set();
+  const skipped = [];
+  for (let guard = 0; guard <= (events || []).length; guard++) {
+    const pass = reconstructPass(events, legs, opts, skip);
+    if (!pass.collision) return { events: pass.events, conflicts: [...pass.conflicts, ...skipped] };
+    for (const i of pass.collision.sources) skip.add(i);
+    skipped.push(buildAnchorConflict(pass.collision.sources.map((i) => (legs || []).find((l) => l?.eventIndex === i)), pass.collision.anchor));
+  }
+  const last = reconstructPass(events, legs, opts, skip);
+  return { events: last.events, conflicts: [...last.conflicts, ...skipped] };
+}
+
+function reconstructPass(events, legs, opts, skip) {
   const out = (events || []).map((e) => ({ ...e }));
-  if (!out.length) return { events: out, conflicts: [] };
+  if (!out.length) return { events: out, conflicts: [], collision: null };
 
   const legByIndex = new Map();
   for (const leg of legs || []) {
@@ -79,6 +117,7 @@ export function reconstructDrivingDurations(events, legs, opts = {}) {
   const conflicts = [];
   let shiftMs = 0;            // accumulated shift applied to inferred events
   let lastBlockEndMs = null;  // end of the most recent shifted/reconstructed event
+  let blockSources = [];      // Driving events whose reconstruction feeds the current shift
 
   for (const { e: ev, i } of order) {
     const prov = ev.field_provenance || {};
@@ -102,13 +141,14 @@ export function reconstructDrivingDurations(events, legs, opts = {}) {
       }
       newStart = s0;
       shiftMs = 0;
+      blockSources = [];
     }
     ev.start_timestamp = new Date(newStart).toISOString();
 
     // --- END -------------------------------------------------------------------
     // Reconstruct an inferred Driving end from routed truck time. Mileage is
     // never touched here — only the inferred duration changes.
-    if (ev.duty_status === 'DRIVING' && endInferred && e0 != null) {
+    if (ev.duty_status === 'DRIVING' && endInferred && e0 != null && !skip.has(i)) {
       const leg = legByIndex.get(i);
       const requiredHours = leg?.evaluation?.requiredTruckTime;
       if (typeof requiredHours === 'number' && Number.isFinite(requiredHours) && requiredHours > 0) {
@@ -121,6 +161,7 @@ export function reconstructDrivingDurations(events, legs, opts = {}) {
           new Set([...(ev.ambiguous_fields || []), 'end_timestamp'])
         );
         shiftMs += additionalMs;               // propagate the growth/shrink forward
+        if (additionalMs !== 0) blockSources.push(i);
         lastBlockEndMs = routedEnd;
         continue;
       }
@@ -141,12 +182,19 @@ export function reconstructDrivingDurations(events, legs, opts = {}) {
       lastBlockEndMs = newStart;
     }
 
+    // The shift must never carry an inferred start to/past this event's own
+    // (unmoved) explicit end — that would create an end-before-start event.
+    if (e0 != null && e0 > s0 && new Date(ev.end_timestamp).getTime() <= newStart && blockSources.length) {
+      return { events: out, conflicts, collision: { sources: [...blockSources], anchor: { ...ev, start_timestamp: new Date(s0).toISOString(), end_timestamp: new Date(e0).toISOString() } } };
+    }
+
     // An explicit end anchors the timeline and ends the shifting block.
     if (!endInferred && e0 != null) {
       shiftMs = 0;
       lastBlockEndMs = null;
+      blockSources = [];
     }
   }
 
-  return { events: out, conflicts };
+  return { events: out, conflicts, collision: null };
 }
