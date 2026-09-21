@@ -12,6 +12,7 @@ import { fileURLToPath } from 'node:url';
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const read = (p) => fs.readFileSync(path.join(root, p), 'utf8');
 const stripExports = (s) => s.replace(/^export\s+/gm, '');
+const stripImports = (s) => s.replace(/^import\s.*from\s+'\.\/[^']+';\s*$/gm, '');
 
 export const HEADER = `/* ============================================================================
  * LogbookAI — LIVE AI STRESS RUN (standalone browser-console script)
@@ -46,7 +47,10 @@ export const HEADER = `/* ======================================================
  * ========================================================================== */`;
 
 export function buildScript() {
-  const evaluator = stripExports(read('src/lib/liveAiEvaluator.js'));
+  // The scorer shares one pure helper (placeholder detection) with the app; inline it so the pasted
+  // script stays a single standalone file with no imports.
+  const placeholders = stripExports(read('src/lib/locationPlaceholders.js'));
+  const evaluator = `${placeholders}\n${stripImports(stripExports(read('src/lib/liveAiEvaluator.js')))}`;
   const prompts = stripExports(read('src/lib/liveAiPromptSet.js'));
   const runner = read('scripts/liveAiStress.runner.body');
   return `${HEADER}\n(async () => {\n// ===================== SCORER (from src/lib/liveAiEvaluator.js) =====================\n${evaluator}\n// ===================== PROMPT SET (from src/lib/liveAiPromptSet.js) =====================\n${prompts}\n${runner}})();\n`;
