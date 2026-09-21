@@ -369,7 +369,7 @@ const die = (m) => { throw new Error(`LIVE AI STRESS ABORTED: ${m}`); };
 if (Array.isArray(cfg.save) && cfg.save.length) console.warn('The SAVE leg is not part of this script (Phases 1-2 only); LIVE_AI.save is ignored.');
 
 // ---- 0. where am I? The app frame, not the Base44 editor page ----
-if (/(^|\.)app\.base44\.com$/i.test(location.hostname) || /\/editor\//.test(location.pathname)) {
+if (/\/editor\//.test(location.pathname)) { // the editor page itself (the app runs in a separate preview frame)
   die('this looks like the Base44 EDITOR page (' + location.href + '), not the LogbookAI app frame. In DevTools switch the console context dropdown (default "top") to the preview iframe that renders the app, then paste again.');
 }
 const ls = (k) => { try { return localStorage.getItem(k); } catch (e) { return null; } };
