@@ -1,4 +1,5 @@
 import { useMemo, useState, useEffect } from 'react';
+import { statedMileageWarnings } from '@/lib/statedMileage';
 import { validateProposal, hasBlocking, recommendBreakInsertion, buildPreTripEvent, computeProposalTotals, deriveHosDisplay, inspectProposalRoutes, addRouteWarning } from '@/lib/proposalValidation';
 import { reconstructDrivingDurations } from '@/lib/drivingDurationReconstruction';
 import { existingOutsideReplacedDay } from '@/lib/aiLayer';
@@ -104,9 +105,12 @@ export default function ProposalReview({ existing, proposed, cycleType, tz, onAp
   const warnings = useMemo(() => {
     const ws = [...validation.warnings];
     if (effectiveRouteWarning) ws.push(effectiveRouteWarning);
+    // Driver-stated mileage vs the routed distance: review-only, never blocks
+    // and never rewrites the driver's figure.
+    if (effectiveRouteWarning?.legs) ws.push(...statedMileageWarnings(effectiveRouteWarning.legs, narrative));
     if (reconstructionConflicts.length && fixedRouteWarning === null) ws.push(...reconstructionConflicts);
     return ws;
-  }, [validation.warnings, effectiveRouteWarning, reconstructionConflicts, fixedRouteWarning]);
+  }, [validation.warnings, effectiveRouteWarning, reconstructionConflicts, fixedRouteWarning, narrative]);
 
   // Route-timing conflicts on FULLY EXPLICIT (driver-stated) times are never a
   // hard blocker — route physics is a plausibility check, not the log itself.
@@ -367,7 +371,7 @@ export default function ProposalReview({ existing, proposed, cycleType, tz, onAp
                   <div className="font-semibold text-card-foreground">{STATUS_LABELS[e.duty_status] || e.duty_status}{e.activity_type ? ` · ${e.activity_type}` : ''}</div>
                   <div className="text-muted-foreground">{[e.city, e.state].filter(Boolean).join(', ')}{e.remark ? ` — ${e.remark}` : ''}</div>
                   {e.duty_status === 'DRIVING' && e.mileage != null && Number.isFinite(Number(e.mileage)) && (
-                    <div className="text-card-foreground mt-1">{Number(e.mileage).toFixed(1)} mi <span className="text-muted-foreground">({e.mileage_source === 'route' ? 'road route' : e.mileage_source === 'manual' ? 'driver edited' : 'estimated fallback'})</span></div>
+                    <div className="text-card-foreground mt-1">{Number(e.mileage).toFixed(1)} mi <span className="text-muted-foreground">({e.mileage_source === 'route' ? 'road route' : e.mileage_source === 'driver_stated' ? 'as you stated' : e.mileage_source === 'manual' ? 'driver edited' : 'estimated fallback'})</span></div>
                   )}
                   {e.duty_status === 'DRIVING' && e.mileage == null && (
                     <div className="mt-1">
