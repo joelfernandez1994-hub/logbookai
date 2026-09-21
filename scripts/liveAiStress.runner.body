@@ -139,24 +139,46 @@ function mileageWarnings(legs, prompt) {
   });
 }
 
-// ---- 2. SMOKE TEST: one real call, print the structured response ----
-const SMOKE = { id: 'S00', cat: 'smoke', prompt: 'loaded in Miami at 8 AM', events: [{ status: 'ON_DUTY', city: 'Miami', state: 'FL', start: '08:00' }] };
+// ---- 2. SMOKE TEST: one real call, print the structured response, verify the r3 schema/prompt is LIVE ----
+const EXPECTED_PROMPT_VERSION = 'r3-2026-09-21-driving-destination';
+const SMOKE = {
+  id: 'S00', cat: 'smoke', prompt: 'Left Miami at 8 AM and got to Orlando at 9 AM',
+  includeCities: ['Miami', 'Orlando'], routeConflict: true,
+  events: [{ status: 'DRIVING', city: 'Miami', state: 'FL', start: '08:00', end: '09:00' }],
+};
 if (mode === 'smoke') {
   console.log('SMOKE TEST: one real manualLogAssistant call (1 AI request), prompt: "' + SMOKE.prompt + '"');
   const r = await callModel(SMOKE, []);
   console.log('HTTP', r.status);
-  console.log('PROMPT VERSION served: ' + ((r.data && r.data.prompt_version) || 'NONE (function not redeployed with the r3 prompt)'));
-  console.log('RAW STRUCTURED RESPONSE:\n' + JSON.stringify(r.data, null, 2));
   const d = r.data;
-  const structured = r.ok && d && !d.error && typeof d.intent === 'string' && Array.isArray(d.proposed_events);
+  console.log('PROMPT VERSION served: ' + ((d && d.prompt_version) || 'NONE (function not redeployed with the r3 prompt)'));
+  console.log('RAW STRUCTURED RESPONSE:\n' + JSON.stringify(d, null, 2));
+  const structured = !!(r.ok && d && !d.error && typeof d.intent === 'string' && Array.isArray(d.proposed_events));
   const scored = structured ? evaluateLive(SMOKE, d, tz) : { pass: false, fails: [{ cat: 'shape', msg: `call failed or unstructured (HTTP ${r.status}): ${JSON.stringify(d).slice(0, 300)}` }] };
-  window.__liveAiSmoke = { ok: structured, http: r.status, response: d, scored };
-  window.__liveAiSmokeOk = !!structured;
-  if (structured) {
-    console.log(`%cSMOKE TEST PASSED — the real model answered with a structured proposal. Usage: ${d.used}/${d.allowance}. Evaluator on this prompt: ${scored.pass ? 'PASS' : 'FAIL (informational): ' + scored.fails.map((f) => f.msg).join('; ')}`, 'font-weight:bold;color:green');
-    console.log('Next: set  window.LIVE_AI = { testEmail: "' + cfg.testEmail + '", run: "phase1" }  (or "phase2", or "all") and paste this script again.');
+  const ev0 = (structured && d.proposed_events[0]) || {};
+  const same = (a, b) => a && b && new Date(a).getTime() === new Date(b).getTime();
+  let legs = [];
+  if (structured && d.proposed_events.length) { try { legs = await routeLegs(d.proposed_events); } catch (e) { legs = []; } }
+  const checks = {
+    prompt_version: d && d.prompt_version === EXPECTED_PROMPT_VERSION ? 'PASS' : `FAIL (${(d && d.prompt_version) || 'missing'})`,
+    'one DRIVING event': structured && d.proposed_events.length === 1 && ev0.duty_status === 'DRIVING' ? 'PASS' : 'FAIL',
+    'origin Miami, FL': ev0.city === 'Miami' && String(ev0.state).toUpperCase() === 'FL' ? 'PASS' : `FAIL (${ev0.city}, ${ev0.state})`,
+    destination_city: ev0.destination_city === 'Orlando' ? 'PASS' : `FAIL (${JSON.stringify(ev0.destination_city)})`,
+    destination_state: String(ev0.destination_state || '').toUpperCase() === 'FL' ? 'PASS' : `FAIL (${JSON.stringify(ev0.destination_state)})`,
+    'start 8 AM exactly': same(ev0.start_timestamp, mk('08:00')) ? 'PASS' : `FAIL (${ev0.start_timestamp})`,
+    'end 9 AM exactly (times not silently corrected)': same(ev0.end_timestamp, mk('09:00')) ? 'PASS' : `FAIL (${ev0.end_timestamp})`,
+    'route lookup performed': legs.some((l) => l.evaluated) ? 'PASS' : `FAIL (${JSON.stringify(legs)})`,
+    'impossible travel flagged (route check; the app validator is replayed offline)': legs.some((l) => l.conflict) ? 'PASS' : 'FAIL',
+  };
+  console.table(checks);
+  const gate = ['prompt_version', 'one DRIVING event', 'origin Miami, FL', 'destination_city', 'destination_state', 'start 8 AM exactly', 'end 9 AM exactly (times not silently corrected)'].every((k) => checks[k] === 'PASS');
+  window.__liveAiSmoke = { ok: structured && gate, http: r.status, response: d, scored, checks, legs };
+  window.__liveAiSmokeOk = structured && gate;
+  if (structured && gate) {
+    console.log(`%cSMOKE TEST PASSED — the r3 prompt/schema is live and the real model preserved origin, destination and both times. Usage: ${d.used}/${d.allowance}. Route check: ${checks['impossible travel flagged (route check; the app validator is replayed offline)']}.`, 'font-weight:bold;color:green');
+    console.log('Next: rerun ONLY the previously failed IDs:  window.LIVE_AI = { testEmail: "' + cfg.testEmail + '", run: "phase1", only: [...] }  and paste this script again.');
   } else {
-    console.error('SMOKE TEST FAILED — do not run the full set. See the response above.');
+    console.error('SMOKE TEST DID NOT PASS — the full run stays locked. See the checks table above.');
   }
   return window.__liveAiSmoke;
 }
