@@ -61,11 +61,22 @@ const mk = (hm, dayOffset = 0) => {
 };
 
 // ---- the one real call: manualLogAssistant in interpret mode, SYNTHETIC events only ----
+// A provider rate limit (HTTP 500 {"error":"Rate limit exceeded","unavailable":true}) is not a
+// model result: back off and retry the SAME prompt (no usage is consumed by a failed call), so a
+// burst of requests can't be scored as if the model had failed.
 async function callModel(spec, fixture) {
-  const r = await api('POST', '/functions/manualLogAssistant', {
-    mode: 'interpret', input: spec.prompt, source: 'typed', events: fixture, documents: [],
-    currentLocation: '', tractor: '', trailer: '', hosSummary: '(synthetic stress-test context)',
-  });
+  let r;
+  for (let attempt = 0; attempt < 5; attempt++) {
+    r = await api('POST', '/functions/manualLogAssistant', {
+      mode: 'interpret', input: spec.prompt, source: 'typed', events: fixture, documents: [],
+      currentLocation: '', tractor: '', trailer: '', hosSummary: '(synthetic stress-test context)',
+    });
+    const limited = !r.ok && r.status !== 429 && /rate limit/i.test(JSON.stringify(r.data || ''));
+    if (!limited) break;
+    const wait = 4000 * Math.pow(2, attempt);
+    console.warn(`rate limited on ${spec.id}; retry ${attempt + 1}/4 in ${wait / 1000}s`);
+    await sleep(wait);
+  }
   return r;
 }
 
@@ -92,6 +103,8 @@ async function routeLegs(events) {
     if (!origin) origin = loc(ev);
     let destination = null;
     for (let j = i + 1; j < sorted.length; j++) { if (sorted[j].duty_status === 'DRIVING') continue; if (String(sorted[j].city || '').trim()) { destination = loc(sorted[j]); break; } }
+    // mirrors getDrivingLegs: a following event wins, else the destination stated for this leg
+    if (!destination && String(ev.destination_city || '').trim()) destination = loc({ city: ev.destination_city, state: ev.destination_state });
     const leg = { origin: fmtLoc(origin), destination: destination ? fmtLoc(destination) : '', ongoing: !ev.end_timestamp, evaluated: false };
     if (ev.end_timestamp && destination && leg.origin && leg.destination && leg.origin.toLowerCase() !== leg.destination.toLowerCase()) {
       const drivingHours = (new Date(ev.end_timestamp) - new Date(ev.start_timestamp)) / 3600000;
@@ -132,6 +145,7 @@ if (mode === 'smoke') {
   console.log('SMOKE TEST: one real manualLogAssistant call (1 AI request), prompt: "' + SMOKE.prompt + '"');
   const r = await callModel(SMOKE, []);
   console.log('HTTP', r.status);
+  console.log('PROMPT VERSION served: ' + ((r.data && r.data.prompt_version) || 'NONE (function not redeployed with the r3 prompt)'));
   console.log('RAW STRUCTURED RESPONSE:\n' + JSON.stringify(r.data, null, 2));
   const d = r.data;
   const structured = r.ok && d && !d.error && typeof d.intent === 'string' && Array.isArray(d.proposed_events);
@@ -180,7 +194,7 @@ for (const spec of list) {
 
   const fails = [...live.fails, ...downRes.fails];
   rows.push({ id: spec.id, cat: spec.cat, prompt: spec.prompt, pass: fails.length === 0, asked: live.clarified, expectedAsk: spec.clarify === true, fails: fails.map((f) => `[${f.cat}] ${f.msg}`), down, hosDeferred: spec.violations || null });
-  raw[spec.id] = { input: spec.prompt, http: r.status, response: data, fixture, replay: { nowIso: new Date().toISOString(), tz, cycle } };
+  raw[spec.id] = { input: spec.prompt, http: r.status, promptVersion: (data && data.prompt_version) || null, response: data, fixture, replay: { nowIso: new Date().toISOString(), tz, cycle } };
   console.log(`${fails.length ? 'FAIL' : 'PASS'}  ${spec.id}  ${spec.prompt}${fails.length ? '\n      ' + fails.map((f) => f.msg).join('\n      ') : ''}`);
   await sleep(cfg.delayMs);
 }
@@ -196,6 +210,10 @@ const totals = {
   incorrectLocationResolutions: catFails('location'), incorrectTimeInterpretations: catFails('time'),
   timelineOverlaps: catFails('timeline_overlap'), timelineGaps: catFails('timeline_gap'),
   correctionDeleteFailures: catFails('correction_delete'), routeValidationFailures: catFails('route'),
+  // impossibleTravelWarnings counts D-category prompts that PASSED (i.e. destination preserved AND the
+  // route check flagged the impossible leg); impossibleTravelFlagged counts those where the route check flagged.
+  impossibleTravelFlagged: by((r) => r.cat === 'impossible-route' && r.down && r.down.routeConflict),
+  promptVersions: [...new Set(Object.values(raw).map((x) => x.promptVersion || 'NONE'))].join(','),
   hosValidation: 'replayed offline from window.__liveAiResults.raw', saveLeg: 'not run',
 };
 console.table(rows.map((r) => ({ id: r.id, cat: r.cat, result: r.pass ? 'PASS' : 'FAIL', issues: (r.fails || []).join(' | ') })));
