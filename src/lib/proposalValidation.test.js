@@ -129,10 +129,12 @@ describe('inspectProposalRoutes — tripEstimate invoked for real legs only', ()
     mockProvider.mockClear();
     const legs = await inspectProposalRoutes(midwest, { routingProvider: mockProvider, speedProfile: 'conservative', now: base });
     expect(mockProvider).toHaveBeenCalledTimes(3);
-    const calls = mockProvider.mock.calls.map((c) => [c[0], c[1]]);
-    expect(calls).toContainEqual(['Chicago, Illinois', 'South Bend, Indiana']);
-    expect(calls).toContainEqual(['South Bend, Indiana', 'Toledo, Ohio']);
-    expect(calls).toContainEqual(['Toledo, Ohio', 'Detroit, Michigan']);
+    // locOf() normalizes the state to UPPERCASE (geocoders are case-insensitive), so
+    // compare case-insensitively — the contract is the three real city pairs.
+    const calls = mockProvider.mock.calls.map((c) => [c[0].toLowerCase(), c[1].toLowerCase()]);
+    expect(calls).toContainEqual(['chicago, illinois', 'south bend, indiana']);
+    expect(calls).toContainEqual(['south bend, indiana', 'toledo, ohio']);
+    expect(calls).toContainEqual(['toledo, ohio', 'detroit, michigan']);
     for (const [o, d] of calls) {
       expect(o).not.toBe(d);
     }
