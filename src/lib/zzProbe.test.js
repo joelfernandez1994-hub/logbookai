@@ -33,6 +33,6 @@ it('probe', async () => {
     const { events: rec } = reconstructDrivingDurations(enriched.events, enriched.legs, { now: NOW });
     const rw = await addRouteWarning(rec, { routingProvider: provider, speedProfile: 'conservative', now: NOW, isFuture: false });
     const v = validateProposal([], rec, { tz: TZ, now: NOW, isFuture: false, narrative: c.input, provenance: normalized, explicitGuard: normalized.explicit_guard, cycleType: '70_8' });
-    console.log('PROBE', id, JSON.stringify({ legs: enriched.legs.map(l => ({ o: l.origin, d: l.destination, known: l.destinationKnown, ev: l.evaluation?.known, conflict: l.evaluation?.conflict })), mileage: rec.map(e => e.mileage ?? null), routeWarn: rw && { sev: rw.severity, ack: rw.requiresAcknowledgment }, warnings: v.warnings.map(w => `${w.severity}:${w.type}`) }));
+    console.log('PROBE', id, JSON.stringify({ legs: enriched.legs.map(l => ({ o: l.origin, d: l.destination, known: l.destinationKnown, ev: l.evaluation?.known, conflict: l.evaluation?.conflict })), mileage: rec.map(e => e.mileage ?? null), routeWarn: rw && { sev: rw.severity, ack: rw.requiresAcknowledgment }, warnings: v.warnings.map(w => `${w.severity}:${w.type}`), dm: v.warnings.filter(w=>w.type==='described_movement_missing').map(w=>w.message), recEv: rec.map(e=>[e.duty_status,e.city,e.start_timestamp.slice(11,16),(e.end_timestamp||'').slice(11,16)].join(' ')) }));
   }
 });
