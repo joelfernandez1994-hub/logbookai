@@ -29,7 +29,7 @@ import { normalizeCandidateTimeline } from './timelineNormalization';
 import { enrichProposalMileage, addRouteWarning, validateProposal, getDrivingLegs } from './proposalValidation';
 import { extractDescribedMovements, movementCovered } from './narrativeMovements';
 import { evaluateLive } from './liveAiEvaluator';
-import { LIVE_PROMPTS } from './liveAiPromptSet';
+import { PROMPTS as LIVE_PROMPTS } from './liveAiPromptSet';
 
 const TZ = 'America/New_York';
 const NOW = new Date('2026-09-21T23:30:00Z'); // after every fixture event so no "elapsed gap" noise
@@ -131,7 +131,7 @@ describe('plausible trips and stated mileage with a stated destination (E01-E03,
     expect(enriched.events[0].mileage).toBe(stated);              // never overwritten by the map
     expect(enriched.events[0].mileage_source).toBe('driver_stated');
     expect(enriched.events[0].route_miles).toBe(235);
-    expect(!!enriched.events[0].stated_mileage_warning || enriched.legs.length === 1).toBe(true);
+    expect(enriched.legs).toHaveLength(1);
     const { statedMileageWarnings } = await import('./statedMileage');
     expect(statedMileageWarnings(enriched.legs, input).length > 0).toBe(flagged);
   });
@@ -225,10 +225,12 @@ describe('"from 10 PM to 4 AM" (G01): the end rolls to the next day; nothing els
     expect(rollOverEndAcrossMidnight(start, badEnd)).toBe('2026-09-22T08:00:00.000Z'); // 4 AM EDT Sep 22
     expect(rollOverEndAcrossMidnight('2026-09-21T12:00:00.000Z', '2026-09-21T13:00:00.000Z')).toBe('2026-09-21T13:00:00.000Z'); // already fine
     expect(rollOverEndAcrossMidnight('2026-09-21T12:00:00.000Z', null)).toBeNull();
-    // would still be before the start after +24h (a genuinely wrong date) -> left for the validator
+    // an end days before the start is a genuinely wrong date, not an overnight range -> untouched
     expect(rollOverEndAcrossMidnight('2026-09-25T12:00:00.000Z', '2026-09-21T13:00:00.000Z')).toBe('2026-09-21T13:00:00.000Z');
-    // more than a 24 h "overnight" is not an overnight range -> untouched
-    expect(rollOverEndAcrossMidnight('2026-09-21T12:00:00.000Z', '2026-09-21T11:00:00.000Z')).toBe('2026-09-22T11:00:00.000Z'); // 23 h -> rolled (positive, < 24h)
+    // equal start/end is never turned into a 24 h event
+    expect(rollOverEndAcrossMidnight('2026-09-21T12:00:00.000Z', '2026-09-21T12:00:00.000Z')).toBe('2026-09-21T12:00:00.000Z');
+    // 1 h before the start rolls to 23 h later (still a positive duration under 24 h)
+    expect(rollOverEndAcrossMidnight('2026-09-21T12:00:00.000Z', '2026-09-21T11:00:00.000Z')).toBe('2026-09-22T11:00:00.000Z');
   });
 
   it('the live G01 proposal no longer trips negative_duration, keeps 10 PM start and 4 AM end', async () => {
