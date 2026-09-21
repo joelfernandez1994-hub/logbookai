@@ -173,6 +173,8 @@ export async function insertEventsBatch(allEvents, newEvents, opts = {}) {
   const t = new Date();
   const working = [...(allEvents || [])];
   const merged = { creates: [], updates: [], deletes: [] };
+  const pending = new Map(); // placeholder id -> index into merged.creates
+  let placeholderSeq = 0;
   let dupHit = false, invalidHit = false;
   for (const ne of (newEvents || [])) {
     if (!ne || !ne.start_timestamp || !ne.duty_status) continue;
@@ -191,11 +193,31 @@ export async function insertEventsBatch(allEvents, newEvents, opts = {}) {
       if (idx >= 0) working[idx] = { ...working[idx], ...u.data };
     }
     for (let i = working.length - 1; i >= 0; i--) if (delSet.has(working[i]?.id)) working.splice(i, 1);
-    for (const c of ops.creates) working.push({ ...c, id: c.id || `__new_${merged.creates.length}` });
-    merged.creates.push(...ops.creates);
-    merged.updates.push(...ops.updates);
-    merged.deletes.push(...ops.deletes);
+    // An op planned against the WORKING set can target an event that an EARLIER
+    // event in this same batch is about to create (its id is a placeholder that
+    // does not exist in the database). Such an update/delete must be folded into
+    // that pending create — never emitted as a database write. Previously the
+    // update was emitted against the fake id (a write to a nonexistent record)
+    // while the pending create kept its ORIGINAL end, so two overlapping events
+    // from one AI proposal were persisted overlapping.
+    for (const u of ops.updates) {
+      const at = pending.get(u.id);
+      if (at != null) merged.creates[at] = { ...merged.creates[at], ...u.data };
+      else merged.updates.push(u);
+    }
+    for (const d of ops.deletes) {
+      const at = pending.get(d);
+      if (at != null) { merged.creates[at] = null; pending.delete(d); }
+      else merged.deletes.push(d);
+    }
+    for (const c of ops.creates) {
+      const pid = c.id || `__new_${placeholderSeq++}`;
+      working.push({ ...c, id: pid });
+      pending.set(pid, merged.creates.length);
+      merged.creates.push(c);
+    }
   }
+  merged.creates = merged.creates.filter(Boolean);
   const res = await applyTimelineOps(merged, allEvents, opts);
   // A dropped-as-invalid event (e.g. an open-ended final status whose end
   // computed before its start) must never look like a clean success — the
