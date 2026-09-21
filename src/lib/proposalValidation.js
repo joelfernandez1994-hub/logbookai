@@ -25,6 +25,7 @@ import { describedMovementCoverage } from './narrativeMovements';
 import { findAmbiguousCityIssues } from './ambiguousLocations';
 import { applyStatedMileage } from './statedMileage';
 import { normalizeCandidateTimeline } from './timelineNormalization';
+import { cleanLocationText } from './locationPlaceholders';
 
 const H = 3600000;
 const MIN = 60000;
@@ -556,7 +557,7 @@ function fallbackMph(profileId) {
 // A location is usable as a leg endpoint when it has a non-empty trimmed city.
 // State is carried through but not required to be non-empty.
 function usableLocation(ev) {
-  return ev && String(ev.city || '').trim() !== '';
+  return !!ev && cleanLocationText(ev.city) !== '';
 }
 function locOf(ev) {
   return { city: String(ev?.city || '').trim(), state: String(ev?.state || '').trim().toUpperCase() };
@@ -599,6 +600,13 @@ export function getDrivingLegs(proposed, now = new Date()) {
     for (let i = index + 1; i < sorted.length; i++) {
       if (sorted[i].duty_status === 'DRIVING') continue;
       if (usableLocation(sorted[i])) { destination = locOf(sorted[i]); destinationKnown = true; break; }
+    }
+    // No following non-driving event names the arrival: fall back to the
+    // destination the driver stated FOR THIS LEG (AI destination_city/state).
+    // A following event always wins, so existing behavior is unchanged.
+    if (!destination && cleanLocationText(event.destination_city) !== '') {
+      destination = locOf({ city: event.destination_city, state: event.destination_state });
+      destinationKnown = true;
     }
     if (!destination) destination = locOf(event);
 
