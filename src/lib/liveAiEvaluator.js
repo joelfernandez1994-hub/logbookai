@@ -14,6 +14,8 @@
 //       edit_target_index}], delete_target_indices, location_confirmations }
 // ============================================================================
 
+import { isPlaceholderLocation } from './locationPlaceholders';
+
 export function localHM(iso, tz) {
   if (!iso) return null;
   const parts = new Intl.DateTimeFormat('en-GB', { timeZone: tz, hour: '2-digit', minute: '2-digit', hour12: false }).formatToParts(new Date(iso));
@@ -84,7 +86,24 @@ export function evaluateLive(spec, res, tz) {
 
   if (spec.notRefuse && res.refuses_fabrication) F(CATEGORY.SHAPE, 'refused / rewrote a factual statement it should have preserved');
   (spec.includeCities || []).forEach((c) => {
-    if (!events.some((ev) => norm(ev.city) === norm(c))) F(CATEGORY.LOCATION, `city "${c}" was dropped (origin/destination not preserved)`);
+    // A city is preserved when it sits on an event (origin, or a stop) OR is the stated
+    // destination of a DRIVING event (destination_city) — the arrival place of a drive has no
+    // other event to live on unless the driver described one.
+    if (!events.some((ev) => norm(ev.city) === norm(c) || (ev.duty_status === 'DRIVING' && norm(ev.destination_city) === norm(c)))) {
+      F(CATEGORY.LOCATION, `city "${c}" was dropped (origin/destination not preserved)`);
+    }
+  });
+
+  // Every event must run forward in time (a live midnight-crossing prompt once returned a 4 AM end
+  // dated BEFORE its 10 PM start and the hour-of-day comparison below could not see it), and no
+  // event may carry a placeholder such as "Unknown" as its location.
+  events.forEach((ev, i) => {
+    if (ev.end_timestamp && new Date(ev.end_timestamp) <= new Date(ev.start_timestamp)) {
+      F(CATEGORY.TIME, `event #${i + 1} ends (${ev.end_timestamp}) at or before it starts (${ev.start_timestamp})`);
+    }
+    for (const k of ['city', 'state', 'destination_city', 'destination_state']) {
+      if (isPlaceholderLocation(ev[k])) F(CATEGORY.LOCATION, `event #${i + 1} ${k} is the placeholder "${ev[k]}" (must be empty)`);
+    }
   });
 
   (spec.eventsIfPresent && events.length === 0 ? [] : (spec.events || [])).forEach((exp, i) => {
