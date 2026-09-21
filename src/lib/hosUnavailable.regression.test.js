@@ -40,7 +40,7 @@ describe('deriveHosDisplay — unavailable HOS never renders as zero (Proposed L
     const d = deriveHosDisplay(hos, true);
     expect(d.calculable).toBe(false);
     for (const cell of [d.driving, d.window14, d.break, d.cycle]) {
-      expect(cell.value).toBe('—');
+      expect(cell.value).toBe('--');
       expect(cell.state).toBe('unavailable');
       expect(cell.value).not.toMatch(/0/);
       expect(cell.value).not.toBe('OK');
@@ -59,7 +59,7 @@ describe('deriveHosDisplay — unavailable HOS never renders as zero (Proposed L
 
     const d = deriveHosDisplay(hos, false);
     // Cycle is the only unverified clock for a fresh account.
-    expect(d.cycle.value).toBe('—');
+    expect(d.cycle.value).toBe('--');
     expect(d.cycle.state).toBe('unverified');
     // Driving has not started → real remaining (full 11h), never a fabricated
     // exhausted-zero while cycle is unverified.
@@ -76,8 +76,8 @@ describe('deriveHosDisplay — unavailable HOS never renders as zero (Proposed L
     const d = deriveHosDisplay(hos, true);
     expect(d.driving.state).toBe('unverified');
     expect(d.window14.state).toBe('unverified');
-    expect(d.driving.value).toBe('—');
-    expect(d.window14.value).toBe('—');
+    expect(d.driving.value).toBe('--');
+    expect(d.window14.value).toBe('--');
     expect(d.driving.value).not.toBe('0 hr 0 min');
     expect(d.window14.value).not.toBe('0 hr 0 min');
   });
