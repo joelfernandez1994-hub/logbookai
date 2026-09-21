@@ -14,13 +14,16 @@
  *     window.LIVE_AI = { testEmail: 'the-test-account@example.com' }
  *   The script verifies: not the editor page, app id, logged-in email === testEmail,
  *   role is not admin, carrier timezone === America/New_York. It then makes ONE real
- *   manualLogAssistant call ("loaded in Miami at 8 AM"), prints the raw structured
- *   response, and stops.
+ *   manualLogAssistant call ("Left Miami at 8 AM and got to Orlando at 9 AM"), prints the
+ *   raw structured response, and checks it: prompt_version r3-2026-09-21-driving-destination,
+ *   DRIVING Miami FL -> destination_city/destination_state Orlando FL, 8 AM and 9 AM kept
+ *   exactly, route lookup performed, impossible travel flagged. The full run stays locked
+ *   unless the version, destination and times checks pass.
  * STEP 2 - full runs (only after the smoke test passed in this same page session):
  *     window.LIVE_AI = { testEmail: '...', run: 'phase1' }   // 71 prompts (everything except H01-H07)
  *     window.LIVE_AI = { testEmail: '...', run: 'phase2' }   // 7 correction/delete prompts
  *     window.LIVE_AI = { testEmail: '...', run: 'all' }      // all 78
- *     (also: only: ['A01','A10'], delayMs: 1200). Requires ai_allowance_override >= 100.
+ *     (also: only: ['A01','A10'], delayMs: 1500). Requires ai_allowance_override >= 100.
  *   Results: console tables + window.__liveAiResults (copied to the clipboard when possible).
  *
  * SAFETY: interpret mode with SYNTHETIC events in the request body - the function reads
@@ -408,7 +411,7 @@ function fixtureFor(spec, mk) {
 // ===================== RUNNER (standalone; no /src imports) =====================
 const EXPECTED_APP_ID = '6a861df91bc2d86b11ec06b1';
 const REQUIRED_TZ = 'America/New_York';
-const cfg = Object.assign({ testEmail: null, run: null, only: null, delayMs: 900, apiBase: null }, window.LIVE_AI || {});
+const cfg = Object.assign({ testEmail: null, run: null, only: null, delayMs: 1500, apiBase: null }, window.LIVE_AI || {});
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const die = (m) => { throw new Error(`LIVE AI STRESS ABORTED: ${m}`); };
 if (Array.isArray(cfg.save) && cfg.save.length) console.warn('The SAVE leg is not part of this script (Phases 1-2 only); LIVE_AI.save is ignored.');

@@ -1,7 +1,7 @@
 // ===================== RUNNER (standalone; no /src imports) =====================
 const EXPECTED_APP_ID = '6a861df91bc2d86b11ec06b1';
 const REQUIRED_TZ = 'America/New_York';
-const cfg = Object.assign({ testEmail: null, run: null, only: null, delayMs: 900, apiBase: null }, window.LIVE_AI || {});
+const cfg = Object.assign({ testEmail: null, run: null, only: null, delayMs: 1500, apiBase: null }, window.LIVE_AI || {});
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const die = (m) => { throw new Error(`LIVE AI STRESS ABORTED: ${m}`); };
 if (Array.isArray(cfg.save) && cfg.save.length) console.warn('The SAVE leg is not part of this script (Phases 1-2 only); LIVE_AI.save is ignored.');
