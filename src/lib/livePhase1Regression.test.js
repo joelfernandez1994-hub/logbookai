@@ -64,7 +64,9 @@ async function pipeline(input, events, locConf = []) {
   const enriched = await enrichProposalMileage(selfN, { routingProvider: r.provider, speedProfile: 'conservative', now: NOW, narrative: input });
   const routeWarning = await addRouteWarning(enriched.events, { routingProvider: r.provider, speedProfile: 'conservative', now: NOW, isFuture: false });
   const v = validateProposal([], enriched.events, { tz: TZ, now: NOW, isFuture: false, narrative: input, provenance: normalized, explicitGuard: normalized.explicit_guard, cycleType: '70_8' });
-  return { normalized, enriched, routeWarning, warnings: v.warnings, calls: r.calls };
+  // enrichment and the route warning each ask the router; what matters is WHICH pairs were looked up
+  const calls = [...new Set(r.calls.map((c) => c.join('|')))].map((c) => c.split('|'));
+  return { normalized, enriched, routeWarning, warnings: v.warnings, calls };
 }
 
 // ---- 1. impossible / plausible / mileage travel prompts (D01-D05, E01-E03, F03-F04) ----
