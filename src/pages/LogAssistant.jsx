@@ -85,7 +85,7 @@ export default function LogAssistant() {
     // still caught and surfaced by ProposalReview's own validateProposal call
     // (which re-normalizes the full existing+proposed timeline for warnings).
     const { events: selfNormalized } = normalizeCandidateTimeline(value.proposed_events);
-    const enriched = await enrichProposalMileage(selfNormalized, { routingProvider: fetchRoute, speedProfile, now: new Date() });
+    const enriched = await enrichProposalMileage(selfNormalized, { routingProvider: fetchRoute, speedProfile, now: new Date(), narrative: value.original_input || '' });
     // Route-aware reconstruction: replace AI-inferred Driving durations with
     // routed truck-realistic travel time and cascade-shift subsequent inferred
     // events (explicit driver timestamps are never moved). Runs at proposal time
