@@ -260,15 +260,15 @@ export function existingOutsideReplacedDay(existing, targetDate, tz) {
 // "I drove from Miami to Orlando from 10 PM to 4 AM"). When an end is not
 // after its start but is after it once moved forward one day (i.e. the result
 // is a positive duration under 24 h), that is unambiguously an overnight range.
-// Anything else is left exactly as given for the validator to block.
+// Anything else (equal times, an end more than 24 h before the start) is left
+// exactly as given for the validator to block.
 export function rollOverEndAcrossMidnight(startIso, endIso) {
   if (!startIso || !endIso) return endIso;
   const s = new Date(startIso).getTime();
   const e = new Date(endIso).getTime();
-  if (!Number.isFinite(s) || !Number.isFinite(e) || e > s) return endIso;
+  if (!Number.isFinite(s) || !Number.isFinite(e) || e >= s) return endIso;
   const rolled = e + 24 * 3600000;
-  if (rolled <= s || rolled - s > 24 * 3600000) return endIso;
-  return new Date(rolled).toISOString();
+  return rolled > s ? new Date(rolled).toISOString() : endIso;
 }
 
 // Validate + normalize an interpret response from the backend. Returns
