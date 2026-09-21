@@ -16,11 +16,13 @@ const todayIso = (hm) => { const [h, m] = hm.split(':').map(Number); return new 
 const fp = { start_time: 'explicit', end_time: 'explicit', status: 'explicit', city: 'explicit', state: 'explicit' };
 const pe = (status, city, state, s, e) => ({ duty_status: status, city, state, start_timestamp: todayIso(s), end_timestamp: e ? todayIso(e) : null, field_provenance: fp, ambiguous_fields: [] });
 
+const PROMPT_VERSION = 'r3-2026-09-21-driving-destination';
+const withDest = (e, city, state) => ({ ...e, destination_city: city, destination_state: state });
 function defaultModel(input) {
-  if (input === 'loaded in Miami at 8 AM') return { intent: 'add_events', proposed_events: [pe('ON_DUTY', 'Miami', 'FL', '08:00')], used: 1, allowance: 150 };
-  if (input === 'Left Miami at 8 AM and got to Orlando at 9 AM') return { intent: 'add_events', proposed_events: [pe('DRIVING', 'Miami', 'FL', '08:00', '09:00'), pe('ON_DUTY', 'Orlando', 'FL', '09:00')] };
-  if (input === 'delete that fuel stop') return { intent: 'delete_events', delete_target_indices: [3], proposed_events: [] };
-  return { intent: 'clarification', requires_clarification: true, clarification_question: 'q', proposed_events: [] };
+  // The r3 function: every interpret response echoes prompt_version; a Driving event carries its destination.
+  if (input === 'Left Miami at 8 AM and got to Orlando at 9 AM') return { prompt_version: PROMPT_VERSION, intent: 'add_events', proposed_events: [withDest(pe('DRIVING', 'Miami', 'FL', '08:00', '09:00'), 'Orlando', 'FL')], used: 1, allowance: 150 };
+  if (input === 'delete that fuel stop') return { prompt_version: PROMPT_VERSION, intent: 'delete_events', delete_target_indices: [3], proposed_events: [] };
+  return { prompt_version: PROMPT_VERSION, intent: 'clarification', requires_clarification: true, clarification_question: 'q', proposed_events: [] };
 }
 
 function setup({ email = TEST_EMAIL, role = 'user', allowance = 150, tz = 'America/New_York', hostname = 'preview-abc.base44.app', pathname = '/', appId = APP, token = 'tok-123', model = defaultModel, quotaAfter = Infinity } = {}) {
@@ -91,12 +93,40 @@ describe('smoke test (one real call, then stop)', () => {
     expect(modelCall.method).toBe('POST');
     expect(modelCall.headers.Authorization).toBe('Bearer tok-123');
     expect(modelCall.headers['X-App-Id']).toBe(APP);
-    expect(modelCall.body).toMatchObject({ mode: 'interpret', input: 'loaded in Miami at 8 AM', events: [] });
-    expect(env.calls.some((c) => c.url.endsWith('/functions/tripEstimate'))).toBe(false); // smoke uses no routing
+    expect(modelCall.body).toMatchObject({ mode: 'interpret', input: 'Left Miami at 8 AM and got to Orlando at 9 AM', events: [] });
+    expect(env.modelCalls()).toBe(1); // routing (tripEstimate) is free; only ONE AI request
+    expect(env.calls.some((c) => c.url.endsWith('/functions/tripEstimate') && c.body.origin === 'Miami, FL' && c.body.destination === 'Orlando, FL')).toBe(true);
     expect(window.__liveAiSmokeOk).toBe(true);
     const printed = console.log.mock.calls.map((c) => c.join(' ')).join('\n');
     expect(printed).toContain('RAW STRUCTURED RESPONSE');
+    expect(printed).toContain('PROMPT VERSION served: ' + PROMPT_VERSION);
     expect(printed).toContain('SMOKE TEST PASSED');
+    expect(Object.values(r.checks).every((v) => v === 'PASS')).toBe(true);
+  });
+
+  it('a function that has NOT been redeployed (no prompt_version, no destination) fails the smoke test and keeps the full run locked', async () => {
+    setup({ model: () => ({ intent: 'add_events', used: 1, allowance: 150, proposed_events: [pe('DRIVING', 'Miami', 'FL', '08:00', '09:00')] }) });
+    const r = await run({ testEmail: TEST_EMAIL });
+    expect(r.ok).toBe(false);
+    expect(window.__liveAiSmokeOk).toBe(false);
+    expect(r.checks.prompt_version).toMatch(/^FAIL/);
+    expect(r.checks.destination_city).toMatch(/^FAIL/);
+    expect(console.log.mock.calls.map((c) => c.join(' ')).join('\n')).toContain('NONE (function not redeployed');
+    await expect(run({ testEmail: TEST_EMAIL, run: 'phase1', only: ['A01'] })).rejects.toThrow(/smoke test first/);
+  });
+
+  it('a model that silently "fixes" the times to make the trip legal fails the smoke test', async () => {
+    setup({ model: () => ({ prompt_version: PROMPT_VERSION, intent: 'add_events', proposed_events: [withDest(pe('DRIVING', 'Miami', 'FL', '08:00', '12:30'), 'Orlando', 'FL')] }) });
+    const r = await run({ testEmail: TEST_EMAIL });
+    expect(r.ok).toBe(false);
+    expect(r.checks['end 9 AM exactly (times not silently corrected)']).toMatch(/^FAIL/);
+  });
+
+  it('a dropped destination fails the smoke test even when the version is right', async () => {
+    setup({ model: () => ({ prompt_version: PROMPT_VERSION, intent: 'add_events', proposed_events: [pe('DRIVING', 'Miami', 'FL', '08:00', '09:00')] }) });
+    const r = await run({ testEmail: TEST_EMAIL });
+    expect(r.ok).toBe(false);
+    expect(r.checks.destination_city).toMatch(/^FAIL/);
   });
 
   it('a failed/unstructured call does NOT unlock the full run', async () => {
@@ -180,7 +210,8 @@ describe('full runs (after a passed smoke test)', () => {
   });
 
   it('the scorer catches a model that silently changes the times to make the trip legal', async () => {
-    setup({ model: (input) => (input.startsWith('Left Miami at 8 AM') ? { intent: 'add_events', proposed_events: [pe('DRIVING', 'Miami', 'FL', '08:00', '12:30'), pe('ON_DUTY', 'Orlando', 'FL', '12:30')] } : defaultModel(input)) });
+    let calls = 0; // the smoke call (1st) is honest; A01 (2nd) silently changes the times
+    setup({ model: (input) => (input.startsWith('Left Miami at 8 AM') && ++calls > 1 ? { prompt_version: PROMPT_VERSION, intent: 'add_events', proposed_events: [pe('DRIVING', 'Miami', 'FL', '08:00', '12:30'), pe('ON_DUTY', 'Orlando', 'FL', '12:30')] } : defaultModel(input)) });
     await run({ testEmail: TEST_EMAIL });
     await run({ testEmail: TEST_EMAIL, run: 'phase1', only: ['A01'], delayMs: 0 });
     const a01 = window.__liveAiResults.rows.find((r) => r.id === 'A01');
