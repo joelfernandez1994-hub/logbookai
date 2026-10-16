@@ -233,6 +233,8 @@
     "needsCertification": "Requiere Certificación",
     "cycleRecap": "Resumen de {{limit}} Horas / {{days}} Días",
     "today": "Hoy",
+    "recordedToday": "Registrado hoy",
+    "incomplete": "incompleto",
     "lastNDays": "Últimos {{days}} días",
     "available": "Disponible",
     "returningTomorrow": "Disponible mañana",

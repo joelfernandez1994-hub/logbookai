@@ -758,8 +758,40 @@ export function getDailyTotals(segments, timezone, numDays, now = new Date()) {
   return totals;
 }
 
-export function computeCycle(segments, cycleType, timezone, now = new Date()) {
+// RECORDED-TODAY SUBTOTAL — the sum of SAVED Driving + On-Duty time actually
+// recorded for `now`'s log date. This is the one cycle number that remains
+// trustworthy even when the timeline has gaps or conflicts (computeHOS gates
+// the full cycle math on validateTimeline and would otherwise surface a
+// fabricated 0.00): it derives purely from persisted durations on the
+// normalized timeline, never fills or assumes missing time, and returns
+// decimal hours.
+export function computeRecordedToday(rawEvents, timezone, now = new Date()) {
+  const t = now instanceof Date ? now : new Date(now);
+  const dayStart = startOfDayInTz(t, timezone);
+  const dayEnd = new Date(dayStart.getTime() + 24 * 3600000);
+  const segs = normalizedSegments(rawEvents, t);
+  let onDutyMs = 0;
+  for (const seg of segs) {
+    if (seg.duty_status !== 'DRIVING' && seg.duty_status !== 'ON_DUTY') continue;
+    if (seg.end <= dayStart || seg.start >= dayEnd) continue;
+    const s = seg.start < dayStart ? dayStart : seg.start;
+    let e = seg.end > dayEnd ? dayEnd : seg.end;
+    if (e > t) e = new Date(t);
+    if (e <= s) continue;
+    onDutyMs += (e - s);
+  }
+  return onDutyMs / MS.HOUR;
+}
+
+export function computeCycle(eventsOrSegments, cycleType, timezone, now = new Date()) {
   const cycle = CYCLES[cycleType] || CYCLES['70_8'];
+  // Accept either normalized segments or raw stored events. Raw events carry
+  // string timestamps that silently break the day-window arithmetic below
+  // (string - string = NaN), which is what produced the recap's phantom
+  // "Today: 0.00 hr" (NaN coerced to 0 at the display). Normalization is
+  // idempotent for segments already normalized.
+  const input = eventsOrSegments || [];
+  const segments = input.some((s) => s && s.start_timestamp) ? normalizedSegments(input, now) : input;
   const totals = getDailyTotals(segments, timezone, cycle.days, now);
   const cycleUsed = totals.reduce((sum, t) => sum + t.onDutyHours, 0);
   const cycleRemaining = Math.max(0, cycle.limit - cycleUsed);
@@ -773,6 +805,7 @@ export function computeCycle(segments, cycleType, timezone, now = new Date()) {
     cycleRemainingHours: cycleRemaining,
     returningTomorrowHours: returningTomorrow,
     dailyTotals: totals,
+    recordedTodayHours: computeRecordedToday(segments, timezone, now),
     historyComplete: true,
   };
 }
@@ -1036,7 +1069,7 @@ export function computeHOS(rawEvents, cycleType, timezone, now = new Date(), opt
       driving: { applicable: false, drivingUsedMs: 0, drivingRemainingMs: 0, expiresAt: null, tourStart: null },
       window14: { applicable: false, windowStart: null, elapsedMs: 0, remainingMs: 0, expiresAt: null },
       break30: { drivingAccumulatedMs: 0, remainingBeforeBreakMs: 0, satisfied: false, breakRequired: false },
-      cycle: { cycleType, cycleLimit: cycleType === '60_7' ? 60 : 70, cycleDays: cycleType === '60_7' ? 7 : 8, cycleUsedHours: 0, cycleRemainingHours: 0, returningTomorrowHours: 0, dailyTotals: [] },
+      cycle: { cycleType, cycleLimit: cycleType === '60_7' ? 60 : 70, cycleDays: cycleType === '60_7' ? 7 : 8, cycleUsedHours: 0, cycleRemainingHours: 0, returningTomorrowHours: 0, dailyTotals: [], recordedTodayHours: computeRecordedToday(rawEvents, timezone, now) },
       restart: { completed: null, inProgress: null },
       split: { status: 'none', note: 'Timeline correction required.' },
       historyComplete: false,

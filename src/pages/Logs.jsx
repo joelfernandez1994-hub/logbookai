@@ -3,7 +3,8 @@ import { useTranslation } from 'react-i18next';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { dutyStatusLabel } from '@/i18n';
 import { useDriverData } from '@/hooks/useDriverData';
-import { computeCycle, dateKeyInTz, fmtHours } from '@/lib/hosEngine';
+import { computeCycle, computeRecordedToday, dateKeyInTz, fmtHours, hasSufficientCycleHistory } from '@/lib/hosEngine';
+import { validateTimeline } from '@/lib/timelineEngine';
 import { getDisplayGrid } from '@/lib/timelineDisplay';
 import RodsGraphEditor from '@/components/rodsEditor/RodsGraphEditor';
 import { getCertifications } from '@/lib/driverData';
@@ -21,6 +22,14 @@ import RouteTimingFixDialog from '@/components/RouteTimingFixDialog';
 import PullToRefresh from '@/components/PullToRefresh';
 import TimezoneIndicator from '@/components/TimezoneIndicator';
 import EventEditor from '@/components/EventEditor';
+
+// Review notes describing timeline structure (gaps/overlaps captured at save
+// time) are recalculated against the day's current timeline: once the timeline
+// is valid again the gap the note described no longer applies, so it is not
+// resurfaced. Notes about facts (pre-trip, break, approximate time, ...) are
+// never dropped by timeline validity.
+const TIMELINE_NOTE_TYPES = new Set(['structural', 'elapsed_gap', 'overlap', 'same_start_conflict', 'daily_total']);
+const isTimelineNote = (n) => !!n && (TIMELINE_NOTE_TYPES.has(n.type) || n.title === 'TIMELINE STRUCTURE');
 
 export default function Logs() {
   const { t } = useTranslation();
@@ -64,6 +73,20 @@ export default function Logs() {
   const dateStr = useMemo(() => dateKeyInTz(selectedDate, tz), [selectedDate, tz]);
   const grid = useMemo(() => getDisplayGrid(events, dateStr, tz), [events, dateStr, tz]);
 
+  // Cycle recap gating (deterministic, recalculated from persisted events on
+  // every save/edit/delete/refresh): the recorded Driving + On-Duty subtotal
+  // is ALWAYS known from the saved timeline, while the history-dependent cycle
+  // rows (used/available/returning) require BOTH a gap-free selected day and
+  // enough recorded history to span the full lookback window. Missing data is
+  // shown as unavailable ('--'), never coerced to 0.00.
+  const recordedToday = useMemo(() => computeRecordedToday(events, tz, selectedDate), [events, tz, selectedDate]);
+  const dayValidity = useMemo(() => validateTimeline(events, { now: selectedDate, dateStr, timezone: tz }), [events, dateStr, tz]);
+  const sufficientHistory = useMemo(
+    () => hasSufficientCycleHistory(events, cycleType, profile?.entered_prior_history, tz, selectedDate),
+    [events, cycleType, profile?.entered_prior_history, tz, selectedDate]
+  );
+  const cycleUsable = dayValidity.valid && sufficientHistory;
+
   // Non-blocking review warnings that were unresolved when this day's events
   // were saved (e.g. timeline gaps) — deduped and shown on the day banner and
   // beside the affected entries below, so the driver can still correct them.
@@ -73,12 +96,13 @@ export default function Logs() {
     for (const e of events) {
       if (!e?.start_timestamp || dateKeyInTz(new Date(e.start_timestamp), tz) !== dateStr) continue;
       for (const n of (e.review_notes || [])) {
+        if (isTimelineNote(n) && dayValidity.valid) continue; // gap corrected — no longer applies
         const k = `${n.title}|${n.message}`;
         if (!seen.has(k)) { seen.add(k); out.push(n); }
       }
     }
     return out;
-  }, [events, dateStr, tz]);
+  }, [events, dateStr, tz, dayValidity]);
   const cycle = useMemo(() => computeCycle(events, cycleType, tz, selectedDate), [events, cycleType, tz, selectedDate]);
 
   const cert = certifications.find(c => c.log_date === dateStr && !c.is_superseded);
@@ -226,11 +250,21 @@ export default function Logs() {
       <div className="rounded-xl border border-border bg-card p-3 mb-3 text-sm">
         <div className="font-semibold mb-1 text-card-foreground">{t('logs.cycleRecap', { limit: cycle.cycleLimit, days: cycle.cycleDays })}</div>
         <div className="grid grid-cols-2 gap-1 text-xs text-muted-foreground">
-          <div>{t('logs.today')}: {fmtHours(cycle.dailyTotals[cycle.dailyTotals.length - 1]?.onDutyHours || 0)}</div>
-          <div>{t('logs.lastNDays', { days: cycle.cycleDays })}: {fmtHours(cycle.cycleUsedHours)}</div>
-          <div>{t('logs.available')}: {fmtHours(cycle.cycleRemainingHours)}</div>
-          <div>{t('logs.returningTomorrow')}: {fmtHours(cycle.returningTomorrowHours)}</div>
+          <div>
+            {dayValidity.valid
+              ? <>{t('logs.today')}: {fmtHours(recordedToday)}</>
+              : <>{t('logs.recordedToday')}: {fmtHours(recordedToday)} — {t('logs.incomplete')}</>}
+          </div>
+          <div>{t('logs.lastNDays', { days: cycle.cycleDays })}: {cycleUsable ? fmtHours(cycle.cycleUsedHours) : '--'}</div>
+          <div>{t('logs.available')}: {cycleUsable ? fmtHours(cycle.cycleRemainingHours) : '--'}</div>
+          <div>{t('logs.returningTomorrow')}: {cycleUsable ? fmtHours(cycle.returningTomorrowHours) : '--'}</div>
         </div>
+        {!cycleUsable && (
+          <div className="flex items-center gap-1 mt-1.5 text-xs text-warning font-medium">
+            <AlertTriangle className="w-3 h-3 shrink-0" />
+            <span>{t('hos.unavailable')}</span>
+          </div>
+        )}
       </div>
 
       <div className="rounded-xl border border-border bg-card p-3 mb-3">
@@ -243,7 +277,7 @@ export default function Logs() {
         </div>
         <div className="space-y-1">
           {grid.remarks.map((r, i) => {
-            const evNotes = (events.find(e => e.id === r.id)?.review_notes) || [];
+            const evNotes = ((events.find(e => e.id === r.id)?.review_notes) || []).filter((n) => !(isTimelineNote(n) && dayValidity.valid));
             return (
             <div key={i} className="rounded-lg border border-border p-2">
               <div className="flex items-center gap-2">
