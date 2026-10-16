@@ -24,7 +24,7 @@ import { Button } from '@/components/ui/button';
 import { Bot, Gavel, HelpCircle, AlertTriangle } from 'lucide-react';
 
 const TABS = [
-  { id: 'tell', label: 'Tell LogbookAI', icon: Bot },
+  { id: 'tell', label: 'Create Log', icon: Bot },
   { id: 'makeLegal', label: 'HOS Check', icon: Gavel },
   { id: 'whatCanIDo', label: 'What Can I Do?', icon: HelpCircle },
 ];
@@ -577,7 +577,7 @@ export default function LogAssistant() {
 
   return (
     <div data-client-version="log-assistant-current-2026-08-20-v2" className="px-4 pt-6 pb-6 max-w-2xl mx-auto">
-      <Header title="Ask LogbookAI" />
+      <Header title="Log with AI" />
       <p className="text-xs text-muted-foreground mb-3">LogbookAI checks the information you provide against the configured FMCSA HOS rules. LogbookAI is not an ELD. The driver remains responsible for the accuracy, completeness, and certification of the record. {remaining} of {usage.allowance} AI requests remaining this month.</p>
 
       <div className="grid grid-cols-3 gap-2 mb-3">

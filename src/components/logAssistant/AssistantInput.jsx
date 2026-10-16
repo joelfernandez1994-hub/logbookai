@@ -58,17 +58,18 @@ export default function AssistantInput({ onSend, disabled }) {
         value={input}
         onChange={(e) => { setInput(e.target.value); setTranscript(''); }}
         onKeyDown={onKeyDown}
-        placeholder="Tell LogbookAI what happened or what you want to do…"
+        placeholder="Describe your day—include times, locations, driving, work, and breaks."
         disabled={disabled}
         rows={3}
         className="min-h-[72px] max-h-[150px] resize-none overflow-y-auto w-full"
       />
+      <p className="text-xs text-muted-foreground">Type or speak. Review your entries before adding them to your logbook.</p>
       <div className="flex justify-end gap-2">
         <Button aria-label={listening ? 'Stop voice input' : 'Start voice input'} variant="outline" onClick={listening ? stopVoice : startVoice} disabled={disabled}>
           {listening ? <Square className="w-4 h-4 text-error animate-pulse" /> : <Mic className="w-4 h-4" />}
         </Button>
-        <Button aria-label="Send request" onClick={send} disabled={disabled || !input}>
-          <Send className="w-4 h-4" />
+        <Button aria-label="Review Entries" onClick={send} disabled={disabled || !input}>
+          <Send className="w-4 h-4" /> Review Entries
         </Button>
       </div>
       {transcript && (
