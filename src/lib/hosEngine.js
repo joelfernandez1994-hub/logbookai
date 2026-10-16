@@ -994,9 +994,9 @@ export function fmtDur(ms) {
 }
 export function fmtHours(hours) {
   if (hours == null || isNaN(hours)) return '--';
-  const h = Math.floor(hours);
-  const m = Math.round((hours - h) * 60);
-  return `${h}.${m.toString().padStart(2, '0')} hr`;
+  // True decimal hours: 15 minutes is 0.25 hr (never 0.15 — the minutes were
+  // previously padded into the decimal position as if minutes were hundredths).
+  return `${(Math.round(hours * 100) / 100).toFixed(2)} hr`;
 }
 export function fmtTime(date) {
   if (!date) return '--';

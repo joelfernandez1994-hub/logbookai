@@ -63,6 +63,22 @@ export default function Logs() {
 
   const dateStr = useMemo(() => dateKeyInTz(selectedDate, tz), [selectedDate, tz]);
   const grid = useMemo(() => getDisplayGrid(events, dateStr, tz), [events, dateStr, tz]);
+
+  // Non-blocking review warnings that were unresolved when this day's events
+  // were saved (e.g. timeline gaps) — deduped and shown on the day banner and
+  // beside the affected entries below, so the driver can still correct them.
+  const dayWarnings = useMemo(() => {
+    const seen = new Set();
+    const out = [];
+    for (const e of events) {
+      if (!e?.start_timestamp || dateKeyInTz(new Date(e.start_timestamp), tz) !== dateStr) continue;
+      for (const n of (e.review_notes || [])) {
+        const k = `${n.title}|${n.message}`;
+        if (!seen.has(k)) { seen.add(k); out.push(n); }
+      }
+    }
+    return out;
+  }, [events, dateStr, tz]);
   const cycle = useMemo(() => computeCycle(events, cycleType, tz, selectedDate), [events, cycleType, tz, selectedDate]);
 
   const cert = certifications.find(c => c.log_date === dateStr && !c.is_superseded);
@@ -182,6 +198,19 @@ export default function Logs() {
         <Button variant="ghost" size="sm" onClick={() => shiftDay(1)}><ChevronRight className="w-4 h-4" /></Button>
       </div>
 
+      {dayWarnings.length > 0 && (
+        <div className="rounded-xl border border-warning/50 bg-warning-surface p-3 mb-3">
+          <div className="flex items-start gap-2">
+            <AlertTriangle className="w-4 h-4 text-warning mt-0.5 shrink-0" />
+            <div className="flex-1">
+              <div className="text-xs font-semibold text-warning-surface-foreground mb-1">Unresolved review items on this log</div>
+              {dayWarnings.map((w, i) => (
+                <div key={i} className="text-xs text-warning-surface-foreground"><span className="font-medium">{w.title}</span> — {w.message}</div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
       <TimelineGapNotice events={events} dateStr={dateStr} tz={tz} now={new Date()} />
       <RouteTimeConflictNotice events={events} dateStr={dateStr} tz={tz} speedProfile={speedProfile} now={new Date()} onFix={() => setFixOpen(true)} />
       <DailyMilesCard events={events} dateStr={dateStr} tz={tz} speedProfile={speedProfile} />
@@ -213,19 +242,34 @@ export default function Logs() {
           </div>
         </div>
         <div className="space-y-1">
-          {grid.remarks.map((r, i) => (
-            <div key={i} className="flex items-center gap-2 rounded-lg border border-border p-2">
-              <span className="font-mono text-xs text-muted-foreground w-14 shrink-0">
-                {r.time.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', timeZone: tz })}
-              </span>
-              <span className="font-semibold text-xs text-card-foreground">{dutyStatusLabel(r.status)}</span>
-              <span className="text-xs text-muted-foreground flex-1 truncate">
-                {[r.city, r.state].filter(Boolean).join(', ')}{r.remark ? ` — ${r.remark}` : ''}
-              </span>
-              <button onClick={() => setEditing(events.find(e => e.id === r.id))} className="inline-flex items-center justify-center min-h-[44px] min-w-[44px] text-muted-foreground hover:text-foreground"><Pencil className="w-3.5 h-3.5" /></button>
-              <button onClick={() => removeEvent(r.id)} className="inline-flex items-center justify-center min-h-[44px] min-w-[44px] text-error hover:opacity-80"><Trash2 className="w-3.5 h-3.5" /></button>
+          {grid.remarks.map((r, i) => {
+            const evNotes = (events.find(e => e.id === r.id)?.review_notes) || [];
+            return (
+            <div key={i} className="rounded-lg border border-border p-2">
+              <div className="flex items-center gap-2">
+                <span className="font-mono text-xs text-muted-foreground w-14 shrink-0">
+                  {r.time.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', timeZone: tz })}
+                </span>
+                <span className="font-semibold text-xs text-card-foreground">{dutyStatusLabel(r.status)}</span>
+                <span className="text-xs text-muted-foreground flex-1 truncate">
+                  {[r.city, r.state].filter(Boolean).join(', ')}{r.remark ? ` — ${r.remark}` : ''}
+                </span>
+                <button onClick={() => setEditing(events.find(e => e.id === r.id))} className="inline-flex items-center justify-center min-h-[44px] min-w-[44px] text-muted-foreground hover:text-foreground"><Pencil className="w-3.5 h-3.5" /></button>
+                <button onClick={() => removeEvent(r.id)} className="inline-flex items-center justify-center min-h-[44px] min-w-[44px] text-error hover:opacity-80"><Trash2 className="w-3.5 h-3.5" /></button>
+              </div>
+              {evNotes.length > 0 && (
+                <div className="mt-1 space-y-0.5">
+                  {evNotes.map((n, ni) => (
+                    <div key={ni} className="flex items-start gap-1 text-[11px] text-warning">
+                      <AlertTriangle className="w-3 h-3 mt-0.5 shrink-0" />
+                      <span>{n.title}: {n.message}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
-          ))}
+            );
+          })}
           {grid.remarks.length === 0 && <div className="text-xs text-muted-foreground text-center py-4">{t('logs.noEventsRecorded')}</div>}
         </div>
       </div>

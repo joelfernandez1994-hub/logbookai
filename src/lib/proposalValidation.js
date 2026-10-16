@@ -199,7 +199,7 @@ export function locationTimeConflict(prevEvent, event, now = new Date()) {
   const r = distanceReasonableness(prevEvent.city, prevEvent.state, event.city, event.state, gap);
   if (r.known && r.conflict) {
     return {
-      type: 'location_time_conflict', severity: 'blocking', title: 'LOCATION / TIME CONFLICT',
+      type: 'location_time_conflict', severity: 'review', title: 'LOCATION / TIME CONFLICT',
       message: `Your previous log places you in ${prevEvent.city}, ${prevEvent.state}, but this event begins in ${event.city}, ${event.state} ${fmtGap(gap)} later. The travel time between these locations is not consistent with the current timeline.`,
       from: { city: prevEvent.city, state: prevEvent.state },
       to: { city: event.city, state: event.state },
@@ -405,7 +405,7 @@ export function validateProposal(existing, proposed, opts = {}) {
   const pretrip = needsPreTrip(merged, t);
   if (pretrip.required) {
     warnings.push({
-      type: 'pretrip', severity: 'blocking', title: 'PRE-TRIP CHECK',
+      type: 'pretrip', severity: 'review', title: 'PRE-TRIP CHECK',
       message: 'You are starting a Driving period. Did you perform your pre-trip vehicle inspection before driving?',
       options: ['Yes — Add Pre-Trip', 'Already recorded / satisfied', 'Go Back'],
       drivingStart: pretrip.drivingStart,
@@ -456,14 +456,20 @@ export function validateProposal(existing, proposed, opts = {}) {
   // blocker — the canonical structural invalidity is.
   if (!hos.calculable && hos.validity?.issues?.length) {
     for (const issue of hos.validity.issues) {
-      if (issue.severity === 'blocking') {
-        warnings.push({
-          type: issue.type || 'structural',
-          severity: 'blocking',
-          title: 'TIMELINE STRUCTURE',
-          message: issue.message,
-        });
-      }
+      if (issue.severity !== 'blocking') continue;
+      // Coverage gaps (elapsed_gap / daily shortfalls) are review-level, never
+      // blocking: a missing stretch of the day does not invalidate the entries
+      // that ARE logged — the driver saves what they have and the gap stays
+      // visible on the saved log for correction. Structural contradictions
+      // (duplicates, same-start conflicts, negative durations) stay blocking.
+      const isCoverageGap = issue.type === 'elapsed_gap' || issue.type === 'daily_total';
+      warnings.push({
+        type: issue.type || 'structural',
+        severity: isCoverageGap ? 'review' : 'blocking',
+        title: 'TIMELINE STRUCTURE',
+        message: issue.message,
+        ...(isCoverageGap ? { hint: 'You can still add these events. The gap stays on the saved log so you can fill it in later.' } : {}),
+      });
     }
   }
 
@@ -471,7 +477,7 @@ export function validateProposal(existing, proposed, opts = {}) {
   const future = isFuture != null ? isFuture : ((proposed || [])[0]?.start_timestamp ? new Date((proposed || [])[0].start_timestamp) > t : false);
   if (br.required) {
     warnings.push({
-      type: 'break30', severity: 'blocking', title: '30-MINUTE BREAK REQUIRED',
+      type: 'break30', severity: 'review', title: '30-MINUTE BREAK REQUIRED',
       message: future
         ? 'This plan exceeds 8 cumulative hours of Driving without a qualifying 30-minute interruption. Add a planned qualifying stop (Off Duty, Sleeper Berth, or On Duty — Fuel/meal/rest) before the threshold. Labeled PLANNED — NOT YET LOGGED.'
         : 'Your actual timeline shows more than 8 cumulative hours of Driving without a qualifying 30-minute interruption. Did a real stop or break occur that was omitted? If so, enter the actual event. LogbookAI will not fabricate a break to remove the violation.',
@@ -798,7 +804,7 @@ export function hasBlocking(warnings = []) {
 // ---------------------------------------------------------------------------
 export function deriveHosDisplay(hos, historyComplete) {
   const calculable = !!(hos?.calculable && hos?.validity?.valid);
-  const unavailable = { value: '--', note: 'Unavailable until timeline is valid', state: 'unavailable' };
+  const unavailable = { value: '--', note: 'HOS unavailable—review timeline', state: 'unavailable' };
   if (!calculable) {
     return { calculable: false, driving: unavailable, window14: unavailable, break: unavailable, cycle: unavailable };
   }
@@ -821,7 +827,7 @@ export function deriveHosDisplay(hos, historyComplete) {
     return { value: br.satisfied ? 'Satisfied' : (br.breakRequired ? 'Required' : 'Not yet'), note: '', state: 'real' };
   })();
   const cycle = (() => {
-    if (!historyComplete) return { value: '--', note: 'Cycle unverified — prior history needed', state: 'unverified' };
+    if (!historyComplete) return { value: '--', note: 'HOS unavailable—review timeline', state: 'unverified' };
     const rem = hos.cycle.cycleRemainingHours;
     if (rem <= 0) return { value: '0.0 hr', note: `${hos.cycle.cycleUsedHours.toFixed(1)} used`, state: 'exhausted' };
     return { value: `${rem.toFixed(1)} hr`, note: `${hos.cycle.cycleUsedHours.toFixed(1)} used`, state: 'real' };

@@ -97,7 +97,7 @@ export default function LogAssistant() {
     const warning = await addRouteWarning(reconstructed, { routingProvider: fetchRoute, speedProfile, now: new Date(), isFuture });
     setRouteWarning(warning);
     setReconstructionConflicts(reconstructionConflicts);
-    return { ...value, proposed_events: reconstructed };
+    return { proposal_id: value.proposal_id || newProposalId(), ...value, proposed_events: reconstructed };
   };
 
   const resetResults = () => { setProposal(null); setPastResult(null); setFutureResult(null); setError(''); setRouteWarning(null); setReconstructionConflicts([]); setDeleteConfirm(null); };
@@ -181,6 +181,7 @@ export default function LogAssistant() {
         location_confirmations: [],
         _deterministic: true,
         _stationary: true,
+        proposal_id: newProposalId(),
       });
       return true;
     }
@@ -318,6 +319,13 @@ export default function LogAssistant() {
   // carried through so AI-inferred timestamps persist on the saved record —
   // the route-aware reconstruction engine ("Fix route timing") can then move
   // only inferred times and never touch explicit driver times.
+  // Per-proposal identifier (idempotency key): every proposal — AI-backed,
+  // deterministic parser, or stationary-day — gets one id; saved events carry
+  // it so re-applying the same proposal can never duplicate them.
+  const newProposalId = () => (typeof crypto !== 'undefined' && crypto.randomUUID
+    ? crypto.randomUUID()
+    : `prop_${Date.now()}_${Math.random().toString(36).slice(2)}`);
+
   const shapeEvent = (p, isLast) => ({
     log_date: (p.date || (p.start_timestamp ? p.start_timestamp.slice(0, 10) : dateKeyInTz(new Date(), tz))),
     start_timestamp: p.start_timestamp,
@@ -329,6 +337,8 @@ export default function LogAssistant() {
     method_of_creation: p.source === 'voice' ? 'Voice AI' : 'Typed AI',
     is_ongoing: isLast && !p.end_timestamp,
     ...(p.field_provenance ? { field_provenance: p.field_provenance } : {}),
+    ...(p.proposal_id ? { proposal_id: p.proposal_id } : {}),
+    ...(Array.isArray(p.review_notes) && p.review_notes.length ? { review_notes: p.review_notes } : {}),
   });
 
   // --- TELL: apply proposed events. A proposed event carrying
@@ -359,7 +369,18 @@ export default function LogAssistant() {
         if (res?.error) { setError(res.error); return false; }
       }
       if (inserts.length) {
-        const shaped = inserts.map((p, i) => shapeEvent(p, i === inserts.length - 1));
+        // Proposal-identifier idempotency: if this exact proposal was already
+        // saved (e.g. a retry after a lost connection), skip inserts entirely —
+        // never create duplicates. The writer's (start, status) dedupe remains
+        // as a second layer for a re-submitted-but-new proposal.
+        const pid = proposal?.proposal_id || inserts[0]?.proposal_id;
+        if (pid) {
+          try {
+            const already = await base44.entities.DutyStatusEvent.filter({ proposal_id: pid }, { limit: 1 });
+            if ((already?.items || []).length) { setProposal(null); reload(); return true; }
+          } catch (e) { /* best-effort — fall through to the normal insert path */ }
+        }
+        const shaped = inserts.map((p, i) => shapeEvent(pid ? { ...p, proposal_id: pid } : p, i === inserts.length - 1));
         const res = await insertEventsBatch(events, shaped, {
           carrierName: carrier?.carrier_name,
           methodOfCreation: 'Typed AI',

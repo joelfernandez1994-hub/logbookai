@@ -10,6 +10,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Check, X, Pencil, AlertTriangle, ShieldCheck, AlertCircle, Plus, Wrench } from 'lucide-react';
 import PreTripDialog from '@/components/PreTripDialog';
+import { AlertDialog, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogCancel, AlertDialogAction } from '@/components/ui/alert-dialog';
 import TimezoneIndicator from '@/components/TimezoneIndicator';
 
 const STATUS_LABELS = { OFF_DUTY: 'Off Duty', SLEEPER_BERTH: 'Sleeper', DRIVING: 'Driving', ON_DUTY: 'On Duty' };
@@ -55,7 +56,11 @@ export default function ProposalReview({ existing, proposed, cycleType, tz, onAp
   // acknowledgment instead. Reset whenever the proposal changes so a fresh
   // proposal (or a re-fetched one) always needs a fresh confirmation.
   const [routeAcknowledged, setRouteAcknowledged] = useState(false);
-  useEffect(() => { setEvents(proposed); setMileageEdited(false); setFixedRouteWarning(null); setManualReview(null); setRouteAcknowledged(false); }, [proposed]);
+  // "Save Anyway" confirmation: when only non-blocking review warnings remain,
+  // Apply first opens an explicit confirmation listing them — the driver can
+  // save a valid proposal despite an open timeline gap or compliance notice.
+  const [saveAnywayOpen, setSaveAnywayOpen] = useState(false);
+  useEffect(() => { setEvents(proposed); setMileageEdited(false); setFixedRouteWarning(null); setManualReview(null); setRouteAcknowledged(false); setSaveAnywayOpen(false); }, [proposed]);
 
   const evalNow = useMemo(() => {
     let t = new Date();
@@ -177,6 +182,14 @@ export default function ProposalReview({ existing, proposed, cycleType, tz, onAp
     setEvents(prev => [...prev, br].sort((a, b) => new Date(a.start_timestamp) - new Date(b.start_timestamp)));
   };
 
+  // Unresolved (non-blocking) review warnings persist on every saved event so
+  // they stay visible on the log after Apply — on the log day and beside the
+  // affected entries — until the driver corrects them. Blocking issues never
+  // reach this list (they lock Apply instead).
+  const unresolvedWarnings = useMemo(() => warnings
+    .filter(w => w.severity !== 'blocking')
+    .map(w => ({ title: w.title, message: String(w.message || '').slice(0, 240) })), [warnings]);
+
   // Confirm & Apply: lock immediately, ignore re-entrant taps, keep the
   // proposal visible in a disabled/loading state, and only clear it after
   // successful persistence. On failure the parent returns false and we
@@ -201,9 +214,12 @@ export default function ProposalReview({ existing, proposed, cycleType, tz, onAp
             return { ...e, remark: e.remark ? `${e.remark} [${note}]` : note };
           })
         : events;
+      const annotated = unresolvedWarnings.length
+        ? eventsToApply.map(e => ({ ...e, review_notes: unresolvedWarnings }))
+        : eventsToApply;
       const ok = isReplaceDay
-        ? await onApplyReplace?.(eventsToApply, { mileageEdited, dailyMileage })
-        : await onApply(eventsToApply, { mileageEdited, dailyMileage });
+        ? await onApplyReplace?.(annotated, { mileageEdited, dailyMileage })
+        : await onApply(annotated, { mileageEdited, dailyMileage });
       if (ok === false) setApplying(false);
     } catch (e) {
       setApplying(false);
@@ -442,19 +458,40 @@ export default function ProposalReview({ existing, proposed, cycleType, tz, onAp
       })()}
 
       <div className="flex flex-wrap gap-2">
-        <Button data-testid="apply-proposal" className="flex-1" disabled={blocking || applying} onClick={handleApply}>
-          <Check className="w-4 h-4 mr-1" /> {applying ? 'Applying…' : (isReplaceDay ? 'Replace Day & Apply' : 'Confirm & Apply')}
+        <Button data-testid="apply-proposal" className="flex-1" disabled={blocking || applying}
+          onClick={() => (!blocking && !applying && unresolvedWarnings.length > 0 ? setSaveAnywayOpen(true) : handleApply())}>
+          <Check className="w-4 h-4 mr-1" /> {applying ? 'Applying…' : (isReplaceDay ? 'Replace Day & Apply' : 'Add to Logbook')}
         </Button>
         <Button variant="outline" onClick={() => setEditable(v => !v)}><Pencil className="w-4 h-4 mr-1" /> Edit Proposal</Button>
         <Button data-testid="cancel-proposal" aria-label="Cancel proposal" variant="ghost" onClick={onCancel}><X className="w-4 h-4" /></Button>
       </div>
-      {blocking && <div className="text-[11px] text-error mt-2">{isReplaceDay ? 'Replace Day & Apply' : 'Confirm & Apply'} is locked until the blocking issue is resolved or the proposal is edited.</div>}
+      {blocking && <div className="text-[11px] text-error mt-2">{isReplaceDay ? 'Replace Day & Apply' : 'Add to Logbook'} is locked until the blocking issue is resolved or the proposal is edited.</div>}
       <div className="text-[11px] text-muted-foreground mt-1">Validation + HOS values are computed by LogbookAI's deterministic engine. Nothing is written to your log until you confirm.</div>
 
       <PreTripDialog open={pretripOpen} onOpenChange={setPretripOpen}
         drivingStart={pretripWarning?.drivingStart}
         defaultCity={events[0]?.city} defaultState={events[0]?.state}
         onConfirm={addPreTrip} />
+
+      <AlertDialog open={saveAnywayOpen} onOpenChange={setSaveAnywayOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Save anyway?</AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div className="space-y-2">
+                <div>These review items will stay unresolved on the saved log — you can correct them later. LogbookAI will add only the proposed events; no gaps are filled and no existing entries are changed.</div>
+                <ul className="list-disc ml-4">
+                  {unresolvedWarnings.map((w, i) => <li key={i}><span className="font-semibold">{w.title}</span> — {w.message}</li>)}
+                </ul>
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Go Back</AlertDialogCancel>
+            <AlertDialogAction onClick={handleApply}>Save Anyway</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

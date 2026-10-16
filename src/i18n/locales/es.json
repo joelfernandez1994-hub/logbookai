@@ -68,7 +68,7 @@
     "expiresAt": "expira {{time}}",
     "elevenHourLimit": "límite de 11 hrs",
     "sinceTime": "desde las {{time}}",
-    "unavailable": "No disponible hasta que la línea de tiempo sea válida",
+    "unavailable": "HOS no disponible—revise la línea de tiempo",
     "satisfied": "Satisfecho",
     "timeLeft": "quedan {{time}}",
     "breakRequiredNow": "Descanso requerido ahora",

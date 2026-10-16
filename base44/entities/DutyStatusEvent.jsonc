@@ -84,6 +84,17 @@
         }
       }
     },
+    "proposal_id": {
+      "type": "string",
+      "description": "Client-generated identifier of the AI proposal that created this event. Idempotency key: re-applying the same proposal skips insertion instead of creating duplicate events. Metadata only \u2014 never affects timeline resolution or HOS."
+    },
+    "review_notes": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      },
+      "description": "Non-blocking review warnings that were unresolved when this event was saved (e.g. timeline gap, unverified rest history). Display-only: shown on the log so the driver can correct them later. Never affects timeline resolution or HOS."
+    },
     "original_event_id": {
       "type": "string"
     },

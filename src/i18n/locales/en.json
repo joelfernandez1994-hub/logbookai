@@ -68,7 +68,7 @@
     "expiresAt": "expires {{time}}",
     "elevenHourLimit": "11-hr limit",
     "sinceTime": "since {{time}}",
-    "unavailable": "Unavailable until timeline is valid",
+    "unavailable": "HOS unavailable—review timeline",
     "satisfied": "Satisfied",
     "timeLeft": "{{time}} left",
     "breakRequiredNow": "Break required now",
