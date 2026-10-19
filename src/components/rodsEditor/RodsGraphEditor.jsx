@@ -13,7 +13,7 @@ import ProposedChangeDialog from './ProposedChangeDialog';
 import TimeBubble from './TimeBubble';
 import RodsGrid from '@/components/RodsGrid';
 import { Button } from '@/components/ui/button';
-import { Pencil, Eye, ShieldCheck, GripVertical, ZoomIn, Maximize2 } from 'lucide-react';
+import { Pencil, Eye, ShieldCheck, GripVertical, ZoomIn, Maximize2, AlertTriangle, RefreshCw } from 'lucide-react';
 
 // Explicit "zoom in for precise edits" window — the default is always the
 // full day (undefined/null zoomHours); tapping Zoom switches to this many
@@ -25,6 +25,7 @@ const STATUS_COLORS = {
   OFF_DUTY: '#64748b', SLEEPER_BERTH: '#7c3aed', DRIVING: '#2563eb', ON_DUTY: '#ea580c',
 };
 const STATUS_LABELS = { OFF_DUTY: 'Off', SLEEPER_BERTH: 'Sleeper', DRIVING: 'Drive', ON_DUTY: 'On' };
+const hourLabel = (h) => (h === 0 || h === 24) ? '12A' : h === 12 ? '12P' : String(h < 12 ? h : h - 12);
 // TOP_PAD/ROW_H are presentation-only pixel dimensions (not timeline/event
 // math) — ROW_H raised from 52 so the four duty-status rows have more
 // visual breathing room on a phone-width graph, closer to a real paper
@@ -47,30 +48,49 @@ const C = {
 export default function RodsGraphEditor({
   events = [], dateStr, timezone = 'America/Chicago', readOnly = false,
   carrier, equipment, profile, certifications = [], reload,
+  loading = false, error: loadError = null,
 }) {
   const { t } = useTranslation();
   const tz = timezone;
   const cycleType = carrier?.hos_cycle || '70_8';
 
-  const grid = useMemo(() => getDailyGrid(events, dateStr, tz), [events, dateStr, tz]);
-  const dayStartMs = grid.dayStart.getTime();
-  const dayEndMs = grid.dayEnd.getTime();
+  // A render failure (bad legacy timestamps, clock skew, ...) must never blank
+  // the editor or let a driver save over entries they cannot see: capture the
+  // error, show it with a Retry, and block the edit path while it stands.
+  const gridRes = useMemo(() => {
+    try { return { grid: getDailyGrid(events, dateStr, tz), error: null }; }
+    catch (e) { return { grid: null, error: e?.message || 'Failed to render the log timeline.' }; }
+  }, [events, dateStr, tz]);
+  const grid = gridRes.grid;
+  const gridError = gridRes.error;
+  const dayStartMs = grid ? grid.dayStart.getTime() : 0;
+  const dayEndMs = grid ? grid.dayEnd.getTime() : 0;
 
-  const dayEvents = useMemo(() => events.filter((e) => {
-    if (!e.start_timestamp) return false;
-    const es = new Date(e.start_timestamp).getTime();
-    const ee = e.end_timestamp ? new Date(e.end_timestamp).getTime() : dayEndMs;
-    return ee > dayStartMs && es < dayEndMs;
-  }).map((e) => e.end_timestamp ? e : { ...e, end_timestamp: new Date(dayEndMs).toISOString() }),
-  [events, dayStartMs, dayEndMs]);
+  const dayEvents = useMemo(() => {
+    if (!grid) return [];
+    return events.filter((e) => {
+      if (!e.start_timestamp) return false;
+      const es = new Date(e.start_timestamp).getTime();
+      const ee = e.end_timestamp ? new Date(e.end_timestamp).getTime() : dayEndMs;
+      return ee > dayStartMs && es < dayEndMs;
+    }).map((e) => e.end_timestamp ? e : { ...e, end_timestamp: new Date(dayEndMs).toISOString() });
+  }, [events, grid, dayStartMs, dayEndMs]);
 
-  const daySegs = useMemo(() => ROW_ORDER.flatMap((status) =>
-    grid.rows[status].map((s) => ({
-      id: s.id, status, startMs: s.start.getTime(), endMs: s.end.getTime(),
-      startHour: s.startHour, endHour: s.endHour,
-    }))
-  ).sort((a, b) => a.startMs - b.startMs), [grid]);
-  const totals = grid.totals;
+  const daySegs = useMemo(() => {
+    if (!grid) return [];
+    return ROW_ORDER.flatMap((status) =>
+      grid.rows[status].map((s) => ({
+        id: s.id, status, startMs: s.start.getTime(), endMs: s.end.getTime(),
+        startHour: s.startHour, endHour: s.endHour,
+      }))
+    ).sort((a, b) => a.startMs - b.startMs);
+  }, [grid]);
+  const totals = grid ? grid.totals : {};
+
+  // Edit/write paths are blocked while data is loading, while the load
+  // failed, and while the graph failed to render — a blank editor can never
+  // stage a change that would overwrite entries it does not show.
+  const blocked = !!loading || !!loadError || !!gridError;
 
   const [mode, setMode] = useState('view');
   const [zoomHours, setZoomHours] = useState(null); // null = full day (default)
@@ -79,6 +99,7 @@ export default function RodsGraphEditor({
   const [bubble, setBubble] = useState(null);
   const [sheetValue, setSheetValue] = useState(null);
   const [proposed, setProposed] = useState(null);
+  const [applyError, setApplyError] = useState(null);
 
   const scrollRef = useRef(null);
   const contentRef = useRef(null);
@@ -255,7 +276,7 @@ export default function RodsGraphEditor({
 
   // ---- review -> proposed change ----
   const review = () => {
-    const sv = sheetValue; if (!sv) return;
+    const sv = sheetValue; if (!sv || !grid || blocked) return;
     const newEvent = {
       log_date: dateStr,
       start_timestamp: new Date(sv.startMs).toISOString(),
@@ -280,19 +301,28 @@ export default function RodsGraphEditor({
   };
 
   const applyProposed = async () => {
-    const p = proposed; if (!p) return;
+    const p = proposed; if (!p || blocked) return;
     const editedBy = profile?.legal_name || '';
     // Route through the canonical writer: applies deletes/updates/creates in
     // order, preserves EventVersion audit snapshots for certified-day edits,
     // and invalidates the active Certification for every affected log_date.
-    await applyTimelineOps(p.ops, events, {
-      editedBy,
-      reason: 'Graph edit',
-      carrierName: carrier?.carrier_name || '',
-      createVersions: true,
-    });
-    setProposed(null); setSheetValue(null); setDraft(null);
-    reload && reload();
+    try {
+      await applyTimelineOps(p.ops, events, {
+        editedBy,
+        reason: 'Graph edit',
+        carrierName: carrier?.carrier_name || '',
+        createVersions: true,
+      });
+      setApplyError(null);
+      setProposed(null); setSheetValue(null); setDraft(null);
+      reload && reload();
+    } catch (e) {
+      // Save failed: the log is unchanged. Keep the driver's staged edit
+      // (sheetValue) intact, close the review, and surface the error with a
+      // Retry that re-runs the review from the staged edit.
+      setApplyError(e?.message || 'Save failed — your log is unchanged.');
+      setProposed(null);
+    }
   };
 
   const sheetStartHour = sheetValue ? (sheetValue.startMs - dayStartMs) / 3600000 : 0;
@@ -311,7 +341,7 @@ export default function RodsGraphEditor({
         ) : (
           <div className="flex gap-1.5">
             <Button size="sm" variant={editMode ? 'secondary' : 'outline'} onClick={() => setMode('view')}><Eye className="w-3.5 h-3.5 mr-1" />{t('rodsEditor.view')}</Button>
-            <Button size="sm" variant={editMode ? 'default' : 'outline'} onClick={() => setMode('edit')}><Pencil className="w-3.5 h-3.5 mr-1" />{t('rodsEditor.editLogGraph')}</Button>
+            <Button size="sm" variant={editMode ? 'default' : 'outline'} disabled={blocked} onClick={() => setMode('edit')}><Pencil className="w-3.5 h-3.5 mr-1" />{t('rodsEditor.editLogGraph')}</Button>
           </div>
         )}
         {editMode ? (
@@ -341,6 +371,25 @@ export default function RodsGraphEditor({
         </div>
       )}
 
+      {loading && (
+        <div data-testid="editor-loading" className="rounded-lg border border-border bg-accent text-xs text-muted-foreground px-3 py-2 mb-2">
+          Loading log data…
+        </div>
+      )}
+      {(loadError || gridError || applyError) && (
+        <div data-testid="editor-error-banner" className="flex items-start gap-2 rounded-lg border border-error/50 bg-error-surface text-error-surface-foreground text-xs px-3 py-2 mb-2">
+          <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0 text-error" />
+          <span className="flex-1">{applyError || loadError || gridError}</span>
+          <Button size="sm" variant="outline" data-testid="editor-retry"
+            onClick={() => {
+              if (applyError) review();
+              else { setApplyError(null); reload && reload(); }
+            }}>
+            <RefreshCw className="w-3.5 h-3.5 mr-1" /> Retry
+          </Button>
+        </div>
+      )}
+
       {/* Graph: view-mode renders the shared canonical RodsGrid (identical to
           Today / Logs / Inspection) so the read-only timeline never drifts.
           Edit-mode renders the interactive HTML grid below — the only place
@@ -351,8 +400,54 @@ export default function RodsGraphEditor({
       ) : (
       <div ref={scrollRef} className={`rounded-lg border border-border bg-graph ${zoomed ? 'overflow-x-auto overflow-y-hidden touch-pan-x graph-scroll' : 'overflow-hidden'}`}
         style={zoomed ? { touchAction: 'pan-x' } : undefined}>
-        <div ref={contentRef} style={{ width: contentW, position: 'relative', height: TOP_PAD + ROW_H * 4 + 6 }}>
-...
+        <div ref={contentRef} data-testid="rods-edit-grid"
+          onPointerMove={onPointerMove} onPointerUp={onPointerUp} onPointerCancel={onPointerUp}
+          style={{ width: contentW, position: 'relative', height: TOP_PAD + ROW_H * 4 + 6 }}>
+          {/* hour ruler labels */}
+          {hourLabels.map((h) => (
+            <div key={`lab${h}`} className="absolute pointer-events-none text-[9px] tabular-nums select-none"
+              style={{ left: x(h), top: 6, transform: 'translateX(-50%)', color: C.labels }}>
+              {hourLabel(h)}
+            </div>
+          ))}
+          {/* vertical hour grid lines across all four rows */}
+          {hourLabels.map((h) => (
+            <div key={`vl${h}`} className="absolute pointer-events-none"
+              style={{ left: x(h), top: TOP_PAD, width: 1, height: ROW_H * 4, background: C.gridMid }} />
+          ))}
+          {/* the four duty-status rows */}
+          {ROW_ORDER.map((status, i) => (
+            <div key={status} data-testid={`rods-row-${status}`}
+              onPointerDown={(e) => onPointerDownRow(e, status)}
+              className="absolute select-none"
+              style={{ left: LEFT_W, top: rowTop(i), width: graphW, height: ROW_H, touchAction: 'none', cursor: 'crosshair', background: i % 2 ? C.bgAlt : 'transparent', borderTop: `1px solid ${C.rowBorder}` }}>
+              {/* saved segments for this status */}
+              {daySegs.filter((s) => s.status === status).map((s) => (
+                <div key={s.id} data-testid={`edit-seg-${s.id}`} className="absolute rounded-sm pointer-events-none"
+                  style={{ left: hourToX(s.startHour, pxPerHour), width: Math.max(2, hourToX(s.endHour - s.startHour, pxPerHour)), top: ROW_H / 2 - 7, height: 14, background: STATUS_COLORS[status], opacity: sheetValue?.eventId === s.id ? 0.45 : 1 }} />
+              ))}
+              {/* live draft preview while drawing (nothing staged to save) */}
+              {draft && draft.status === status && (
+                <div data-testid="draft-preview" className="absolute rounded-sm pointer-events-none"
+                  style={{ left: hourToX(Math.min(draft.startHour, draft.endHour), pxPerHour), width: Math.max(2, hourToX(Math.abs(draft.endHour - draft.startHour), pxPerHour)), top: ROW_H / 2 - 9, height: 18, background: STATUS_COLORS[status], opacity: 0.5 }} />
+              )}
+              {/* drag handles on the selected (editing) segment */}
+              {sheetValue && !sheetValue.isNew && sheetValue.status === status &&
+                ['start', 'end'].map((which) => {
+                  const hr = which === 'start' ? sheetStartHour : sheetEndHour;
+                  return (
+                    <div key={which} data-testid={`seg-handle-${which}`}
+                      onPointerDown={(e) => onHandleDown(e, which)}
+                      className="absolute z-10 rounded-full flex items-center justify-center"
+                      style={{ left: hourToX(hr, pxPerHour) - 8, top: ROW_H / 2 - 13, width: 16, height: 26, background: C.gripBg, color: C.gripFg, touchAction: 'none', cursor: 'ew-resize' }}>
+                      <GripVertical className="w-3 h-3" />
+                    </div>
+                  );
+                })}
+            </div>
+          ))}
+          {/* bottom border of the last row */}
+          <div className="absolute pointer-events-none" style={{ left: LEFT_W, top: TOP_PAD + ROW_H * 4, width: graphW, height: 1, background: C.rowBorder }} />
         </div>
       </div>
       )}

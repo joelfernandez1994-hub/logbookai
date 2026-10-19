@@ -33,7 +33,7 @@ const isTimelineNote = (n) => !!n && (TIMELINE_NOTE_TYPES.has(n.type) || n.title
 
 export default function Logs() {
   const { t } = useTranslation();
-  const { profile, carrier, equipment, events, loading, reload } = useDriverData(9);
+  const { profile, carrier, equipment, events, loading, error, reload } = useDriverData(9);
   const navigate = useNavigate();
   const location = useLocation();
   const [selectedDate, setSelectedDate] = useState(() => new Date());
@@ -244,7 +244,7 @@ export default function Logs() {
           presentation only, same card/border treatment on larger screens. */}
       <div className="rounded-xl border border-border bg-card p-2 sm:p-3 mb-3">
         <TimezoneIndicator tz={tz} className="mb-2" />
-        <RodsGraphEditor events={events} dateStr={dateStr} timezone={tz} carrier={carrier} equipment={equipment} profile={profile} certifications={certifications} reload={reload} />
+        <RodsGraphEditor events={events} dateStr={dateStr} timezone={tz} carrier={carrier} equipment={equipment} profile={profile} certifications={certifications} reload={reload} loading={loading} error={error} />
       </div>
 
       <div className="rounded-xl border border-border bg-card p-3 mb-3 text-sm">
