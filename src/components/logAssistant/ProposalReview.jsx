@@ -1,10 +1,12 @@
 import { useMemo, useState, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import { statedMileageWarnings } from '@/lib/statedMileage';
 import { validateProposal, hasBlocking, recommendBreakInsertion, buildPreTripEvent, computeProposalTotals, deriveHosDisplay, inspectProposalRoutes, addRouteWarning } from '@/lib/proposalValidation';
 import { reconstructDrivingDurations } from '@/lib/drivingDurationReconstruction';
 import { existingOutsideReplacedDay } from '@/lib/aiLayer';
 import { highestSeverity, fmtClockShort } from '@/lib/logAssistant';
 import { dateKeyInTz } from '@/lib/hosEngine';
+import { formatLogDate } from '@/lib/timezones';
 import LogGraph from '@/components/LogGraph';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -26,7 +28,8 @@ function fmtHoursMinutes(hours) {
   return m === 0 ? `${h} hr` : `${h} hr ${m} min`;
 }
 
-export default function ProposalReview({ existing, proposed, cycleType, tz, onApply, onApplyReplace, onCancel, interpretation, clarifications, onResolveClarification, routeWarning, reconstructionConflicts = [], intent, targetDate, explicitGuard, narrative, provenance, enteredPriorHistory }) {
+export default function ProposalReview({ existing, proposed, cycleType, tz, onApply, onApplyReplace, onCancel, interpretation, clarifications, onResolveClarification, routeWarning, reconstructionConflicts = [], intent, targetDate, selectedDate, replacesExisting, explicitGuard, narrative, provenance, enteredPriorHistory }) {
+  const { t } = useTranslation();
   const isReplaceDay = intent === 'replace_day';
   // A replace_day proposal reconstructs the WHOLE target day from the
   // driver's narrative alone — the day's own pre-existing records (including
@@ -235,12 +238,28 @@ export default function ProposalReview({ existing, proposed, cycleType, tz, onAp
         <div className="text-sm font-semibold text-card-foreground">PROPOSED CHANGES — review before saving</div>
         <div className="text-xs text-muted-foreground">Not yet logged</div>
       </div>
+      {selectedDate && (
+        <div data-testid="proposal-editing-log-date" className="text-sm font-semibold text-card-foreground mb-2">
+          {t('logs.editingLog', { date: formatLogDate(selectedDate) })}
+        </div>
+      )}
       <TimezoneIndicator tz={tz} className="mb-2" />
       {interpretation && <div className="text-sm text-muted-foreground mb-2">{interpretation}</div>}
       {isReplaceDay && (
         <div className="rounded-lg border border-error/40 bg-error-surface p-2 mb-2 text-xs text-error-surface-foreground flex gap-1.5">
           <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
           <div>This will <span className="font-semibold">replace the existing log timeline for {targetDate || 'that day'}</span>. Everything currently logged for that day is removed and replaced with the events below. This cannot be undone.</div>
+        {Array.isArray(replacesExisting) && replacesExisting.length > 0 && (
+          <ul className="list-disc ml-4 mt-1">
+            {replacesExisting.map((d, i) => <li key={i}>{d}</li>)}
+          </ul>
+        )}
+        </div>
+      )}
+      {selectedDate && proposedDate && proposedDate !== selectedDate && (
+        <div data-testid="date-change-notice" className="rounded-lg border border-warning/50 bg-warning-surface p-2 mb-2 text-xs text-warning-surface-foreground flex gap-1.5">
+          <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
+          <div>Date change: this proposal targets <span className="font-semibold">{formatLogDate(proposedDate)}</span>, while you are editing <span className="font-semibold">{formatLogDate(selectedDate)}</span>. Please confirm the date before applying.</div>
         </div>
       )}
 

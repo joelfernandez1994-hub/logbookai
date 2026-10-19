@@ -18,9 +18,27 @@
 // Recognized (English + Spanish):
 //   "<status> all day in <City, State>"    → OFF_DUTY/SLEEPER_BERTH 12AM→12AM, 24h, 0 mi
 //   "<status> todo el día en <City, State>" → same
+//   "log (the) entire day off duty"        → full day, location optional
+//   "off duty entire day"                  → same
 //   "off duty all night in <City, State>"  → with an explicit time range: that exact range
 //                                             without a range: ask for the start/end times
 //                                             (never invent a 24h day)
+//
+// SELECTED LOG DATE: when the caller passes `selectedDate` (the log day the
+// driver selected in Logs), the proposal targets THAT day — never silently
+// today. Without it the rule targets today, as before.
+//
+// FULL-DAY COVERAGE (deterministic, when `existingEvents` is provided):
+//   - Day already covered 12AM→12AM entirely by Off Duty/Sleeper → "Already
+//     logged" (no proposed events, no duplicate).
+//   - Day has conflicting/partial entries → intent 'replace_day' with the
+//     affected entries listed for explicit driver confirmation (the replace-day
+//     review card requires the labeled Replace Day & Apply). Ordinary
+//     additions NEVER replace anything — only this explicitly requested
+//     full-day operation may.
+//
+// TODAY CAP: a full-day request for TODAY records only completed time
+// (midnight → now). Future hours are never saved as completed activity.
 //
 // The produced proposed events carry `stationary: true` so the movement guard
 // (narrativeMovements.describedMovementCoverage) emits zero movement warnings
@@ -48,6 +66,16 @@ export function describesTravel(text) {
 }
 
 const FULL_DAY_RE = /\b(?:off[\s-]?duty|sleeper(?:\s+berth)?|fuera\s+de\s+servicio|litera|dormitorio)\b\s+(?:all\s+day|todo\s+el\s+d[ií]a)\b\s+(?:in|en)\s+(.+)/i;
+
+// Bare full-day (location optional/absent): "log entire day off duty",
+// "off duty entire day", "todo el día fuera de servicio", ...
+const BARE_FULL_DAY_RE = new RegExp(
+  '(?:\\b(?:log|record|registrar)\\s+)?\\b(?:the\\s+|my\\s+|el\\s+)?(?:entire|whole|full)\\s+day\\s+(?:as\\s+|como\\s+)?(?:off[\\s-]?duty|sleeper(?:\\s+berth)?|fuera\\s+de\\s+servicio|litera|dormitorio)\\b' +
+  '|\\b(?:off[\\s-]?duty|sleeper(?:\\s+berth)?|fuera\\s+de\\s+servicio|litera|dormitorio)\\b\\s+(?:for\\s+|todo\\s+)?(?:the\\s+|el\\s+)?(?:entire|whole|full)\\s+day\\b' +
+  '|todo\\s+el\\s+d[ií]a\\s+(?:fuera\\s+de\\s+servicio|en\\s+litera|en\\s+dormitorio)',
+  'i'
+);
+
 const ALL_NIGHT_RE = /\b(?:off[\s-]?duty|fuera\s+de\s+servicio)\b\s+(?:all\s+night|toda\s+la\s+noche)\b\s+(?:in|en)\s+(.+)/i;
 
 // Two clock times joined by a connector ("10 PM to 6 AM", "22:00 until 06:00").
@@ -144,12 +172,15 @@ function fmtClockLocal(iso, timezone) {
   return new Date(iso).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', timeZone: timezone });
 }
 
-function statusLabel(status) {
-  return status === 'SLEEPER_BERTH' ? 'Sleeper Berth' : 'Off Duty';
+function statusLabel(status, lang = 'en') {
+  if (status === 'SLEEPER_BERTH') return lang === 'es' ? 'Sleeper' : 'Sleeper Berth';
+  if (status === 'DRIVING') return lang === 'es' ? 'Manejo' : 'Driving';
+  if (status === 'ON_DUTY') return lang === 'es' ? 'En servicio' : 'On Duty';
+  return lang === 'es' ? 'Fuera de servicio' : 'Off Duty';
 }
 
-function stationaryEvent(status, loc, date, startIso, endIso, remark) {
-  return {
+function stationaryEvent(status, loc, date, startIso, endIso, remark, reviewNotes = null) {
+  const ev = {
     date,
     start_timestamp: startIso,
     end_timestamp: endIso,
@@ -161,8 +192,71 @@ function stationaryEvent(status, loc, date, startIso, endIso, remark) {
     field_provenance: { start_time: 'explicit', end_time: 'explicit', status: 'explicit', city: 'explicit', state: 'explicit' },
     stationary: true,
   };
+  if (reviewNotes?.length) ev.review_notes = reviewNotes;
+  return ev;
 }
 
+// ---------------------------------------------------------------------------
+// FULL-DAY COVERAGE ANALYSIS (deterministic) — classifies the day's EXISTING
+// timeline so a full-day request never silently duplicates or overwrites:
+//   empty    → nothing overlaps the day; a clean full-day addition is possible
+//   fullyRest → the whole day is already Off Duty/Sleeper 12AM→12AM
+//   conflict → at least one non-rest entry is recorded that day
+//   partial  → only rest entries, but the day is not covered end to end
+// ---------------------------------------------------------------------------
+const REST_STATUSES = new Set(['OFF_DUTY', 'SLEEPER_BERTH']);
+
+export function analyzeDayCoverage(existingEvents, dayStart, dayEnd, now = new Date()) {
+  const nowMs = now.getTime();
+  const segs = [];
+  for (const e of (existingEvents || [])) {
+    if (!e?.start_timestamp) continue;
+    const s = new Date(e.start_timestamp);
+    let end;
+    if (e.end_timestamp) end = new Date(e.end_timestamp);
+    else end = s.getTime() < nowMs ? new Date(nowMs) : s; // ongoing → through now
+    if (s < dayEnd && end > dayStart) {
+      segs.push({
+        event: e,
+        start: s < dayStart ? new Date(dayStart) : s,
+        end: end > dayEnd ? new Date(dayEnd) : end,
+      });
+    }
+  }
+  if (!segs.length) return { kind: 'empty', segments: segs };
+  const conflicts = segs.filter((s) => !REST_STATUSES.has(s.event.duty_status));
+  if (conflicts.length) return { kind: 'conflict', segments: segs, conflicts };
+  const sorted = [...segs].sort((a, b) => a.start - b.start);
+  let cursor = new Date(dayStart).getTime();
+  for (const s of sorted) {
+    if (s.start.getTime() > cursor + 1000) return { kind: 'partial', segments: segs };
+    if (s.end.getTime() > cursor) cursor = s.end.getTime();
+  }
+  if (cursor >= dayEnd.getTime() - 1000) return { kind: 'fullyRest', segments: segs };
+  return { kind: 'partial', segments: segs };
+}
+
+// Does the EXISTING timeline's rest coverage already contain [startMs, endMs)?
+export function restCoversRange(existingEvents, startMs, endMs, now = new Date()) {
+  const nowMs = now.getTime();
+  const ivs = [];
+  for (const e of (existingEvents || [])) {
+    if (!e?.start_timestamp || !REST_STATUSES.has(e.duty_status)) continue;
+    const s = new Date(e.start_timestamp).getTime();
+    const end = e.end_timestamp ? new Date(e.end_timestamp).getTime() : (s < nowMs ? nowMs : s);
+    if (s < endMs && end > startMs) ivs.push([Math.max(s, startMs), Math.min(end, endMs)]);
+  }
+  ivs.sort((a, b) => a[0] - b[0]);
+  let cursor = startMs;
+  for (const [a, b] of ivs) {
+    if (a > cursor + 1000) return false;
+    if (b > cursor) cursor = b;
+  }
+  return cursor >= endMs - 1000;
+}
+
+// Existing full-day builder — kept exactly as before (intent 'replace_day',
+// no coverage analysis) for callers that do not pass existingEvents.
 function buildFullDayProposal(status, loc, targetDate, timezone) {
   const dayStart = startOfDayInTz(new Date(targetDate + 'T12:00:00Z'), timezone);
   const dayEnd = nextLocalMidnightInTz(targetDate, timezone);
@@ -180,13 +274,101 @@ function buildFullDayProposal(status, loc, targetDate, timezone) {
   };
 }
 
+// Unified full-day builder WITH coverage analysis (existingEvents provided).
+function buildFullDay(status, loc, targetDate, timezone, { existingEvents, lang = 'en', now = new Date() }) {
+  const dayStart = startOfDayInTz(new Date(targetDate + 'T12:00:00Z'), timezone);
+  const dayEnd = nextLocalMidnightInTz(targetDate, timezone);
+  const isToday = targetDate === dateKeyInTz(now, timezone);
+  const where = loc.city ? (lang === 'es' ? ` en ${loc.city}, ${loc.state}` : ` in ${loc.city}, ${loc.state}`) : '';
+  const label = statusLabel(status, lang);
+
+  // TODAY CAP: a full-day request for today records only completed time.
+  let endIso = dayEnd.toISOString();
+  let cappedNote = null;
+  if (isToday) {
+    if (now.getTime() <= dayStart.getTime()) {
+      return {
+        matched: true, already_logged: false, intent: 'clarification', target_date: targetDate,
+        interpretation: lang === 'es'
+          ? 'El día apenas comienza; todavía no hay tiempo completado que registrar. Indica las horas exactas (p. ej. de 10 PM a 6 AM).'
+          : 'Today has only just started, so there is no completed time to record yet. Tell me the exact times instead (e.g. 10 PM to 6 AM).',
+        requires_clarification: true,
+        clarification_question: lang === 'es'
+          ? '¿A qué horas estuvo fuera de servicio hoy?'
+          : 'What times were you off duty today?',
+        proposed_events: [],
+        stationary: true,
+      };
+    }
+    endIso = new Date(now.getTime()).toISOString();
+    cappedNote = lang === 'es'
+      ? `Registrado hasta las ${fmtClockLocal(endIso, timezone)}; el resto del día aún no está registrado.`
+      : `Recorded through ${fmtClockLocal(endIso, timezone)} — the rest of today is not yet logged as completed activity.`;
+  }
+
+  const coverage = analyzeDayCoverage(existingEvents, dayStart, dayEnd, now);
+
+  if (coverage.kind === 'fullyRest') {
+    return {
+      matched: true, already_logged: true, intent: 'already_logged', target_date: targetDate,
+      interpretation: lang === 'es'
+        ? `Ya registrado: ${targetDate} ya está anotado como ${label} durante todo el día. No se creó ningún duplicado.`
+        : `Already logged — ${targetDate} is already recorded as ${label} for the entire day. No duplicate was created.`,
+      requires_clarification: false, clarification_question: '',
+      proposed_events: [],
+      stationary: true,
+    };
+  }
+
+  if (coverage.kind === 'conflict' || coverage.kind === 'partial') {
+    const affected = coverage.segments.map((s) =>
+      `${statusLabel(s.event.duty_status, lang)} ${fmtClockLocal(s.start.toISOString(), timezone)}–${fmtClockLocal(s.end.toISOString(), timezone)}${s.event.city ? ` (${s.event.city})` : ''}`);
+    const ev = stationaryEvent(status, loc, targetDate, dayStart.toISOString(), endIso, `${statusLabel(status)} all day`, cappedNote ? [{ title: 'PARTIAL DAY (TODAY)', message: cappedNote }] : null);
+    return {
+      matched: true, intent: 'replace_day', target_date: targetDate,
+      interpretation: (lang === 'es'
+        ? `Esto registrará ${label} durante todo el día${where}, reemplazando lo anotado ese día: ${affected.join('; ')}`
+        : `This will log ${label} for the entire day${where}, replacing the entries currently recorded for that day: ${affected.join('; ')}`)
+        + (cappedNote ? ` ${cappedNote}` : ''),
+      requires_clarification: false, clarification_question: '',
+      proposed_events: [ev],
+      replaces_existing: affected,
+      stationary: true,
+    };
+  }
+
+  // Empty day → a clean full-day addition. Ordinary additions (time ranges,
+  // single events) never reach this full-day replace logic; they keep the
+  // existing entries and leave gaps untouched.
+  const ev = stationaryEvent(status, loc, targetDate, dayStart.toISOString(), endIso, `${statusLabel(status)} all day`, cappedNote ? [{ title: 'PARTIAL DAY (TODAY)', message: cappedNote }] : null);
+  return {
+    matched: true, intent: 'add_events', target_date: targetDate,
+    interpretation: (lang === 'es'
+      ? `Esto registrará ${label} durante todo el día${where}`
+      : `This will log ${label} for the entire day${where}`)
+      + (isToday ? (lang === 'es'
+          ? `, registrado hasta las ${fmtClockLocal(endIso, timezone)} — el resto del día no se guarda como actividad completada`
+          : `, recorded through ${fmtClockLocal(endIso, timezone)} — the rest of today is not saved as completed activity`)
+        : (lang === 'es' ? ' — 0 millas, sin manejo.' : ' — 0 miles, no driving.')),
+    requires_clarification: false, clarification_question: '',
+    proposed_events: [ev],
+    stationary: true,
+  };
+}
+
 /**
  * Deterministically parse a full-day / all-night stationary status prompt.
+ * Options:
+ *   selectedDate   — the log day selected in Logs (YYYY-MM-DD). The proposal
+ *                    targets THIS day, never silently today. Omitted → today.
+ *   existingEvents — the driver's logged events; enables "Already logged" and
+ *                    conflict-preview behavior. Omitted → legacy behavior.
+ *   lang           — 'en' | 'es' for interpretation strings.
  * Returns { matched: true, ...proposal } on a match, or { matched: false } when
  * the prompt is not a stationary full-day/night status (so the caller falls
  * through to the normal AI + validation path).
  */
-export function parseStationaryDay(text, { now = new Date(), timezone = 'America/Chicago' } = {}) {
+export function parseStationaryDay(text, { now = new Date(), timezone = 'America/Chicago', selectedDate = null, existingEvents = null, lang = 'en' } = {}) {
   const t = String(text || '').trim();
   if (!t) return { matched: false };
   // Never suppress genuine movement — a travel narrative goes through normal
@@ -194,7 +376,7 @@ export function parseStationaryDay(text, { now = new Date(), timezone = 'America
   if (TRAVEL_RE.test(t)) return { matched: false };
 
   const nowDate = now instanceof Date ? now : new Date(now);
-  const targetDate = dateKeyInTz(nowDate, timezone);
+  const targetDate = selectedDate || dateKeyInTz(nowDate, timezone);
 
   // ---- "<status> all day in <City, State>" (EN + ES) ----
   const fullDay = t.match(FULL_DAY_RE);
@@ -203,6 +385,16 @@ export function parseStationaryDay(text, { now = new Date(), timezone = 'America
     if (!status) return { matched: false };
     const loc = parseCityState(fullDay[1]);
     if (!loc) return { matched: false };
+    if (existingEvents) return buildFullDay(status, loc, targetDate, timezone, { existingEvents, lang, now: nowDate });
+    return buildFullDayProposal(status, loc, targetDate, timezone);
+  }
+
+  // ---- bare full-day, location optional: "log entire day off duty" ----
+  if (BARE_FULL_DAY_RE.test(t)) {
+    const status = statusFromCue(t);
+    if (!status) return { matched: false };
+    const loc = { city: '', state: '' };
+    if (existingEvents) return buildFullDay(status, loc, targetDate, timezone, { existingEvents, lang, now: nowDate });
     return buildFullDayProposal(status, loc, targetDate, timezone);
   }
 

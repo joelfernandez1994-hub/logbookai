@@ -259,6 +259,7 @@ INTENT (choose exactly one):
 
 REFERENCE RESOLUTION:
 - Resolve "earlier", "yesterday", "today", "my fuel stop", "my pre-trip", "the 4 PM stop", "my last stop", "the second fuel stop", etc. using the numbered RECENT ACTUAL EVENTS list (each line is prefixed "[N] ...") and the provided TODAY/NOW. target_date is the calendar date (YYYY-MM-DD) the described activity falls on.
+- SELECTED LOG DATE: when the context provides one, the driver opened the assistant from a SPECIFIC log day in the Logs screen. When the driver's request does not EXPLICITLY name a different date, target_date MUST be the SELECTED LOG DATE, and every event with an unstated date falls on it. Only when the driver explicitly names another date ("yesterday", "August 20") may you use it — and say in summary that the proposal targets that other date instead of the one being edited. NEVER silently target a date the driver did not select or state; when no SELECTED LOG DATE is provided and the driver's words give no date, target TODAY.
 - For edit_events/delete_events, the index N from that same "[N] ..." prefix is EXACTLY what edit_target_index / delete_target_indices expects — never invent an index outside the numbers actually shown, and never guess an index when more than one event could plausibly match (use -1 / omit it and ask instead).
 - If a referenced event is ambiguous or cannot be safely identified, set requires_clarification=true and ask in clarification_question, but still return a best-guess proposal when possible.
 
@@ -296,6 +297,7 @@ function buildInterpretUser(input, ctx) {
   return `DRIVER: ${ctx.userName}
 CARRIER: ${ctx.carrierName} | Cycle ${ctx.cycle} | Home terminal TZ: ${ctx.timezone}
 TODAY (local): ${ctx.todayLocal} | NOW (ISO UTC): ${ctx.nowIso}
+SELECTED LOG DATE: ${ctx.selectedLogDate || '(none — the driver opened the assistant without a specific log day; default to TODAY only when the request names no date)'}
 CURRENT LOCATION: ${ctx.currentLocation || '(unknown)'}
 CURRENT EQUIPMENT: tractor ${ctx.tractor || '(none)'} / trailer ${ctx.trailer || '(none)'}
 
@@ -575,6 +577,7 @@ export default async function(req) {
       origin: body.origin || '',
       destination: body.destination || '',
       requestedArrival: body.requestedArrival || '',
+      selectedLogDate: body.selected_date || '',
     };
 
     // Route through Base44's own managed LLM integration — same mechanism

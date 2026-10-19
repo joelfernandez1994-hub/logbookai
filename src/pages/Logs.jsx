@@ -271,7 +271,9 @@ export default function Logs() {
         <div className="flex items-center justify-between mb-2">
           <div className="font-semibold text-sm text-card-foreground">{t('logs.events')}</div>
           <div className="flex gap-1">
-            <Button size="sm" variant="outline" onClick={() => navigate('/log-assistant', { state: { returnTo: '/logs' } })}><Bot className="w-3.5 h-3.5 mr-1" /> {t('logs.assistant')}</Button>
+            {/* The selected date travels with the driver (?date= survives
+                refresh; returnTo sends them back to THIS log day). */}
+            <Button size="sm" variant="outline" onClick={() => navigate(`/log-assistant?date=${dateStr}`, { state: { returnTo: `/logs?date=${dateStr}` } })}><Bot className="w-3.5 h-3.5 mr-1" /> {t('logs.assistant')}</Button>
             <Button size="sm" variant="outline" onClick={() => { setPrefill(null); setAdding(true); }}><Plus className="w-3.5 h-3.5 mr-1" /> {t('logs.addEvent')}</Button>
           </div>
         </div>

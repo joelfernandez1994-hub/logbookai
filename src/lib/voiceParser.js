@@ -13,6 +13,7 @@
 // ============================================================================
 
 import { resolveEventReference, describeEvent, findEventByCity } from './eventReference';
+import { dateKeyInTz } from './hosEngine';
 
 const H = 3600000;
 const MIN = 60000;
@@ -431,8 +432,16 @@ function detectEdit(text) {
 // event. Returns { handled, events, clarifications, ambiguousFields, fallback }.
 // ---------------------------------------------------------------------------
 export function parseVoiceCommand(text, ctx = {}) {
-  const refDate = ctx.now instanceof Date ? ctx.now : new Date();
   const tz = ctx.timezone || 'America/Chicago';
+  // SELECTED-DATE CONTEXT: when the driver is editing a specific past/current
+  // log day from Logs, plain clock times ("off duty at 10 PM", "drove 8 to
+  // noon") land on THAT calendar day — never silently on today. Relative
+  // AM/PM ambiguity is still flagged for review as usual.
+  const nowDate = ctx.now instanceof Date ? ctx.now : new Date();
+  const selectedKey = ctx.selectedDate || '';
+  const refDate = selectedKey && selectedKey !== dateKeyInTz(nowDate, tz)
+    ? new Date(`${selectedKey}T12:00:00Z`)
+    : nowDate;
   const raw = (text || '').trim();
   if (!raw) return { handled: false, reason: 'empty' };
 

@@ -240,6 +240,7 @@
     "returningTomorrow": "Returning tomorrow",
     "events": "Events",
     "assistant": "Log with AI",
+    "editingLog": "Editing log: {{date}}",
     "addEvent": "Add Event",
     "editEvent": "Edit Event",
     "noEventsRecorded": "No events recorded.",

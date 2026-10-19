@@ -1,9 +1,11 @@
 import { useState, useMemo, useEffect, useRef } from 'react';
+import { useLocation } from 'react-router-dom';
 import { useDriverData } from '@/hooks/useDriverData';
 import { base44 } from '@/api/base44Client';
 import { getAppSettings, getAIUsage } from '@/lib/driverData';
 import { computeHOS, fmtDur, dateKeyInTz } from '@/lib/hosEngine';
 import { whatCanIDo, earliestLegalEta } from '@/lib/logAssistant';
+import { formatLogDate } from '@/lib/timezones';
 import { addRouteWarning, enrichProposalMileage, fetchRoute, truckEtaHours, DEFAULT_SPEED_PROFILE } from '@/lib/proposalValidation';
 import { reconstructDrivingDurations } from '@/lib/drivingDurationReconstruction';
 import { saveProposalMiles } from '@/lib/tripSync';
@@ -21,6 +23,7 @@ import WhatCanIDoPanel from '@/components/logAssistant/WhatCanIDoPanel';
 import MakeItLegal from '@/components/logAssistant/MakeItLegal';
 import Header from '@/components/Header';
 import { Button } from '@/components/ui/button';
+import { useTranslation } from 'react-i18next';
 import { Bot, Gavel, HelpCircle, AlertTriangle } from 'lucide-react';
 
 const TABS = [
@@ -30,8 +33,16 @@ const TABS = [
 ];
 
 export default function LogAssistant() {
+  const { t } = useTranslation();
   const { profile, carrier, equipment, events, loading, reload } = useDriverData();
+  const location = useLocation();
   const initialTab = new URLSearchParams(window.location.search).get('tab') || 'tell';
+  // The selected log date, passed explicitly from Logs (?date=YYYY-MM-DD in the
+  // URL — survives refresh) or via router state. Never silently guessed: when
+  // the assistant is opened directly (no date context) it defaults to today's
+  // log and the "Editing log" banner says so plainly.
+  const routeDate = new URLSearchParams(window.location.search).get('date') || location.state?.date || '';
+  const [logDate, setLogDate] = useState(routeDate);
   const [tab, setTab] = useState(['tell', 'makeLegal', 'whatCanIDo'].includes(initialTab) ? initialTab : 'tell');
   const [mlMode, setMlMode] = useState('past'); // past | future
   const [busy, setBusy] = useState(false);
@@ -64,6 +75,15 @@ export default function LogAssistant() {
     const s = await getAppSettings();
     setUsage({ used, allowance: profile?.ai_allowance_override ?? s.default_ai_allowance ?? 20 });
   })(); }, [profile]);
+  // No date in the URL/state (opened directly): once the carrier (→ logbook
+  // timezone) is loaded, target today's log. Kept in the URL so refresh and
+  // back navigation preserve it.
+  useEffect(() => { if (!logDate && carrier) setLogDate(dateKeyInTz(new Date(), tz)); }, [carrier, logDate, tz]);
+  useEffect(() => {
+    if (!logDate) return;
+    const p = new URLSearchParams(window.location.search);
+    if (p.get('date') !== logDate) { p.set('date', logDate); window.history.replaceState(null, '', `${window.location.pathname}?${p.toString()}`); }
+  }, [logDate]);
   useEffect(() => { const t = setTimeout(() => setNow(new Date()), 30000); return () => clearTimeout(t); }, [now]);
 
   const hos = useMemo(() => computeHOS(events, cycleType, tz, now, { historyComplete: true }), [events, cycleType, tz, now]);
@@ -97,7 +117,9 @@ export default function LogAssistant() {
     const warning = await addRouteWarning(reconstructed, { routingProvider: fetchRoute, speedProfile, now: new Date(), isFuture });
     setRouteWarning(warning);
     setReconstructionConflicts(reconstructionConflicts);
-    return { proposal_id: value.proposal_id || newProposalId(), ...value, proposed_events: reconstructed };
+    // The selected log date is authoritative: an AI proposal without its own
+    // explicit target date targets the day being edited, never silently today.
+    return { proposal_id: value.proposal_id || newProposalId(), ...value, target_date: value.target_date || logDate, proposed_events: reconstructed };
   };
 
   const resetResults = () => { setProposal(null); setPastResult(null); setFutureResult(null); setError(''); setRouteWarning(null); setReconstructionConflicts([]); setDeleteConfirm(null); };
@@ -158,8 +180,19 @@ export default function LogAssistant() {
     //     and falls through to the normal AI + movement validation below.
     //     Runs before the multi-event classifier so a full-day stationary
     //     status is never sent to the LLM.
-    const stat = parseStationaryDay(text, { now: new Date(), timezone: tz });
+    const stat = parseStationaryDay(text, { now: new Date(), timezone: tz, selectedDate: logDate, existingEvents: events, lang: profile?.language === 'es' ? 'es' : 'en' });
     if (stat?.matched) {
+      // "Already logged": the selected day is already covered — report it,
+      // propose nothing, create no duplicate.
+      if (stat.already_logged) {
+        setProposal({
+          intent: 'question', target_date: stat.target_date, requires_clarification: false, clarification_question: '',
+          interpretation: stat.interpretation, summary: stat.interpretation,
+          proposed_events: [], clarifications: [], location_confirmations: [],
+          refuses_fabrication: false, _deterministic: true, _stationary: true,
+        });
+        return true;
+      }
       const statEvents = (stat.proposed_events || []).map((e) => ({
         ...e,
         source: type === 'voice' ? 'voice' : 'manual',
@@ -179,6 +212,7 @@ export default function LogAssistant() {
         refuses_fabrication: false,
         original_input: text,
         location_confirmations: [],
+        replaces_existing: stat.replaces_existing || [],
         _deterministic: true,
         _stationary: true,
         proposal_id: newProposalId(),
@@ -197,7 +231,7 @@ export default function LogAssistant() {
     // can prefer continuity with a neighboring real event (tier 3 of the
     // AM/PM disambiguation) when narrative chronology alone isn't decisive,
     // and so edit-by-reference/delete commands can resolve a REAL target.
-    const det = parseVoiceCommand(text, { now: new Date(), timezone: tz, events });
+    const det = parseVoiceCommand(text, { now: new Date(), timezone: tz, events, selectedDate: logDate });
 
     // 2. DELETE-BY-REFERENCE ("delete the second fuel stop") — resolved
     //    against a real logged event; never silently guessed.
@@ -213,7 +247,9 @@ export default function LogAssistant() {
     if (det.handled) {
       const detEvents = (det.events || []).map((e) => ({
         ...e,
-        date: e.start_timestamp ? e.start_timestamp.slice(0, 10) : '',
+        // Calendar date in the LOG timezone — never a raw UTC slice, which
+        // would shift an evening event onto the wrong day.
+        date: e.start_timestamp ? dateKeyInTz(new Date(e.start_timestamp), tz) : '',
         source: type === 'voice' ? 'voice' : 'manual',
         confidence: 'high',
         ambiguous_fields: [e._ambiguous?.time && 'start_timestamp', e._ambiguous?.location && 'state', e._ambiguous?.duty_status && 'duty_status'].filter(Boolean),
@@ -226,7 +262,7 @@ export default function LogAssistant() {
       const detClarifications = [...(det.clarifications || []), ...hereClarifications];
       const prepared = await prepareProposal({
         intent: det.edit ? 'edit_events' : 'add_events',
-        target_date: detEvents[0]?.date || dateKeyInTz(new Date(), tz),
+        target_date: detEvents[0]?.date || logDate,
         requires_clarification: detClarifications.length > 0,
         clarification_question: detClarifications[0]?.question || '',
         interpretation: det.correction ? 'I understood this as a correction to an existing event:' : 'I understood:',
@@ -253,6 +289,7 @@ export default function LogAssistant() {
       const res = await base44.functions.invoke('manualLogAssistant', {
         mode, input,
         source: extra.source || 'typed',
+        selected_date: logDate || '',
         events: events.map(simplifyEvent),
         documents: extra.documents || [],
         currentLocation: extra.currentLocation || '',
@@ -327,7 +364,10 @@ export default function LogAssistant() {
     : `prop_${Date.now()}_${Math.random().toString(36).slice(2)}`);
 
   const shapeEvent = (p, isLast) => ({
-    log_date: (p.date || (p.start_timestamp ? p.start_timestamp.slice(0, 10) : dateKeyInTz(new Date(), tz))),
+    // log_date is always the calendar date of the event's own start in the LOG
+    // timezone (never a raw UTC slice — that shifts evening events), falling
+    // back to the selected log date, never silently to today.
+    log_date: (p.date || (p.start_timestamp ? dateKeyInTz(new Date(p.start_timestamp), tz) : (logDate || dateKeyInTz(new Date(), tz)))),
     start_timestamp: p.start_timestamp,
     end_timestamp: p.end_timestamp || (isLast && !p.end_timestamp ? null : p.end_timestamp),
     duty_status: p.duty_status,
@@ -578,6 +618,11 @@ export default function LogAssistant() {
   return (
     <div data-client-version="log-assistant-current-2026-08-20-v2" className="px-4 pt-6 pb-6 max-w-2xl mx-auto">
       <Header title="Log with AI" />
+      {logDate && (
+        <div data-testid="editing-log-date" className="rounded-lg border border-primary/40 bg-accent px-3 py-2 mb-3 text-sm font-semibold text-accent-foreground">
+          {t('logs.editingLog', { date: formatLogDate(logDate) })}
+        </div>
+      )}
       <p className="text-xs text-muted-foreground mb-3">LogbookAI checks the information you provide against the configured FMCSA HOS rules. LogbookAI is not an ELD. The driver remains responsible for the accuracy, completeness, and certification of the record. {remaining} of {usage.allowance} AI requests remaining this month.</p>
 
       <div className="grid grid-cols-3 gap-2 mb-3">
@@ -631,6 +676,8 @@ export default function LogAssistant() {
               clarifications={proposal.clarifications}
               intent={proposal.intent}
               targetDate={proposal.target_date}
+              selectedDate={logDate}
+              replacesExisting={proposal.replaces_existing}
               cycleType={cycleType} tz={tz}
               onApply={applyProposal}
               onApplyReplace={applyReplaceDay}

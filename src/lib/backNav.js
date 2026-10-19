@@ -26,7 +26,10 @@ const PARENT_MAP = {
 };
 
 export function isValidRoute(route) {
-  return typeof route === 'string' && VALID_ROUTES.includes(route);
+  if (typeof route !== 'string') return false;
+  // A returnTo may carry a query string (e.g. "/logs?date=2026-10-14") —
+  // validate the path portion, keep the query.
+  return VALID_ROUTES.includes(route.split('?')[0]);
 }
 
 // Resolve the back target for a screen.

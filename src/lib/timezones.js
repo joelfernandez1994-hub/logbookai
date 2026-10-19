@@ -99,6 +99,17 @@ export function isoToWallTime(iso, timezone) {
   return `${map.year}-${map.month}-${map.day}T${h}:${map.minute}`;
 }
 
+// "Wednesday, October 14, 2026" from a YYYY-MM-DD key. Rendered at noon UTC so
+// the calendar date can never shift with a timezone conversion.
+export function formatLogDate(dateStr, locale = 'en-US') {
+  if (!dateStr) return '';
+  const m = String(dateStr).match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!m) return '';
+  return new Date(`${dateStr}T12:00:00Z`).toLocaleDateString(locale, {
+    weekday: 'long', month: 'long', day: 'numeric', year: 'numeric', timeZone: 'UTC',
+  });
+}
+
 // Suggestion only — returns an IANA string or null (multi-zone / unknown).
 // A city-level timezone (from autocomplete) always wins over this.
 export function suggestForState(state) {

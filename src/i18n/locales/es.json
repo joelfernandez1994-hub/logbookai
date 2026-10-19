@@ -240,6 +240,7 @@
     "returningTomorrow": "Disponible mañana",
     "events": "Eventos",
     "assistant": "Registrar con IA",
+    "editingLog": "Editando el registro: {{date}}",
     "addEvent": "Agregar Evento",
     "editEvent": "Editar Evento",
     "noEventsRecorded": "No hay eventos registrados.",
