@@ -100,6 +100,7 @@ export default function RodsGraphEditor({
   const [sheetValue, setSheetValue] = useState(null);
   const [proposed, setProposed] = useState(null);
   const [applyError, setApplyError] = useState(null);
+  const [pointerError, setPointerError] = useState(null);
 
   const scrollRef = useRef(null);
   const contentRef = useRef(null);
@@ -133,7 +134,6 @@ export default function RodsGraphEditor({
   // full density regardless of this — only which ticks additionally get a
   // "12A"/"3A"/... label shrinks on a narrow phone so labels never overlap.
   const labelIntervalHours = useMemo(() => getLabelIntervalHours(containerW), [containerW]);
-  const rowTop = (i) => TOP_PAD + i * ROW_H;
   const x = (h) => LEFT_W + hourToX(h, pxPerHour);
 
   const evalNow = useMemo(() => dayEndMs <= Date.now() ? new Date(dayEndMs) : new Date(),
@@ -150,9 +150,17 @@ export default function RodsGraphEditor({
 
   // Pure coordinate math (rodsGraphGesture.js) — same formula as before,
   // just extracted so it's independently unit-testable.
+  // Pointer -> hour mapping reads the PLOT element (the wrapper that holds
+  // the four duty-status rows, excluding the left status-label gutter), so
+  // the mapping is correct in the default full-day view AND when zoomed and
+  // horizontally scrolled (getBoundingClientRect is viewport-based, so
+  // scrollLeft is inherently accounted for). A missing or zero-width plot
+  // element returns null — callers must refuse to draw rather than silently
+  // mapping every touch to midnight.
   const hourFromClientX = useCallback((clientX) => {
-    if (!rowsRef.current) return 0;
-    const rect = rowsRef.current.getBoundingClientRect();
+    const el = rowsRef.current; if (!el) return null;
+    const rect = el.getBoundingClientRect();
+    if (!rect.width || !pxPerHour) return null;
     return xToHour(clientX, rect.left, pxPerHour);
   }, [pxPerHour]);
 
@@ -192,6 +200,7 @@ export default function RodsGraphEditor({
     const g = gesture.current; if (!g) return;
     lastClientX.current = e.clientX;
     const hour = hourFromClientX(e.clientX);
+    if (hour == null) return; // plot not measurable — keep gesture, skip update
     if (g.type === 'draw') {
       const updated = updateDrawGesture(g, e.clientX, e.clientY, hour);
       gesture.current = updated;
@@ -232,6 +241,10 @@ export default function RodsGraphEditor({
     if (readOnly || mode !== 'edit') return;
     e.preventDefault();
     const hour = hourFromClientX(e.clientX);
+    if (hour == null) {
+      setPointerError('The log grid is not ready for editing yet — tap Retry to try again.');
+      return;
+    }
     gesture.current = { ...beginDrawGesture(status, e.clientX, e.clientY, hour), pointerId: e.pointerId };
     setDraft({ status, startHour: hour, endHour: hour });
     setBubble({ x: e.clientX, y: e.clientY, endHour: hour, status, color: STATUS_COLORS[status] });
@@ -376,12 +389,13 @@ export default function RodsGraphEditor({
           Loading log data…
         </div>
       )}
-      {(loadError || gridError || applyError) && (
+      {(loadError || gridError || applyError || pointerError) && (
         <div data-testid="editor-error-banner" className="flex items-start gap-2 rounded-lg border border-error/50 bg-error-surface text-error-surface-foreground text-xs px-3 py-2 mb-2">
           <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0 text-error" />
-          <span className="flex-1">{applyError || loadError || gridError}</span>
+          <span className="flex-1">{applyError || loadError || gridError || pointerError}</span>
           <Button size="sm" variant="outline" data-testid="editor-retry"
             onClick={() => {
+              if (pointerError) { setPointerError(null); return; }
               if (applyError) review();
               else { setApplyError(null); reload && reload(); }
             }}>
@@ -415,12 +429,17 @@ export default function RodsGraphEditor({
             <div key={`vl${h}`} className="absolute pointer-events-none"
               style={{ left: x(h), top: TOP_PAD, width: 1, height: ROW_H * 4, background: C.gridMid }} />
           ))}
-          {/* the four duty-status rows */}
+          {/* The plot area: wrapper anchored at the timeline origin (after the
+              status-label gutter) — rowsRef attaches HERE so pointer coords
+              map against the plot itself, not the label column, and stay
+              correct under zoom + horizontal scroll. */}
+          <div ref={rowsRef} data-testid="rods-plot" className="absolute"
+            style={{ left: LEFT_W, top: TOP_PAD, width: graphW, height: ROW_H * 4 }}>
           {ROW_ORDER.map((status, i) => (
             <div key={status} data-testid={`rods-row-${status}`}
               onPointerDown={(e) => onPointerDownRow(e, status)}
               className="absolute select-none"
-              style={{ left: LEFT_W, top: rowTop(i), width: graphW, height: ROW_H, touchAction: 'none', cursor: 'crosshair', background: i % 2 ? C.bgAlt : 'transparent', borderTop: `1px solid ${C.rowBorder}` }}>
+              style={{ left: 0, top: i * ROW_H, width: graphW, height: ROW_H, touchAction: 'none', cursor: 'crosshair', background: i % 2 ? C.bgAlt : 'transparent', borderTop: `1px solid ${C.rowBorder}` }}>
               {/* saved segments for this status */}
               {daySegs.filter((s) => s.status === status).map((s) => (
                 <div key={s.id} data-testid={`edit-seg-${s.id}`} className="absolute rounded-sm pointer-events-none"
@@ -446,6 +465,7 @@ export default function RodsGraphEditor({
                 })}
             </div>
           ))}
+          </div>
           {/* bottom border of the last row */}
           <div className="absolute pointer-events-none" style={{ left: LEFT_W, top: TOP_PAD + ROW_H * 4, width: graphW, height: 1, background: C.rowBorder }} />
         </div>
