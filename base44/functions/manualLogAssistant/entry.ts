@@ -247,6 +247,7 @@ ABSOLUTE SAFETY RULES:
   4. ASK: otherwise leave city and state EMPTY for that event, list them in ambiguous_fields, and set requires_clarification=true with ONE question (which city/state?).
   NEVER invent a location solely to complete the proposal. NEVER resolve "here" from the location of a recent event; "there" with no earlier-named destination goes straight to step 4. A city name that exists in several US states (Springfield, Columbia, Portland, Charleston, Columbus, Jackson, Kansas City, Jacksonville, Lexington, Richmond, Greenville, Salem, Wilmington, Aurora, Lancaster, Lincoln, Athens, Alexandria, Arlington, Homestead, and similar) with no state given is NOT strong context unless an explicit state or an adjacent same-state city decides it — otherwise it goes to step 4 (leave state empty, ask which state). Unique well-known cities (Miami, Orlando, Dallas, Houston, Atlanta, ...) may still be resolved at step 2.
 - VAGUE INPUT: a duration or distance ("about 3 hours", "300 miles") is NOT a clock time. When the driver gives no start time, end time, or usable anchor ("drove somewhere", "loaded earlier", "I drove like 300 miles", "I got there at 8" with no known destination), do not invent times or places — set requires_clarification=true with ONE targeted question (when / where) and return proposed_events=[] unless a reasonable, clearly-labeled inferred proposal exists.
+- MULTIPLE LOCATIONS: when the narrative names more than one city, apply each stated city/state ONLY to the event(s) the driver's own wording clearly links it to (e.g. "drove to Miami, then loaded in Orlando"). Never assign a stated location to an unrelated activity by sentence order or guesswork: when the wording does not clearly link a location to an activity, leave that event's city and state EMPTY, list them in ambiguous_fields, set requires_clarification=true with ONE targeted question, and still return the partial best-guess proposal for the events whose locations ARE clear. Never silently substitute a different city or state for one the driver stated.
 
 INTENT (choose exactly one):
 - "add_events": the driver is describing new activity to log (the normal case).
@@ -294,6 +295,12 @@ OUTPUT TIME CONTRACT:
 }
 
 function buildInterpretUser(input, ctx) {
+  // A clarification reply is interpreted TOGETHER with the request it answers,
+  // so every city/state the earlier request stated carries across replies and
+  // is applied exactly as stated — never substituted or re-guessed.
+  const clarificationNote = ctx.clarificationOf?.originalInput
+    ? `\n\nCLARIFICATION REPLY: this message answers your earlier question${ctx.clarificationOf.question ? ` ("${ctx.clarificationOf.question}")` : ''} about the earlier request: "${ctx.clarificationOf.originalInput}". Interpret the reply TOGETHER with that earlier request as ONE request — combine them, carry over every detail the earlier request stated (especially any city/state), apply each stated city/state to the matching events exactly as stated, and never substitute a different city or state. If the reply instead describes a separate new activity, treat it on its own and ignore the earlier request.`
+    : '';
   return `DRIVER: ${ctx.userName}
 CARRIER: ${ctx.carrierName} | Cycle ${ctx.cycle} | Home terminal TZ: ${ctx.timezone}
 TODAY (local): ${ctx.todayLocal} | NOW (ISO UTC): ${ctx.nowIso}
@@ -306,6 +313,7 @@ ${ctx.hosSummary}
 
 RECENT ACTUAL EVENTS (use these to resolve references like "earlier", "my fuel stop", "the 4 PM stop"):
 ${eventSummary(ctx.events) || '(none)'}
+${clarificationNote}
 
 DRIVER SAID: "${input}"`;
 }
@@ -578,6 +586,7 @@ export default async function(req) {
       destination: body.destination || '',
       requestedArrival: body.requestedArrival || '',
       selectedLogDate: body.selected_date || '',
+      clarificationOf: body.clarification_of || null,
     };
 
     // Route through Base44's own managed LLM integration — same mechanism

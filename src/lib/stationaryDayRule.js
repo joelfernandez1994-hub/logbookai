@@ -19,6 +19,8 @@
 //   "<status> all day in <City, State>"    → OFF_DUTY/SLEEPER_BERTH 12AM→12AM, 24h, 0 mi
 //   "<status> todo el día en <City, State>" → same
 //   "log (the) entire day off duty"        → full day, location optional
+//   "log entire day off duty in Miami, FL" → full day; the stated location is
+//                                             preserved exactly (never substituted)
 //   "off duty entire day"                  → same
 //   "off duty all night in <City, State>"  → with an explicit time range: that exact range
 //                                             without a range: ask for the start/end times
@@ -49,6 +51,7 @@
 import { dateKeyInTz, startOfDayInTz } from './hosEngine';
 import { nextLocalMidnightInTz } from './timelineEngine';
 import { US_STATE_TO_CODE } from './usStates';
+import { isAmbiguousCityName } from './ambiguousLocations';
 
 const H = 3600000;
 
@@ -123,6 +126,73 @@ function parseCityState(str) {
     return { city, state: code };
   }
   return null;
+}
+
+// ---------------------------------------------------------------------------
+// LOCATION TAIL PARSING for full-day prompts. The driver's stated location is
+// preserved EXACTLY — never substituted, never dropped:
+//   { loc }        — "City, ST" / "City ST" parsed; use as-is
+//   { needsState } — a city was stated but no state: an AMBIGUOUS city asks
+//                    "which state?" deterministically (carrying the city);
+//                    a unique city defers to the AI path (step-2 resolution)
+//   { needsAi }    — unique city without a state: let the AI path resolve/ask
+//   null           — not a recognizable location; caller decides (fall through)
+// ---------------------------------------------------------------------------
+export function parseLocationTail(tail) {
+  const loc = parseCityState(tail);
+  if (loc) return { loc };
+  const bare = String(tail || '').trim().split(/[,.;]+/)[0].trim();
+  if (bare && CITY_RE.test(bare)) {
+    if (isAmbiguousCityName(bare)) return { needsState: true, city: bare };
+    return { needsAi: true };
+  }
+  return null;
+}
+
+function whichStateClarification(city, targetDate, lang = 'en') {
+  return {
+    matched: true,
+    intent: 'clarification',
+    target_date: targetDate,
+    interpretation: lang === 'es'
+      ? `"${city}" existe en varios estados. ¿En qué estado estaba? (p. ej. ${city}, IL)`
+      : `"${city}" exists in several states. Which state was it? (e.g. ${city}, IL)`,
+    requires_clarification: true,
+    clarification_question: lang === 'es'
+      ? `¿En qué estado estaba "${city}"? (p. ej. ${city}, IL)`
+      : `Which state was "${city}" in? (e.g. ${city}, IL)`,
+    proposed_events: [],
+    stationary: true,
+    pending_location_city: city,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// CLARIFICATION REPLY — is the driver's message a pure location answer
+// ("IL", "Illinois", "in Miami, FL", "Springfield, IL")? Detection only.
+// Returns { city, state } (city null for a state-only reply) or null.
+// ---------------------------------------------------------------------------
+export function parseLocationReply(reply) {
+  const s = String(reply || '').trim().replace(/[.!]+$/, '');
+  if (!s || s.length > 60) return null;
+  const bareState = s.match(/^(?:in\s+|en\s+)?([A-Za-z]{2,14})$/i);
+  if (bareState) {
+    if (!isStateToken(bareState[1])) return null; // a plain word ("yes") is not a state
+    return { city: null, state: normalizeJurisdiction(bareState[1]) };
+  }
+  const withCity = s.match(/^(?:in\s+|en\s+)?(.+)$/i);
+  const loc = parseCityState(withCity?.[1] || '');
+  if (loc) return { ...loc, replacedCity: true };
+  return null;
+}
+
+// Merge a location reply back into the ORIGINAL request text so the stated
+// city is preserved exactly: a state-only reply is appended after the
+// original "in <City>" tail; a city+state reply replaces the tail outright.
+export function mergeLocationReply(originalText, reply) {
+  const orig = String(originalText || '').trim();
+  if (reply?.city) return orig.replace(/\b(?:in|en)\s+[A-Z][^,]*$/i, `in ${reply.city}, ${reply.state}`);
+  return `${orig}, ${reply.state}`;
 }
 
 function statusFromCue(text) {
@@ -369,7 +439,8 @@ function buildFullDay(status, loc, targetDate, timezone, { existingEvents, lang 
  * through to the normal AI + validation path).
  */
 export function parseStationaryDay(text, { now = new Date(), timezone = 'America/Chicago', selectedDate = null, existingEvents = null, lang = 'en' } = {}) {
-  const t = String(text || '').trim();
+  // Trailing punctuation ("...in Miami, FL.") must never break location capture.
+  const t = String(text || '').trim().replace(/[.!?]+$/, '');
   if (!t) return { matched: false };
   // Never suppress genuine movement — a travel narrative goes through normal
   // AI + deterministic movement validation (still blocks a missing Driving leg).
@@ -383,8 +454,12 @@ export function parseStationaryDay(text, { now = new Date(), timezone = 'America
   if (fullDay) {
     const status = statusFromCue(t);
     if (!status) return { matched: false };
-    const loc = parseCityState(fullDay[1]);
-    if (!loc) return { matched: false };
+    const parsedTail = parseLocationTail(fullDay[1]);
+    // Stated city, state missing → ask which state; the city is kept and the
+    // driver's reply is merged back (never substituted, no AI quota spent).
+    if (parsedTail?.needsState) return { ...whichStateClarification(parsedTail.city, targetDate, lang), original_input: t };
+    if (!parsedTail?.loc) return { matched: false };
+    const loc = parsedTail.loc;
     if (existingEvents) return buildFullDay(status, loc, targetDate, timezone, { existingEvents, lang, now: nowDate });
     return buildFullDayProposal(status, loc, targetDate, timezone);
   }
@@ -393,7 +468,17 @@ export function parseStationaryDay(text, { now = new Date(), timezone = 'America
   if (BARE_FULL_DAY_RE.test(t)) {
     const status = statusFromCue(t);
     if (!status) return { matched: false };
-    const loc = { city: '', state: '' };
+    // A trailing "in <City, State>" ("log entire day off duty in Miami, FL")
+    // is a STATED STATIONARY location — carried onto the proposed event
+    // exactly as given; a stated city without a state asks, never guesses.
+    let loc = { city: '', state: '' };
+    const trail = t.match(/\b(?:in|en)\s+([A-Z][A-Za-z .,'-]*)$/);
+    if (trail) {
+      const parsedTail = parseLocationTail(trail[1]);
+      if (parsedTail?.needsState) return { ...whichStateClarification(parsedTail.city, targetDate, lang), original_input: t };
+      if (!parsedTail?.loc) return { matched: false };
+      loc = parsedTail.loc;
+    }
     if (existingEvents) return buildFullDay(status, loc, targetDate, timezone, { existingEvents, lang, now: nowDate });
     return buildFullDayProposal(status, loc, targetDate, timezone);
   }

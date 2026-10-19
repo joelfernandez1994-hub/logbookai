@@ -13,7 +13,7 @@ import { insertEventsBatch, editEvent, deleteEventById, replaceRangeEvents } fro
 import { parseVoiceCommand } from '@/lib/voiceParser';
 import { validateInterpretResult, isQuestionIntent, shouldOfferApply, replaceDayRange, resolveEditTargets } from '@/lib/aiLayer';
 import { isMultiEventNarrative, referencesHere } from '@/lib/narrativeClassifier';
-import { parseStationaryDay } from '@/lib/stationaryDayRule';
+import { parseStationaryDay, parseLocationReply, mergeLocationReply } from '@/lib/stationaryDayRule';
 import { detectFeasibilityQuestion, answerFeasibilityQuestion } from '@/lib/feasibilityQuestion';
 import { describeEvent } from '@/lib/eventReference';
 import { normalizeCandidateTimeline } from '@/lib/timelineNormalization';
@@ -61,6 +61,14 @@ export default function LogAssistant() {
   // { targets: null, question } when it could not be confidently resolved and
   // the driver needs to rephrase — LogbookAI never deletes a guess.
   const [deleteConfirm, setDeleteConfirm] = useState(null);
+  // Pending "which state?" clarification from the deterministic stationary
+  // full-day rule: { originalText, city }. A purely-location reply is merged
+  // back into the original request so the stated city is preserved exactly.
+  const [pendingStateAsk, setPendingStateAsk] = useState(null);
+  // Pending AI clarification: the request the clarification question belongs
+  // to, sent as context with the driver's reply so stated locations carry
+  // across replies and are never re-guessed.
+  const [pendingAiClarification, setPendingAiClarification] = useState(null);
   // In-flight Apply guard: a single Apply flow may not be re-entered. The
   // ProposalReview button also locks visually; this ref defends against any
   // other caller invoking applyProposal/applyReplaceDay while one is running.
@@ -122,7 +130,7 @@ export default function LogAssistant() {
     return { proposal_id: value.proposal_id || newProposalId(), ...value, target_date: value.target_date || logDate, proposed_events: reconstructed };
   };
 
-  const resetResults = () => { setProposal(null); setPastResult(null); setFutureResult(null); setError(''); setRouteWarning(null); setReconstructionConflicts([]); setDeleteConfirm(null); };
+  const resetResults = () => { setProposal(null); setPastResult(null); setFutureResult(null); setError(''); setRouteWarning(null); setReconstructionConflicts([]); setDeleteConfirm(null); setPendingStateAsk(null); setPendingAiClarification(null); };
 
   // ---------------------------------------------------------------------------
   // TELL tab: deterministic voice/text command parser runs FIRST (no quota).
@@ -140,8 +148,69 @@ export default function LogAssistant() {
     return withCity[0] ? { city: withCity[0].city, state: withCity[0].state } : null;
   };
 
+  // Emit a deterministic stationary-day proposal (full-day add, "Already
+  // logged", or replace-day preview). A "which state?" clarification keeps
+  // the driver's stated city so their reply merges back into the original
+  // request; other stationary clarifications carry the original request as
+  // AI context so their replies are interpreted together with it.
+  const emitStationary = (stat, originalText, type) => {
+    if (stat.already_logged) {
+      setProposal({
+        intent: 'question', target_date: stat.target_date, requires_clarification: false, clarification_question: '',
+        interpretation: stat.interpretation, summary: stat.interpretation,
+        proposed_events: [], clarifications: [], location_confirmations: [],
+        refuses_fabrication: false, _deterministic: true, _stationary: true,
+      });
+      return true;
+    }
+    const statEvents = (stat.proposed_events || []).map((e) => ({
+      ...e,
+      source: type === 'voice' ? 'voice' : 'manual',
+      confidence: 'high',
+      ambiguous_fields: [],
+    }));
+    setRouteWarning(null);
+    setReconstructionConflicts([]);
+    setProposal({
+      intent: stat.intent,
+      target_date: stat.target_date,
+      requires_clarification: !!stat.requires_clarification,
+      clarification_question: stat.clarification_question || '',
+      interpretation: stat.interpretation,
+      proposed_events: statEvents,
+      clarifications: [],
+      refuses_fabrication: false,
+      original_input: originalText,
+      location_confirmations: [],
+      replaces_existing: stat.replaces_existing || [],
+      _deterministic: true,
+      _stationary: true,
+      proposal_id: newProposalId(),
+    });
+    if (stat.requires_clarification) {
+      if (stat.pending_location_city) setPendingStateAsk({ originalText, city: stat.pending_location_city });
+      else setPendingAiClarification({ originalInput: originalText, question: stat.clarification_question || '' });
+    }
+    return true;
+  };
+
   const handleTell = async (text, type) => {
     setError('');
+
+    // 1a. PENDING "WHICH STATE?" CLARIFICATION — a purely-location reply
+    //     ("IL", "Illinois", "in Miami, FL") is merged back into the ORIGINAL
+    //     full-day request and re-parsed, so the stated city is preserved
+    //     exactly and never substituted. Any other reply falls through and
+    //     is treated as a fresh request.
+    if (pendingStateAsk) {
+      const reply = parseLocationReply(text);
+      if (reply) {
+        const merged = mergeLocationReply(pendingStateAsk.originalText, reply);
+        const stat = parseStationaryDay(merged, { now: new Date(), timezone: tz, selectedDate: logDate, existingEvents: events, lang: profile?.language === 'es' ? 'es' : 'en' });
+        if (stat?.matched) { setPendingStateAsk(null); return emitStationary(stat, merged, type); }
+      }
+      setPendingStateAsk(null);
+    }
 
     // 1. DETERMINISTIC ROUTE-FEASIBILITY ANSWER ("Can I make it to Atlanta
     //    tonight?") — real road mileage (fetchRoute) + the driver's ACTUAL
@@ -181,51 +250,16 @@ export default function LogAssistant() {
     //     Runs before the multi-event classifier so a full-day stationary
     //     status is never sent to the LLM.
     const stat = parseStationaryDay(text, { now: new Date(), timezone: tz, selectedDate: logDate, existingEvents: events, lang: profile?.language === 'es' ? 'es' : 'en' });
-    if (stat?.matched) {
-      // "Already logged": the selected day is already covered — report it,
-      // propose nothing, create no duplicate.
-      if (stat.already_logged) {
-        setProposal({
-          intent: 'question', target_date: stat.target_date, requires_clarification: false, clarification_question: '',
-          interpretation: stat.interpretation, summary: stat.interpretation,
-          proposed_events: [], clarifications: [], location_confirmations: [],
-          refuses_fabrication: false, _deterministic: true, _stationary: true,
-        });
-        return true;
-      }
-      const statEvents = (stat.proposed_events || []).map((e) => ({
-        ...e,
-        source: type === 'voice' ? 'voice' : 'manual',
-        confidence: 'high',
-        ambiguous_fields: [],
-      }));
-      setRouteWarning(null);
-      setReconstructionConflicts([]);
-      setProposal({
-        intent: stat.intent,
-        target_date: stat.target_date,
-        requires_clarification: !!stat.requires_clarification,
-        clarification_question: stat.clarification_question || '',
-        interpretation: stat.interpretation,
-        proposed_events: statEvents,
-        clarifications: [],
-        refuses_fabrication: false,
-        original_input: text,
-        location_confirmations: [],
-        replaces_existing: stat.replaces_existing || [],
-        _deterministic: true,
-        _stationary: true,
-        proposal_id: newProposalId(),
-      });
-      return true;
-    }
+    if (stat?.matched) return emitStationary(stat, text, type);
 
     // AI-first routing: any narrative describing more than one event/activity
     // goes straight to manualLogAssistant. The deterministic parser is kept
     // only for trivial single-intent commands ("off duty now", "sleeper at 10 PM")
     // and edit-by-reference corrections ("change my last fuel stop to 8:15").
     if (isMultiEventNarrative(text)) {
-      return callAssistant('interpret', text, { source: type });
+      const aiCtx = pendingAiClarification;
+      setPendingAiClarification(null);
+      return callAssistant('interpret', text, { source: type, clarificationOf: aiCtx });
     }
     // Pass the driver's actual logged events so ambiguous-hour resolution
     // can prefer continuity with a neighboring real event (tier 3 of the
@@ -260,6 +294,9 @@ export default function LogAssistant() {
         ? [{ type: 'location_here', question: 'Where is "here"? Enter the city and state for this event in Edit Proposal before applying — LogbookAI will not guess your location.' }]
         : [];
       const detClarifications = [...(det.clarifications || []), ...hereClarifications];
+      if (detClarifications.length > 0) {
+        setPendingAiClarification({ originalInput: text, question: detClarifications[0]?.question || '' });
+      }
       const prepared = await prepareProposal({
         intent: det.edit ? 'edit_events' : 'add_events',
         target_date: detEvents[0]?.date || logDate,
@@ -274,7 +311,9 @@ export default function LogAssistant() {
       setProposal(prepared);
       return true;
     }
-    return callAssistant('interpret', text, { source: type });
+    const aiCtx = pendingAiClarification;
+    setPendingAiClarification(null);
+    return callAssistant('interpret', text, { source: type, clarificationOf: aiCtx });
   };
 
   // ---------------------------------------------------------------------------
@@ -292,6 +331,7 @@ export default function LogAssistant() {
         selected_date: logDate || '',
         events: events.map(simplifyEvent),
         documents: extra.documents || [],
+        clarification_of: extra.clarificationOf || null,
         currentLocation: extra.currentLocation || '',
         tractor: equipment?.[0]?.unit_number || '',
         trailer: equipment?.find(e => e.type === 'trailer')?.unit_number || '',
@@ -337,6 +377,11 @@ export default function LogAssistant() {
                 clarification_question: toShow.clarification_question || 'Which event did you mean? Please describe it more specifically (e.g. the approximate time or activity).',
               };
             }
+          }
+          // A clarification reply keeps the earlier request as context so any
+          // stated location carries across replies instead of being re-guessed.
+          if (toShow?.requires_clarification) {
+            setPendingAiClarification({ originalInput: toShow.original_input || input, question: toShow.clarification_question || '' });
           }
           if (deleteResolved) setDeleteConfirm({ targets: deleteResolved });
           else setProposal(await prepareProposal(toShow));
@@ -694,6 +739,19 @@ export default function LogAssistant() {
           {showProposal && !isQuestion && !canApply && (
             <div className="rounded-xl border border-border bg-card p-3 mb-3">
               {proposal.interpretation && <div className="text-sm text-muted-foreground mb-2">{proposal.interpretation}</div>}
+              {/* Partial proposal while a clarification is pending: events whose
+                  details ARE clear are shown read-only (not applied until the
+                  driver confirms what the clarification asks). */}
+              {proposal.proposed_events?.length > 0 && (
+                <ul className="text-xs text-card-foreground mb-2 space-y-1" data-testid="partial-proposal-events">
+                  {proposal.proposed_events.map((e, i) => (
+                    <li key={i} data-testid="partial-proposal-event">
+                      {e.duty_status}{e.start_time_local || e.start_timestamp ? ` · ${(e.start_time_local || e.start_timestamp).slice(11, 16)}` : ''}
+                      {e.city ? ` — ${[e.city, e.state].filter(Boolean).join(', ')}` : ''}
+                    </li>
+                  ))}
+                </ul>
+              )}
               {proposal.requires_clarification && (
                 <div className="rounded-lg border border-warning/50 bg-warning-surface p-2 mb-2 text-xs text-warning-surface-foreground">
                   <span className="font-medium">Please confirm: </span>{proposal.clarification_question}
