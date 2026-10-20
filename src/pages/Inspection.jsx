@@ -242,6 +242,7 @@ export default function Inspection() {
         open={showExport}
         onClose={() => setShowExport(false)}
         tz={tz}
+        events={events}
         allDates={allDates}
         buildDoc={buildDoc}
         profile={profile}

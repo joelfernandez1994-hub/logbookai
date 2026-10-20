@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { base44 } from '@/api/base44Client';
 import { dateKeyInTz } from '@/lib/hosEngine';
+import LogGraph from '@/components/LogGraph';
 import { FileDown, Share2, Mail, Eye, X } from 'lucide-react';
 
 const PRESETS = [
@@ -12,7 +13,7 @@ const PRESETS = [
   { key: 'custom', label: 'Custom Date Range' },
 ];
 
-export default function LogExportSheet({ open, onClose, tz, allDates, buildDoc, profile, carrier, hasDvirs, hasDocs }) {
+export default function LogExportSheet({ open, onClose, tz, events = [], allDates, buildDoc, profile, carrier, hasDvirs, hasDocs }) {
   const [preset, setPreset] = useState('dot');
   const [from, setFrom] = useState(allDates.length ? allDates[0] : dateKeyInTz(new Date(), tz));
   const [to, setTo] = useState(allDates.length ? allDates[allDates.length - 1] : dateKeyInTz(new Date(), tz));
@@ -21,7 +22,7 @@ export default function LogExportSheet({ open, onClose, tz, allDates, buildDoc, 
   const [emailTo, setEmailTo] = useState('');
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState('');
-  const [previewUrl, setPreviewUrl] = useState(null);
+  const [showPreview, setShowPreview] = useState(false);
 
   const selectedDates = useMemo(() => {
     const today = dateKeyInTz(new Date(), tz);
@@ -50,17 +51,10 @@ export default function LogExportSheet({ open, onClose, tz, allDates, buildDoc, 
   const label = preset === 'dot' ? 'DOT_Inspection_8day' : preset === 'custom' ? `${from}_to_${to}` : preset;
   const fileName = `LogbookAI_${label}.pdf`;
 
-  // In-app PDF preview (works on native iOS where window.open(blob:) fails).
-  // Renders the exact generated PDF in a full-screen iframe overlay.
-  const doPreview = () => {
-    try {
-      const doc = buildDoc(selectedDates, options);
-      const url = doc.output('bloburl');
-      setPreviewUrl(typeof url === 'string' ? url : String(url));
-    } catch (e) {
-      setStatus('Preview failed to build.');
-    }
-  };
+  // In-app log preview — renders the selected days natively (grid + totals +
+  // events per day). Works on every device, including mobile browsers and
+  // native WebViews, where an iframe with a blob: PDF URL stays blank.
+  const doPreview = () => setShowPreview(true);
   const doDownload = () => {
     const doc = buildDoc(selectedDates, options);
     doc.save(fileName);
@@ -93,19 +87,30 @@ export default function LogExportSheet({ open, onClose, tz, allDates, buildDoc, 
 
   if (!open) return null;
 
-  // Full-screen PDF preview overlay (native-friendly: no window.open popup)
-  if (previewUrl) {
+  // Full-screen log preview overlay — native HTML/SVG, no PDF viewer needed
+  if (showPreview) {
     return (
-      <div className="fixed inset-0 bg-black/90 z-50 flex flex-col">
-        <div className="flex items-center justify-between px-4 py-3 safe-top">
-          <div className="font-bold text-primary-foreground">PDF Preview</div>
-          <button onClick={() => setPreviewUrl(null)} className="inline-flex items-center justify-center min-h-[44px] min-w-[44px] text-primary-foreground"><X className="w-5 h-5" /></button>
+      <div className="fixed inset-0 bg-background z-50 flex flex-col">
+        <div className="flex items-center justify-between px-4 py-3 safe-top border-b border-border bg-card">
+          <div className="font-bold text-foreground">Log Preview — {selectedDates.length} day(s)</div>
+          <button onClick={() => setShowPreview(false)} className="inline-flex items-center justify-center min-h-[44px] min-w-[44px] text-muted-foreground"><X className="w-5 h-5" /></button>
         </div>
-        <iframe src={previewUrl} title="LogbookAI PDF Preview" className="flex-1 w-full bg-white" />
-        <div className="flex gap-2 p-3 safe-bottom">
-          <Button className="flex-1" onClick={doDownload}><FileDown className="w-4 h-4 mr-1" /> Download</Button>
+        <div className="flex-1 overflow-y-auto p-3 space-y-3">
+          {selectedDates.map((d) => (
+            <div key={d} className="bg-card text-card-foreground rounded-xl p-3 border border-border">
+              <div className="text-sm font-semibold mb-2">
+                {new Date(d + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', timeZone: tz })}
+              </div>
+              <LogGraph events={events} dateStr={d} timezone={tz} interactive={false} />
+            </div>
+          ))}
+          {!selectedDates.length && (
+            <div className="text-center text-muted-foreground text-sm py-8">No logs in the selected range.</div>
+          )}
+        </div>
+        <div className="flex gap-2 p-3 safe-bottom border-t border-border bg-card">
+          <Button className="flex-1" onClick={doDownload}><FileDown className="w-4 h-4 mr-1" /> Download PDF</Button>
           <Button variant="outline" className="flex-1" onClick={doShare} disabled={busy}><Share2 className="w-4 h-4 mr-1" /> Share</Button>
-          <Button variant="ghost" onClick={() => setPreviewUrl(null)}><X className="w-4 h-4 mr-1" /> Close</Button>
         </div>
       </div>
     );
