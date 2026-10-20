@@ -11,11 +11,19 @@ export default function WhatCanIDoPanel({ info, tz }) {
   return (
     <div className="space-y-3">
       {/* Can-drive verdict with EXACT reason + eligible time */}
-      <div className={`rounded-xl border p-3 ${info.unavailable ? 'border-warning/50 bg-warning-surface text-warning-surface-foreground' : info.canDrive ? 'border-success/40 bg-success-surface text-success-surface-foreground' : 'border-error/40 bg-error-surface text-error-surface-foreground'}`}>
+      <div className={`rounded-xl border p-3 ${info.unavailable || info.undetermined ? 'border-warning/50 bg-warning-surface text-warning-surface-foreground' : info.canDrive ? 'border-success/40 bg-success-surface text-success-surface-foreground' : 'border-error/40 bg-error-surface text-error-surface-foreground'}`}>
         <div className="flex items-center gap-2">
-          {info.unavailable ? <AlertTriangle className="w-5 h-5" /> : info.canDrive ? <CheckCircle2 className="w-5 h-5" /> : <XCircle className="w-5 h-5" />}
-          <div className="font-semibold">{info.unavailable ? 'HOS availability unavailable' : info.canDrive ? 'You can drive right now' : 'You cannot drive right now'}</div>
+          {info.unavailable || info.undetermined ? <AlertTriangle className="w-5 h-5" /> : info.canDrive ? <CheckCircle2 className="w-5 h-5" /> : <XCircle className="w-5 h-5" />}
+          <div className="font-semibold">{info.unavailable ? 'HOS availability unavailable' : info.undetermined ? 'Availability undetermined' : info.canDrive ? 'You can drive right now' : 'You cannot drive right now'}</div>
         </div>
+        {info.undetermined && (
+          <div className="mt-2">
+            <p className="text-xs">{info.undeterminedReason}</p>
+            <Button asChild variant="outline" size="sm" className="mt-2 bg-transparent">
+              <Link to="/agricultural">Review claims</Link>
+            </Button>
+          </div>
+        )}
         {info.unavailable && (
           <div className="mt-2">
             <p className="text-xs">{info.unavailableReason}</p>
@@ -54,12 +62,12 @@ export default function WhatCanIDoPanel({ info, tz }) {
           <div>
             <div className="text-[11px] text-muted-foreground">Usable now</div>
             <div className={`text-lg font-bold ${info.usableDriveMs > 0 ? 'text-success' : 'text-muted-foreground'}`}>{fmtDur(info.usableDriveMs)}</div>
-            <div className="text-[10px] text-muted-foreground">{info.unavailable ? 'Unavailable until timeline is valid' : 'what you can actually drive this shift'}</div>
+            <div className="text-[10px] text-muted-foreground">{info.unavailable ? 'Unavailable — driver-claimed agricultural interval affects this clock' : 'what you can actually drive this shift'}</div>
           </div>
           <div>
             <div className="text-[11px] text-muted-foreground">Remaining on clock</div>
             <div className="text-lg font-bold text-card-foreground">{fmtDur(info.driveRemainingMs)}</div>
-            <div className="text-[10px] text-muted-foreground">{info.unavailable ? 'Unavailable until timeline is valid' : '11-hr driving limit total'}</div>
+            <div className="text-[10px] text-muted-foreground">{info.unavailable ? 'Unavailable — driver-claimed agricultural interval affects this clock' : '11-hr driving limit total'}</div>
           </div>
         </div>
         {info.usableDriveMs < info.driveRemainingMs && info.usableDriveMs > 0 && (
@@ -75,9 +83,9 @@ export default function WhatCanIDoPanel({ info, tz }) {
       </div>
 
       <div className="grid grid-cols-2 gap-2">
-        <Card icon={Clock} label="14-hour window" value={fmtDur(info.windowRemainingMs)} note={info.unavailable ? 'Unavailable until timeline is valid' : ''} />
-        <Card icon={Coffee} label="30-min break" value={info.unavailable ? '--' : info.breakSatisfied ? 'Satisfied' : (info.breakRequired ? 'Required now' : 'Not yet required')} note={info.unavailable ? 'Unavailable until timeline is valid' : ''} />
-        <Card icon={Gauge} label="Cycle remaining" value={info.cycleRemainingHours == null ? '--' : `${info.cycleRemainingHours.toFixed(1)} hr`} note={info.unavailable ? 'Unavailable until timeline is valid' : info.cycleUnverified ? info.cycleUnverifiedReason : ''} />
+        <Card icon={Clock} label="14-hour window" value={fmtDur(info.windowRemainingMs)} note={info.unavailable ? 'Unavailable — driver-claimed agricultural interval affects this clock' : ''} />
+        <Card icon={Coffee} label="30-min break" value={(info.unavailable || info.breakAgriculturalUnavailable) ? '--' : info.breakSatisfied ? 'Satisfied' : (info.breakRequired ? 'Required now' : 'Not yet required')} note={info.unavailable ? 'Unavailable — driver-claimed agricultural interval affects this clock' : ''} />
+        <Card icon={Gauge} label="Cycle remaining" value={info.cycleRemainingHours == null ? '--' : `${info.cycleRemainingHours.toFixed(1)} hr`} note={info.unavailable ? 'Unavailable — driver-claimed agricultural interval affects this clock' : info.cycleUnverified ? info.cycleUnverifiedReason : ''} />
       </div>
 
       <Section title="Rest completion (from your actual records)">

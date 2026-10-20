@@ -10,7 +10,9 @@ import StatusChangeSheet from '@/components/StatusChangeSheet';
 import { changeStatus, insertEvent, editEvent, updateEventFields } from '@/lib/timelineWriter';
 import { validateTimeline } from '@/lib/timelineEngine';
 import { getDvirs, saveDvir } from '@/lib/dvirData';
-import { saveDriverProfile, getCertifications } from '@/lib/driverData';
+import { saveDriverProfile, getCertifications, getAgriculturalClaims } from '@/lib/driverData';
+import { evaluateAgriculturalClocks, applyAgriculturalAvailability } from '@/lib/agriculturalClaims';
+import ClaimBanner from '@/components/agricultural/ClaimBanner';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -74,6 +76,7 @@ export default function Today() {
   const [bolDraft, setBolDraft] = useState('');
   const [bolSaving, setBolSaving] = useState(false);
   const [certifications, setCertifications] = useState([]);
+  const [claims, setClaims] = useState([]);
   const [editLogOpen, setEditLogOpen] = useState(false);
   const [editingEvent, setEditingEvent] = useState(null);
   const [eventSaving, setEventSaving] = useState(false);
@@ -96,6 +99,12 @@ export default function Today() {
   const timelineValidation = useMemo(() => validateTimeline(events, { now, dateStr: dateKeyInTz(now, tz), timezone: tz }), [events, now, tz]);
   const hos = useMemo(() => computeHOS(events, cycleType, tz, now, { historyComplete }),
     [events, cycleType, tz, now, historyComplete]);
+  // Agricultural claims (49 CFR 395.1(k)): the shared clock-availability
+  // determination marks any clock whose calculation history a claim's work
+  // overlaps as unavailable — no HOS engine change, no estimated values.
+  const agEval = useMemo(() => evaluateAgriculturalClocks({ claims, events, hos, cycleType, tz, now }),
+    [claims, events, hos, cycleType, tz, now]);
+  const hosEff = useMemo(() => applyAgriculturalAvailability(hos, agEval), [hos, agEval]);
 
   useEffect(() => { const t = setTimeout(() => setNow(new Date()), 30000); return () => clearTimeout(t); }, [now]);
 
@@ -108,6 +117,7 @@ export default function Today() {
 
   useEffect(() => { (async () => { try { setDvirs(await getDvirs(30) || []); } catch (e) {} })(); }, [reload]);
   useEffect(() => { (async () => { try { setCertifications(await getCertifications(9) || []); } catch (e) {} })(); }, [reload]);
+  useEffect(() => { (async () => { try { setClaims((await getAgriculturalClaims()) || []); } catch (e) {} })(); }, [reload]);
 
   const needsOnboarding = !profile || !profile.onboarded || !profile.has_acknowledged_non_eld;
   useEffect(() => {
@@ -233,7 +243,7 @@ export default function Today() {
     reload();
   };
 
-  const restartProgress = hos.restart.inProgress;
+  const restartProgress = hos.restart.inProgress && !hosEff.restart.agriculturalUnavailable ? hos.restart.inProgress : null;
 
   return (
     <PullToRefresh onRefresh={reload} className="px-4 pt-6">
@@ -336,20 +346,22 @@ export default function Today() {
         </div>
       )}
       <TimelineGapNotice events={events} dateStr={todayKey} tz={tz} now={now} />
+      <ClaimBanner claims={claims} dateStr={todayKey} tz={tz}
+        showCalcNotice={!!(agEval && agEval.anyUnavailable)} onClaimsChanged={reload} editedBy={profile?.legal_name} />
 
       <div className="grid grid-cols-2 gap-2 mb-3">
-        <ClockCard label={t('hos.drivingRemaining')} value={timelineValidation.valid && hos.driving.applicable ? fmtDur(hos.driving.drivingRemainingMs) : '--'}
-          sublabel={timelineValidation.valid && hos.driving.applicable ? (hos.driving.expiresAt ? t('hos.expiresAt', { time: fmtClock(hos.driving.expiresAt, tz) }) : t('hos.elevenHourLimit')) : t('hos.unavailable')}
-          status={timelineValidation.valid && hos.driving.applicable ? clockStatus(hos.driving.drivingRemainingMs) : 'disabled'} icon={Truck} />
-        <ClockCard label={t('hos.window14')} value={timelineValidation.valid && hos.window14.applicable ? fmtDur(hos.window14.remainingMs) : '--'}
-          sublabel={timelineValidation.valid && hos.window14.applicable ? (hos.window14.windowStart ? t('hos.sinceTime', { time: fmtClock(hos.window14.windowStart, tz) }) : '') : t('hos.unavailable')}
-          status={timelineValidation.valid && hos.window14.applicable ? clockStatus(hos.window14.remainingMs) : 'disabled'} icon={Clock} />
-        <ClockCard label={t('hos.break30')} value={timelineValidation.valid ? (hos.break30.satisfied ? t('hos.satisfied') : t('hos.timeLeft', { time: fmtDur(hos.break30.remainingBeforeBreakMs) })) : '--'}
-          sublabel={timelineValidation.valid ? (hos.break30.breakRequired ? t('hos.breakRequiredNow') : t('hos.eightHourRule')) : t('hos.unavailable')}
-          status={timelineValidation.valid ? (hos.break30.breakRequired ? 'critical' : 'normal') : 'disabled'} icon={Coffee} />
-        <ClockCard label={t('hos.cycleLabel', { limit: hos.cycle.cycleLimit, days: hos.cycle.cycleDays })} value={timelineValidation.valid ? t('hos.hoursLeft', { hours: hos.cycle.cycleRemainingHours.toFixed(1) }) : '--'}
-          sublabel={timelineValidation.valid ? t('hos.usedBackTomorrow', { used: hos.cycle.cycleUsedHours.toFixed(1), back: hos.cycle.returningTomorrowHours.toFixed(1) }) : t('hos.unavailable')}
-          status={timelineValidation.valid ? clockStatus(hos.cycle.cycleRemainingHours * 3600000) : 'disabled'} icon={Gauge} />
+        <ClockCard label={t('hos.drivingRemaining')} value={timelineValidation.valid && hosEff.driving.applicable ? fmtDur(hosEff.driving.drivingRemainingMs) : '--'}
+          sublabel={timelineValidation.valid && hosEff.driving.applicable ? (hosEff.driving.expiresAt ? t('hos.expiresAt', { time: fmtClock(hosEff.driving.expiresAt, tz) }) : t('hos.elevenHourLimit')) : (hosEff.driving.agriculturalUnavailable ? t('agricultural.clockUnavailableShort') : t('hos.unavailable'))}
+          status={timelineValidation.valid && hosEff.driving.applicable ? clockStatus(hosEff.driving.drivingRemainingMs) : 'disabled'} icon={Truck} />
+        <ClockCard label={t('hos.window14')} value={timelineValidation.valid && hosEff.window14.applicable ? fmtDur(hosEff.window14.remainingMs) : '--'}
+          sublabel={timelineValidation.valid && hosEff.window14.applicable ? (hosEff.window14.windowStart ? t('hos.sinceTime', { time: fmtClock(hosEff.window14.windowStart, tz) }) : '') : (hosEff.window14.agriculturalUnavailable ? t('agricultural.clockUnavailableShort') : t('hos.unavailable'))}
+          status={timelineValidation.valid && hosEff.window14.applicable ? clockStatus(hosEff.window14.remainingMs) : 'disabled'} icon={Clock} />
+        <ClockCard label={t('hos.break30')} value={timelineValidation.valid && !hosEff.break30.agriculturalUnavailable ? (hosEff.break30.satisfied ? t('hos.satisfied') : t('hos.timeLeft', { time: fmtDur(hosEff.break30.remainingBeforeBreakMs) })) : '--'}
+          sublabel={timelineValidation.valid && !hosEff.break30.agriculturalUnavailable ? (hosEff.break30.breakRequired ? t('hos.breakRequiredNow') : t('hos.eightHourRule')) : (hosEff.break30.agriculturalUnavailable ? t('agricultural.clockUnavailableShort') : t('hos.unavailable'))}
+          status={timelineValidation.valid && !hosEff.break30.agriculturalUnavailable ? (hosEff.break30.breakRequired ? 'critical' : 'normal') : 'disabled'} icon={Coffee} />
+        <ClockCard label={t('hos.cycleLabel', { limit: hosEff.cycle.cycleLimit, days: hosEff.cycle.cycleDays })} value={timelineValidation.valid && !hosEff.cycle.agriculturalUnavailable ? t('hos.hoursLeft', { hours: hosEff.cycle.cycleRemainingHours.toFixed(1) }) : '--'}
+          sublabel={timelineValidation.valid && !hosEff.cycle.agriculturalUnavailable ? t('hos.usedBackTomorrow', { used: hosEff.cycle.cycleUsedHours.toFixed(1), back: hosEff.cycle.returningTomorrowHours.toFixed(1) }) : (hosEff.cycle.agriculturalUnavailable ? t('agricultural.clockUnavailableShort') : t('hos.unavailable'))}
+          status={timelineValidation.valid && !hosEff.cycle.agriculturalUnavailable ? clockStatus(hosEff.cycle.cycleRemainingHours * 3600000) : 'disabled'} icon={Gauge} />
       </div>
 
       {restartProgress && (
@@ -362,27 +374,27 @@ export default function Today() {
           </div>
         </div>
       )}
-      {hos.split.status !== 'none' && (
+      {hosEff.split.status !== 'none' && (
         <div className="rounded-xl border border-border bg-card p-3 mb-3">
           <div className="flex items-center gap-2 text-sm font-medium text-card-foreground">
-            <Moon className="w-4 h-4" /> {hos.split.status === 'active' ? t('today.splitSleeperActive') : t('today.splitSleeperAvailable')}
+            <Moon className="w-4 h-4" /> {hosEff.split.status === 'active' ? t('today.splitSleeperActive') : t('today.splitSleeperAvailable')}
             <span className="ml-auto text-[10px] font-medium text-muted-foreground border border-border rounded px-1.5 py-0.5">{t('today.optional')}</span>
           </div>
-          <div className="text-xs text-muted-foreground mt-1">{hos.split.note}</div>
-          {hos.split.status === 'active' && hos.split.firstPeriod && hos.split.secondPeriod && (
+          <div className="text-xs text-muted-foreground mt-1">{hosEff.split.note}</div>
+          {hosEff.split.status === 'active' && hosEff.split.firstPeriod && hosEff.split.secondPeriod && (
             <div className="text-xs text-muted-foreground mt-1">
-              Paired periods: {fmtDur(hos.split.firstPeriod.duration)} {hos.split.firstPeriod.status === 'SLEEPER_BERTH' ? 'Sleeper Berth' : 'Off Duty'} + {fmtDur(hos.split.secondPeriod.duration)} {hos.split.secondPeriod.status === 'SLEEPER_BERTH' ? 'Sleeper Berth' : 'Off Duty'} · 11-hr & 14-hr clocks recalculated from the first qualifying period (FMCSA §395.1(g)).
+              Paired periods: {fmtDur(hosEff.split.firstPeriod.duration)} {hosEff.split.firstPeriod.status === 'SLEEPER_BERTH' ? 'Sleeper Berth' : 'Off Duty'} + {fmtDur(hosEff.split.secondPeriod.duration)} {hosEff.split.secondPeriod.status === 'SLEEPER_BERTH' ? 'Sleeper Berth' : 'Off Duty'} · 11-hr & 14-hr clocks recalculated from the first qualifying period (FMCSA §395.1(g)).
             </div>
           )}
-          {hos.split.status === 'available' && (
+          {hosEff.split.status === 'available' && !hosEff.split.agriculturalUnavailable && (
             <div className="text-xs text-muted-foreground mt-1 space-y-0.5">
               <div>
-                Complete the pair with at least {fmtDur(hos.split.requiredSecondMs)} more qualifying rest
-                {hos.split.secondPeriod ? ` (${fmtDur(hos.split.secondPeriod.duration)} taken so far, ${fmtDur(hos.split.additionalMs)} more needed)` : ''}.
+                Complete the pair with at least {fmtDur(hosEff.split.requiredSecondMs)} more qualifying rest
+                {hosEff.split.secondPeriod ? ` (${fmtDur(hosEff.split.secondPeriod.duration)} taken so far, ${fmtDur(hosEff.split.additionalMs)} more needed)` : ''}.
               </div>
-              {hos.split.projectedDrivingRemainingMs != null && hos.split.projectedWindowRemainingMs != null && (
+              {hosEff.split.projectedDrivingRemainingMs != null && hosEff.split.projectedWindowRemainingMs != null && (
                 <div>
-                  Once completed: ~{fmtDur(Math.max(0, hos.split.projectedDrivingRemainingMs))} driving and ~{fmtDur(Math.max(0, hos.split.projectedWindowRemainingMs))} on the 14-hour window would be available.
+                  Once completed: ~{fmtDur(Math.max(0, hosEff.split.projectedDrivingRemainingMs))} driving and ~{fmtDur(Math.max(0, hosEff.split.projectedWindowRemainingMs))} on the 14-hour window would be available.
                 </div>
               )}
               <div className="text-[11px] text-muted-foreground/80">Optional — a full 10-hour rest always works too. Split sleeper does not reset the 60/70-hour cycle.</div>

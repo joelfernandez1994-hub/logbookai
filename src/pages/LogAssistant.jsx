@@ -2,9 +2,10 @@ import { useState, useMemo, useEffect, useRef } from 'react';
 import { useLocation } from 'react-router-dom';
 import { useDriverData } from '@/hooks/useDriverData';
 import { base44 } from '@/api/base44Client';
-import { getAppSettings, getAIUsage } from '@/lib/driverData';
+import { getAppSettings, getAIUsage, getAgriculturalClaims } from '@/lib/driverData';
 import { computeHOS, fmtDur, dateKeyInTz } from '@/lib/hosEngine';
 import { whatCanIDo, earliestLegalEta } from '@/lib/logAssistant';
+import { evaluateAgriculturalClocks, availabilityUndeterminedSummary } from '@/lib/agriculturalClaims';
 import { formatLogDate } from '@/lib/timezones';
 import { addRouteWarning, enrichProposalMileage, fetchRoute, truckEtaHours, DEFAULT_SPEED_PROFILE } from '@/lib/proposalValidation';
 import { reconstructDrivingDurations } from '@/lib/drivingDurationReconstruction';
@@ -53,6 +54,7 @@ export default function LogAssistant() {
   const [futureInput, setFutureInput] = useState('');
   const [usage, setUsage] = useState({ used: 0, allowance: 20 });
   const [now, setNow] = useState(new Date());
+  const [claims, setClaims] = useState([]);
   const [routeWarning, setRouteWarning] = useState(null);
   const [reconstructionConflicts, setReconstructionConflicts] = useState([]);
   // Pending delete-by-reference confirmation ("delete the second fuel stop").
@@ -95,11 +97,18 @@ export default function LogAssistant() {
   useEffect(() => { const t = setTimeout(() => setNow(new Date()), 30000); return () => clearTimeout(t); }, [now]);
 
   const hos = useMemo(() => computeHOS(events, cycleType, tz, now, { historyComplete: true }), [events, cycleType, tz, now]);
-  const hosSummary = useMemo(() => buildHosSummary(hos), [hos]);
+  // Agricultural claims: clocks a claim's history affects are reported as
+  // unavailable — both to the driver (What Can I Do?) and to the AI itself
+  // (hosSummary carries the same unavailability + an explicit instruction).
+  const agEval = useMemo(() => evaluateAgriculturalClocks({ claims, events, hos, cycleType, tz, now }),
+    [claims, events, hos, cycleType, tz, now]);
+  const hosSummary = useMemo(() => buildHosSummary(hos, agEval), [hos, agEval]);
+
+  useEffect(() => { (async () => { try { setClaims((await getAgriculturalClaims()) || []); } catch (e) {} })(); }, []);
 
   const whatInfo = useMemo(
-    () => whatCanIDo(events, cycleType, tz, now, profile?.entered_prior_history),
-    [events, cycleType, tz, now, profile?.entered_prior_history]
+    () => whatCanIDo(events, cycleType, tz, now, profile?.entered_prior_history, agEval),
+    [events, cycleType, tz, now, profile?.entered_prior_history, agEval]
   );
 
   const prepareProposal = async (value) => {
@@ -218,6 +227,17 @@ export default function LogAssistant() {
     //    tab uses). Zero AI cost, never touches the log. Falls through to
     //    Ask LogbookAI when it can't confidently answer (unknown current
     //    location, unresolvable destination, no road route).
+    // Agricultural claims: availability is undetermined — never a numeric
+    // yes/no feasibility answer while the 14-hour transition is unresolved.
+    if (agEval && agEval.anyUnavailable && detectFeasibilityQuestion(text)) {
+      setProposal({
+        intent: 'question', target_date: '', requires_clarification: false, clarification_question: '',
+        interpretation: availabilityUndeterminedSummary(agEval), summary: availabilityUndeterminedSummary(agEval),
+        proposed_events: [], clarifications: [], location_confirmations: [],
+        refuses_fabrication: false, _deterministic: true,
+      });
+      return true;
+    }
     if (detectFeasibilityQuestion(text)) {
       const feasibility = await answerFeasibilityQuestion(text, {
         currentLocation: lastLoggedLocation(),
@@ -598,6 +618,7 @@ export default function LogAssistant() {
   // road route and earliestLegalEta uses the actual deterministic HOS outputs.
   const handleFuture = async (text) => {
     if (!hos.calculable) { setError('Correct the duty timeline before calculating a legal future plan.'); return false; }
+    if (agEval && agEval.anyUnavailable) { setError(availabilityUndeterminedSummary(agEval)); return false; }
     setBusy(true); setError('');
     try {
       const res = await base44.functions.invoke('manualLogAssistant', {
@@ -831,13 +852,20 @@ function simplifyEvent(e) {
   };
 }
 
-function buildHosSummary(hos) {
+function buildHosSummary(hos, agEval = null) {
+  const c = (agEval && agEval.clocks) || {};
+  const agLine = (key, fallback) => (c[key] && c[key].unavailable
+    ? 'unavailable — a driver-claimed agricultural interval affects this clock; agricultural HOS calculations are disabled pending resolution of the 14-hour transition rules'
+    : fallback);
   return [
-    `Driving remaining: ${hos.driving.applicable ? fmtDur(hos.driving.drivingRemainingMs) : 'unavailable — no verified reset in the contiguous timeline'}`,
-    `14-hour window remaining: ${hos.window14.applicable ? fmtDur(hos.window14.remainingMs) : 'unavailable — no verified reset in the contiguous timeline'}`,
-    `30-min break: ${hos.break30.satisfied ? 'satisfied' : (hos.break30.breakRequired ? 'required' : 'not yet required')}`,
-    `Cycle ${hos.cycle.cycleLimit}/${hos.cycle.cycleDays} remaining: ${hos.cycle.cycleRemainingHours.toFixed(1)} hr`,
-    `Split sleeper: ${hos.split.status}`,
-    `34h restart: ${hos.restart.inProgress ? 'in progress' : (hos.restart.completed ? 'completed' : 'none')}`,
-  ].join('\n');
+    `Driving remaining: ${hos.driving.applicable ? fmtDur(hos.driving.drivingRemainingMs) : agLine('driving', 'unavailable — no verified reset in the contiguous timeline')}`,
+    `14-hour window remaining: ${hos.window14.applicable ? fmtDur(hos.window14.remainingMs) : agLine('window14', 'unavailable — no verified reset in the contiguous timeline')}`,
+    `30-min break: ${c.break30 && c.break30.unavailable ? 'unavailable — a driver-claimed agricultural interval affects this clock' : (hos.break30.satisfied ? 'satisfied' : (hos.break30.breakRequired ? 'required' : 'not yet required'))}`,
+    `Cycle ${hos.cycle.cycleLimit}/${hos.cycle.cycleDays} remaining: ${c.cycle && c.cycle.unavailable ? 'unavailable — a driver-claimed agricultural interval affects the cycle window' : `${hos.cycle.cycleRemainingHours.toFixed(1)} hr`}`,
+    `Split sleeper: ${c.split && c.split.unavailable ? 'unavailable (agricultural claim overlaps rest history)' : hos.split.status}`,
+    `34h restart: ${c.restart && c.restart.unavailable ? 'unavailable (agricultural claim overlaps rest history)' : (hos.restart.inProgress ? 'in progress' : (hos.restart.completed ? 'completed' : 'none'))}`,
+    agEval && agEval.anyUnavailable
+      ? 'AGRICULTURAL NOTICE: Availability is UNDETERMINED while a driver-claimed agricultural interval affects the clock history. If asked whether the driver can drive, answer that availability is UNDETERMINED — never a yes/no answer and never a numeric remaining-hours value for the affected clocks.'
+      : '',
+  ].filter(Boolean).join('\n');
 }

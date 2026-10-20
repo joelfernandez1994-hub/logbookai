@@ -11,7 +11,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
-import { User, Building2, Truck, Bot, FileText, Settings, LogOut, Shield, ClipboardCheck, Trash2, Sun, Moon, Monitor, MapPin, Globe } from 'lucide-react';
+import { User, Building2, Truck, Bot, FileText, Settings, LogOut, Shield, ClipboardCheck, Trash2, Sun, Moon, Monitor, MapPin, Globe, Tractor } from 'lucide-react';
 import LocationInput from '@/components/LocationInput';
 import TimezoneSelect from '@/components/TimezoneSelect';
 import { labelForIana } from '@/lib/timezones';
@@ -112,6 +112,15 @@ export default function More() {
     reload();
   };
 
+  // Agricultural exemption records (49 CFR 395.1(k)) — opt-in. Enabling
+  // permits RECORDING driver-claimed intervals only; it never establishes
+  // eligibility or changes HOS calculations. Toggling off stops new claim
+  // entry but preserves existing claims and their clock limitations.
+  const toggleAgricultural = async (val) => {
+    await saveDriverProfile({ ...profile, agricultural_support_enabled: val }, profile);
+    reload();
+  };
+
   // Presentation-only: changes the display language immediately (setAppLanguage)
   // and persists it to DriverProfile so it follows the driver across devices.
   // Never touches a stored duty-status value or any other database enum, and
@@ -184,6 +193,21 @@ export default function More() {
           </div>
           <input type="checkbox" checked={!!profile?.dvir_reminder_enabled} onChange={(e) => toggleDvirReminder(e.target.checked)} className="w-5 h-5 shrink-0" />
         </div>
+      </div>
+
+      {/* Agricultural exemption records — optional, off by default (Standard
+          Federal HOS remains the default for every driver). */}
+      <div className="rounded-xl border border-border bg-card p-4 mb-4">
+        <div className="flex items-center justify-between">
+          <div className="flex-1 pr-3">
+            <div className="font-semibold text-sm text-card-foreground flex items-center gap-2"><Tractor className="w-4 h-4" /> {t('more.agriculturalRecords')}</div>
+            <div className="text-xs text-muted-foreground mt-0.5">{t('more.agriculturalDescription')}</div>
+          </div>
+          <input type="checkbox" checked={!!profile?.agricultural_support_enabled} onChange={(e) => toggleAgricultural(e.target.checked)} className="w-5 h-5 shrink-0" />
+        </div>
+        {!!profile?.agricultural_support_enabled && (
+          <Button size="sm" variant="outline" className="mt-2" onClick={() => navigate('/agricultural')}>{t('agricultural.reviewClaims')}</Button>
+        )}
       </div>
 
       {/* Admin controls — internal/staff surface, kept English regardless of

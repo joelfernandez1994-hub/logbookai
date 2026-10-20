@@ -3,11 +3,13 @@ import { useTranslation } from 'react-i18next';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { dutyStatusLabel } from '@/i18n';
 import { useDriverData } from '@/hooks/useDriverData';
-import { computeCycle, computeRecordedToday, dateKeyInTz, fmtHours, hasSufficientCycleHistory } from '@/lib/hosEngine';
+import { computeHOS, computeCycle, computeRecordedToday, dateKeyInTz, fmtHours, hasSufficientCycleHistory } from '@/lib/hosEngine';
 import { validateTimeline } from '@/lib/timelineEngine';
 import { getDisplayGrid } from '@/lib/timelineDisplay';
 import RodsGraphEditor from '@/components/rodsEditor/RodsGraphEditor';
-import { getCertifications } from '@/lib/driverData';
+import { getCertifications, getAgriculturalClaims } from '@/lib/driverData';
+import { evaluateAgriculturalClocks } from '@/lib/agriculturalClaims';
+import ClaimBanner from '@/components/agricultural/ClaimBanner';
 import { base44 } from '@/api/base44Client';
 import { insertEvent, editEvent, deleteEventById, clearDayEvents } from '@/lib/timelineWriter';
 
@@ -49,6 +51,7 @@ export default function Logs() {
   const [certifying, setCertifying] = useState(false);
   const [fixOpen, setFixOpen] = useState(false);
   const [showPicker, setShowPicker] = useState(false);
+  const [claims, setClaims] = useState([]);
 
   const tz = carrier?.home_terminal_timezone || 'America/Chicago';
   const cycleType = carrier?.hos_cycle || '70_8';
@@ -57,7 +60,10 @@ export default function Logs() {
   const loadCerts = async () => {
     setCertifications(await getCertifications(9));
   };
-  useEffect(() => { loadCerts(); }, []);
+  useEffect(() => {
+    loadCerts();
+    (async () => { try { setClaims((await getAgriculturalClaims()) || []); } catch (e) {} })();
+  }, []);
 
   // "Add record" from a timeline gap notice: prefill the Add Event dialog.
   // "Add record" from a timeline gap notice: prefill the Add Event dialog.
@@ -100,7 +106,7 @@ export default function Logs() {
     () => hasSufficientCycleHistory(events, cycleType, profile?.entered_prior_history, tz, selectedDate),
     [events, cycleType, profile?.entered_prior_history, tz, selectedDate]
   );
-  const cycleUsable = dayValidity.valid && sufficientHistory;
+  const cycleUsable = dayValidity.valid && sufficientHistory && agCycleAvailable;
 
   // Non-blocking review warnings that were unresolved when this day's events
   // were saved (e.g. timeline gaps) — deduped and shown on the day banner and
@@ -119,6 +125,16 @@ export default function Logs() {
     return out;
   }, [events, dateStr, tz, dayValidity]);
   const cycle = useMemo(() => computeCycle(events, cycleType, tz, selectedDate), [events, cycleType, tz, selectedDate]);
+
+  // Agricultural claims: the shared clock-availability determination gates the
+  // cycle recap on this log date the same way every other surface gates it —
+  // claimed work in the lookback window makes the cycle unavailable (never
+  // estimated). Unaffected days keep the standard numbers unchanged.
+  const agEval = useMemo(() => {
+    const hosSel = computeHOS(events, cycleType, tz, selectedDate, { historyComplete: sufficientHistory });
+    return evaluateAgriculturalClocks({ claims, events, hos: hosSel, cycleType, tz, now: selectedDate });
+  }, [claims, events, cycleType, tz, selectedDate, sufficientHistory]);
+  const agCycleAvailable = !(agEval && agEval.clocks && agEval.clocks.cycle && agEval.clocks.cycle.unavailable);
 
   const cert = certifications.find(c => c.log_date === dateStr && !c.is_superseded);
   const isCertified = !!cert;
@@ -265,6 +281,8 @@ export default function Logs() {
           </div>
         </div>
       )}
+      <ClaimBanner claims={claims} dateStr={dateStr} tz={tz}
+        showCalcNotice={!!(agEval && agEval.anyUnavailable)} onClaimsChanged={reload} editedBy={profile?.legal_name} />
       <TimelineGapNotice events={events} dateStr={dateStr} tz={tz} now={new Date()} />
       <RouteTimeConflictNotice events={events} dateStr={dateStr} tz={tz} speedProfile={speedProfile} now={new Date()} onFix={() => setFixOpen(true)} />
       <DailyMilesCard events={events} dateStr={dateStr} tz={tz} speedProfile={speedProfile} />
@@ -292,7 +310,7 @@ export default function Logs() {
         {!cycleUsable && (
           <div className="flex items-center gap-1 mt-1.5 text-xs text-warning font-medium">
             <AlertTriangle className="w-3 h-3 shrink-0" />
-            <span>{t('hos.unavailable')}</span>
+            <span>{agCycleAvailable ? t('hos.unavailable') : t('agricultural.clockUnavailableShort')}</span>
           </div>
         )}
       </div>

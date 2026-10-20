@@ -2,6 +2,7 @@ import { jsPDF } from 'jspdf';
 import { getDailyGrid, computeCycle, computeHOS, fmtHours, fmtDur } from './hosEngine';
 import { labelForIana } from './timezones';
 import { computeDailyMiles } from './tripSync';
+import { claimsOnDate, basisLabel } from './agriculturalClaims';
 
 const STATUS_ROWS = ['OFF_DUTY', 'SLEEPER_BERTH', 'DRIVING', 'ON_DUTY'];
 const STATUS_LABELS = {
@@ -34,7 +35,7 @@ const REPAIR_LABEL = {
 // FMCSA paper driver's daily log. The 24-hour graph is the visual focus; HOS
 // engine diagnostics live in a separate clean recap below the log.
 // ---------------------------------------------------------------------------
-function drawDay(doc, driver, carrier, events, dateStr, timezone, certification, cycleInfo, isFirst, cycleType, dailySummary, speedProfile) {
+function drawDay(doc, driver, carrier, events, dateStr, timezone, certification, cycleInfo, isFirst, cycleType, dailySummary, speedProfile, claims) {
   const W = doc.internal.pageSize.getWidth();
   const H = doc.internal.pageSize.getHeight();
   const M = 7; // margin
@@ -196,6 +197,41 @@ function drawDay(doc, driver, carrier, events, dateStr, timezone, certification,
     y += 3.4;
   });
 
+  // --- Agricultural operation claims (49 CFR 395.1(k)) — DRIVER-CLAIMED,
+  // NOT VERIFIED. Only drawn for days a claim touches; days without claims
+  // keep the existing output byte-identical. States plainly that affected
+  // HOS calculations are unavailable — never exemption-adjusted values and
+  // never a claim of verification. ---
+  const dayClaims = claimsOnDate(claims || [], dateStr, timezone).slice(0, 2);
+  if (dayClaims.length) {
+    y += 3;
+    doc.setFontSize(8); doc.setFont(undefined, 'bold');
+    doc.text('AGRICULTURAL OPERATION CLAIM (49 CFR 395.1(k)) - DRIVER-CLAIMED, NOT VERIFIED', M, y + 1);
+    doc.setLineWidth(0.2); doc.line(M, y + 2.2, W - M, y + 2.2);
+    y += 5.5;
+    doc.setFontSize(6.8); doc.setFont(undefined, 'normal');
+    dayClaims.forEach((c) => {
+      const s = c.start_timestamp ? new Date(c.start_timestamp).toLocaleString('en-US', { timeZone: timezone }) : '';
+      const e = c.end_timestamp ? new Date(c.end_timestamp).toLocaleString('en-US', { timeZone: timezone })
+        : (c.ended_at ? new Date(c.ended_at).toLocaleString('en-US', { timeZone: timezone }) : 'open (in progress)');
+      const lines = [
+        `Basis: ${basisLabel(c.basis)}   Commodity/Livestock: ${c.commodity_or_livestock || 'n/a'}`,
+        `Interval (log timezone): ${s} to ${e}`,
+        `Source (Driver attested): ${[c.source_city, c.source_state].filter(Boolean).join(', ') || 'n/a'}`
+          + (c.destination_city ? `   Final destination (Driver attested): ${[c.destination_city, c.destination_state].filter(Boolean).join(', ')}` : ''),
+        c.trip_facts ? `Trip facts (Driver attested): ${c.trip_facts}` : '',
+        (c.unresolved_facts || []).map(u => `Unresolved: ${u.message}`).join(' | '),
+        c.confirmed_at ? `Driver confirmation recorded: ${new Date(c.confirmed_at).toLocaleString('en-US', { timeZone: timezone })}` : '',
+        'Note: HOS calculations for the clocks this claim affects are UNAVAILABLE - agricultural HOS calculations are disabled pending resolution of the 14-hour transition rules. No exemption-adjusted values are reported and no entry above is verified by LogbookAI.',
+      ].filter(Boolean);
+      lines.forEach((line) => {
+        doc.text(doc.splitTextToSize(line, PW), M, y);
+        y += 3.2;
+      });
+      y += 1.5;
+    });
+  }
+
   // --- Certification (HOS Recap intentionally omitted from the daily PDF;
   // cycle/HOS calculations remain available in the app dashboard) ---
   let cy = Math.max(y + 4, H - 18);
@@ -219,7 +255,7 @@ export function generateLogsPdf(driver, carrier, events, dateStrs, timezone, cer
   dateStrs.forEach((dateStr, i) => {
     const cert = certifications.find(c => c.log_date === dateStr && !c.is_superseded);
     const cycle = computeCycle(events, cycleType, timezone, new Date(dateStr + 'T12:00:00'));
-    drawDay(doc, driver, carrier, events, dateStr, timezone, cert, cycle, i === 0, cycleType, dsByDate.get(dateStr), options.speedProfile);
+    drawDay(doc, driver, carrier, events, dateStr, timezone, cert, cycle, i === 0, cycleType, dsByDate.get(dateStr), options.speedProfile, options.claims);
   });
 
   if (options.includeDvir && options.dvirs && options.dvirs.length) {

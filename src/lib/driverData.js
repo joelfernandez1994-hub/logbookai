@@ -77,6 +77,10 @@ export async function getAIUsage() {
   return list && list[0] ? list[0].count : 0;
 }
 
+export async function getAgriculturalClaims() {
+  return await base44.entities.AgriculturalClaim.list('-created_date', 200);
+}
+
 export async function getDocuments(daysBack = 30) {
   const all = await base44.entities.Document.list('-created_date', 500);
   if (!all) return [];

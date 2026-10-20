@@ -5,7 +5,9 @@ import { getDailyGrid, computeHOS, hasSufficientCycleHistory, dateKeyInTz } from
 import { deriveHosDisplay } from '@/lib/proposalValidation';
 import LogGraph from '@/components/LogGraph';
 import LogExportSheet from '@/components/LogExportSheet';
-import { getCertifications, getAllEvents, getDocuments } from '@/lib/driverData';
+import { getCertifications, getAllEvents, getDocuments, getAgriculturalClaims } from '@/lib/driverData';
+import { evaluateAgriculturalClocks } from '@/lib/agriculturalClaims';
+import ClaimBanner from '@/components/agricultural/ClaimBanner';
 import { getDvirs } from '@/lib/dvirData';
 import { getAllDailySummaries } from '@/lib/tripSync';
 import { generateLogsPdf } from '@/lib/pdfGenerator';
@@ -78,6 +80,7 @@ export default function Inspection() {
   const [dvirs, setDvirs] = useState([]);
   const [documents, setDocuments] = useState([]);
   const [dailySummaries, setDailySummaries] = useState([]);
+  const [claims, setClaims] = useState([]);
   const [dayOffset, setDayOffset] = useState(0); // 0 = today, -7 = 7 days ago
   const [showExport, setShowExport] = useState(false);
 
@@ -87,12 +90,13 @@ export default function Inspection() {
 
   useEffect(() => {
     (async () => {
-      const [ev, certs, dv, docs, sums] = await Promise.all([getAllEvents(), getCertifications(9), getDvirs(30), getDocuments(30), getAllDailySummaries()]);
+      const [ev, certs, dv, docs, sums, cl] = await Promise.all([getAllEvents(), getCertifications(9), getDvirs(30), getDocuments(30), getAllDailySummaries(), getAgriculturalClaims()]);
       setEvents(ev || []);
       setCertifications(certs || []);
       setDvirs(dv || []);
       setDocuments(docs || []);
       setDailySummaries(sums || []);
+      setClaims(cl || []);
     })();
   }, []);
 
@@ -110,12 +114,19 @@ export default function Inspection() {
   const historyComplete = useMemo(() => hasSufficientCycleHistory(events, cycleType, profile?.entered_prior_history, tz, grid.dayEnd), [events, cycleType, profile, tz, grid.dayEnd]);
   const hosForDay = useMemo(() => computeHOS(events, cycleType, tz, grid.dayEnd, { historyComplete }), [events, cycleType, tz, grid.dayEnd, historyComplete]);
   const hosDisplay = useMemo(() => deriveHosDisplay(hosForDay, historyComplete), [hosForDay, historyComplete]);
-  const recap = useMemo(() => recapDisplay(hosForDay, historyComplete), [hosForDay, historyComplete]);
+  // Agricultural claims: same shared availability determination as Today and
+  // Logs, evaluated as of the end of the selected inspection day.
+  const agEval = useMemo(() => evaluateAgriculturalClocks({ claims, events, hos: hosForDay, cycleType, tz, now: grid.dayEnd }),
+    [claims, events, hosForDay, cycleType, tz, grid.dayEnd]);
+  const agClocks = agEval?.clocks || {};
+  const agDriveOff = !!agClocks.driving?.unavailable;
+  const agWindowOff = !!agClocks.window14?.unavailable;
+  const recap = useMemo(() => recapDisplay(agClocks.cycle?.unavailable ? null : hosForDay, historyComplete), [hosForDay, historyComplete, agClocks]);
   const cert = certifications.find(c => c.log_date === selectedKey && !c.is_superseded);
 
   const allDates = useMemo(() => Array.from(new Set((events || []).map(e => e.log_date).filter(Boolean))).sort(), [events]);
 
-  const buildDoc = (dates, options) => generateLogsPdf(profile, carrier, events, dates, tz, certifications, cycleType, { ...options, dvirs, documents, dailySummaries, speedProfile });
+  const buildDoc = (dates, options) => generateLogsPdf(profile, carrier, events, dates, tz, certifications, cycleType, { ...options, dvirs, documents, dailySummaries, speedProfile, claims });
 
   return (
     <div className="px-4 min-h-screen bg-background text-foreground safe-top">
@@ -163,6 +174,11 @@ export default function Inspection() {
         <LogGraph events={events} dateStr={selectedKey} timezone={tz} />
       </div>
 
+      {/* Driver-claimed agricultural intervals touching this day — same
+          availability state and explanation as Today, Logs, and exports. */}
+      <ClaimBanner claims={claims} dateStr={selectedKey} tz={tz}
+        showCalcNotice={!!(agEval && agEval.anyUnavailable)} editedBy={profile?.legal_name} />
+
       {/* Recap — all values sourced from hosForDay.cycle via recapDisplay */}
       <div className="bg-card text-card-foreground rounded-xl p-3 mb-3 text-sm">
         <div className="font-semibold mb-1">{recap.cycleLimit}-Hour / {recap.cycleDays}-Day Recap</div>
@@ -191,12 +207,12 @@ export default function Inspection() {
         <div className="font-semibold mb-1">{t('inspection.hosClocksEndOfDay')}</div>
         <div className="grid grid-cols-2 gap-1 text-xs text-muted-foreground">
           <div>
-            Driving remaining: {hosDisplay.driving.value}
-            {hosDisplay.driving.note && <div className="text-muted-foreground text-[11px]">{hosDisplay.driving.note}</div>}
+            Driving remaining: {agDriveOff ? '--' : hosDisplay.driving.value}
+            <div className="text-muted-foreground text-[11px]">{agDriveOff ? t('agricultural.clockUnavailableShort') : hosDisplay.driving.note}</div>
           </div>
           <div>
-            14-hr window remaining: {hosDisplay.window14.value}
-            {hosDisplay.window14.note && <div className="text-muted-foreground text-[11px]">{hosDisplay.window14.note}</div>}
+            14-hr window remaining: {agWindowOff ? '--' : hosDisplay.window14.value}
+            <div className="text-muted-foreground text-[11px]">{agWindowOff ? t('agricultural.clockUnavailableShort') : hosDisplay.window14.note}</div>
           </div>
           <div className="col-span-2 text-muted-foreground pt-1">
             {hosForDay.split.status === 'active'

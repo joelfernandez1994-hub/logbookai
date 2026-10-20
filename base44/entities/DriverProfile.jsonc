@@ -54,6 +54,11 @@
       "type": "boolean",
       "default": false
     },
+    "agricultural_support_enabled": {
+      "type": "boolean",
+      "default": false,
+      "description": "Optional, off by default. When true, the driver may record driver-claimed agricultural exemption intervals (49 CFR 395.1(k)) for record, review, inspection, and export purposes. Never changes HOS calculations: agricultural HOS adjustments remain disabled pending resolution of the 14-hour transition rules. Toggling off stops new claim entry but preserves existing claims and their clock limitations."
+    },
     "live_tracking_enabled": {
       "type": "boolean",
       "default": true,

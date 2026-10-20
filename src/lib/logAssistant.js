@@ -14,6 +14,9 @@ import {
   evaluateSplitSleeper, compute34Restart, fmtDur, dateKeyInTz,
   hasSufficientCycleHistory,
 } from './hosEngine';
+import {
+  AGRICULTURAL_DISABLED_NOTICE, availabilityUndeterminedSummary,
+} from './agriculturalClaims';
 
 const H = 3600000;
 const MIN = 60000;
@@ -104,7 +107,7 @@ export function highestSeverity(violations) {
 // from availability that would arise IF the driver completes a qualifying
 // rest that has not yet happened.
 // ---------------------------------------------------------------------------
-export function whatCanIDo(events, cycleType, tz, now = new Date(), enteredPriorHistory = false) {
+export function whatCanIDo(events, cycleType, tz, now = new Date(), enteredPriorHistory = false, agEval = null) {
   const historyComplete = hasSufficientCycleHistory(events, cycleType, enteredPriorHistory, tz, now);
   const segments = normalizeEvents(events, now);
   const hos = computeHOS(events, cycleType, tz, now, { historyComplete });
@@ -228,6 +231,42 @@ export function whatCanIDo(events, cycleType, tz, now = new Date(), enteredPrior
   } else if (!hos.break30.breakRequired && driveRemainingMs > 0 && windowRemainingMs > 0 && (cycleUnverified || cycleRemainingHours > 0)) {
     // Not blocked by known HOS clocks or break — but resting now: usable after rest.
     usableDriveMs = 0;
+  }
+
+  // Agricultural claims: whenever a required clock is unavailable the overall
+  // drive answer is "Availability undetermined" — never a yes/no verdict and
+  // never a numeric remaining value for the affected clock. Other
+  // independently calculable clocks keep their real engine values.
+  if (agEval && agEval.anyUnavailable) {
+    const c = agEval.clocks || {};
+    return {
+      unavailable: false,
+      undetermined: true,
+      undeterminedReason: availabilityUndeterminedSummary(agEval),
+      agNotice: AGRICULTURAL_DISABLED_NOTICE,
+      cycleUnverified,
+      cycleUnverifiedReason,
+      canDrive: null,
+      driveBlockers: [],
+      driveEligibleAt: null,
+      driveRemainingMs: c.driving?.unavailable ? null : driveRemainingMs,
+      usableDriveMs: null,
+      windowRemainingMs: c.window14?.unavailable ? null : windowRemainingMs,
+      breakRequired: c.break30?.unavailable ? null : hos.break30.breakRequired,
+      breakSatisfied: c.break30?.unavailable ? null : hos.break30.satisfied,
+      breakAgriculturalUnavailable: !!c.break30?.unavailable,
+      cycleRemainingHours: c.cycle?.unavailable ? null : cycleRemainingHours,
+      cycleRemainingMs: c.cycle?.unavailable ? null : cycleRemainingMs,
+      cycleReturningTomorrow: c.cycle?.unavailable ? null : hos.cycle.returningTomorrowHours,
+      tenHourCompletesAt,
+      thirtyFourCompletesAt,
+      splitAvailableNow: c.split?.unavailable ? null : splitAvailableNow,
+      splitConditional: c.split?.unavailable ? null : splitConditional,
+      restartInProgress: c.restart?.unavailable ? null : restart.inProgress || null,
+      restartCompleted: c.restart?.unavailable ? null : restart.completed || null,
+      restartAgriculturalUnavailable: !!c.restart?.unavailable,
+      restingNow,
+    };
   }
 
   return {

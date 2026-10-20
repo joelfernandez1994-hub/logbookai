@@ -1,0 +1,107 @@
+{
+  "name": "AgriculturalClaim",
+  "type": "object",
+  "description": "Driver-claimed agricultural operation interval (49 CFR 395.1(k)). Metadata only: never written by the duty-status writer, never changes HOS calculations. Agricultural HOS adjustments remain disabled pending resolution of the 14-hour transition rules; clocks whose calculation history a claim affects are shown as unavailable, never estimated. All locations/boundaries are driver-attested, not verified.",
+  "properties": {
+    "log_date": {
+      "type": "string",
+      "format": "date",
+      "description": "Local calendar date (log timezone) the claim interval starts on."
+    },
+    "basis": {
+      "type": "string",
+      "enum": [
+        "agricultural_commodity_395_1_k_1",
+        "livestock_final_destination_395_1_k_4"
+      ],
+      "description": "Legal basis as the driver claims it. 395.1(k)(1): agricultural commodity within 150 air-miles of the source during the state's planting/harvesting period. 395.1(k)(4): livestock within 150 air-miles from the final destination of the livestock (since Nov 15, 2021)."
+    },
+    "commodity_or_livestock": {
+      "type": "string",
+      "description": "Commodity or livestock hauled, as the driver states it."
+    },
+    "source_city": {
+      "type": "string"
+    },
+    "source_state": {
+      "type": "string"
+    },
+    "destination_city": {
+      "type": "string",
+      "description": "Final destination. Optional for (k)(1); expected for (k)(4) \u2014 its absence is an unresolved fact."
+    },
+    "destination_state": {
+      "type": "string"
+    },
+    "start_timestamp": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "end_timestamp": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Null while the claim is open/in progress. Set when the claim ends (auditable boundary)."
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "active",
+        "ended"
+      ],
+      "default": "active"
+    },
+    "ended_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "trip_facts": {
+      "type": "string",
+      "description": "Driver-provided trip details. Driver attested \u2014 never verified."
+    },
+    "unresolved_facts": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      },
+      "description": "Missing/unverified eligibility facts (e.g. state planting/harvesting period, missing destination). Display-only: keeps eligibility visibly unresolved. Never affects HOS."
+    },
+    "driver_confirmed": {
+      "type": "boolean",
+      "default": false,
+      "description": "True only after the driver explicitly confirmed the attestation statement at review."
+    },
+    "confirmed_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "audit_log": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      },
+      "description": "Append-only entries {at, action, by, note} for created/edited/ended events."
+    },
+    "notes": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "log_date",
+    "basis",
+    "start_timestamp"
+  ],
+  "rls": {
+    "read": {
+      "created_by_id": "{{user.id}}"
+    },
+    "create": {
+      "created_by_id": "{{user.id}}"
+    },
+    "update": {
+      "created_by_id": "{{user.id}}"
+    },
+    "delete": {
+      "created_by_id": "{{user.id}}"
+    }
+  }
+}

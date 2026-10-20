@@ -3,6 +3,8 @@ import { Link } from 'react-router-dom';
 import { useDriverData } from '@/hooks/useDriverData';
 import { computeHOS, runComplianceCheck, getDailyGrid, dateKeyInTz, hasSufficientCycleHistory, fmtDur, fmtClock } from '@/lib/hosEngine';
 import { whatCanIDo } from '@/lib/logAssistant';
+import { evaluateAgriculturalClocks } from '@/lib/agriculturalClaims';
+import { getAgriculturalClaims } from '@/lib/driverData';
 import { Button } from '@/components/ui/button';
 import { AlertTriangle, CheckCircle2, Info, FileWarning, Lightbulb, RefreshCw, Truck, Clock, Coffee, Gauge, RotateCcw, Moon, ShieldCheck, XCircle } from 'lucide-react';
 import Header from '@/components/Header';
@@ -13,13 +15,16 @@ export default function Compliance() {
   const { profile, carrier, events, loading, reload } = useDriverData(9);
   const [checking, setChecking] = useState(false);
   const [issues, setIssues] = useState(null);
+  const [claims, setClaims] = useState([]);
+  useEffect(() => { (async () => { try { setClaims((await getAgriculturalClaims()) || []); } catch (e) {} })(); }, []);
 
   const tz = carrier?.home_terminal_timezone || 'America/Chicago';
   const cycleType = carrier?.hos_cycle || '70_8';
   const [now, setNow] = useState(new Date());
 
   const hos = useMemo(() => computeHOS(events, cycleType, tz, now, { historyComplete: hasSufficientCycleHistory(events, cycleType, profile?.entered_prior_history, tz, now) }), [events, cycleType, tz, now, profile]);
-  const info = useMemo(() => whatCanIDo(events, cycleType, tz, now, profile?.entered_prior_history), [events, cycleType, tz, now, profile?.entered_prior_history]);
+  const agEval = useMemo(() => evaluateAgriculturalClocks({ claims, events, hos, cycleType, tz, now }), [claims, events, hos, cycleType, tz, now]);
+  const info = useMemo(() => whatCanIDo(events, cycleType, tz, now, profile?.entered_prior_history, agEval), [events, cycleType, tz, now, profile, agEval]);
 
   const runCheck = () => {
     setChecking(true);
@@ -72,11 +77,19 @@ export default function Compliance() {
       </div>
 
       {/* One-click HOS verdict: can drive now, exact blockers, eligible time */}
-      <div className={`rounded-xl border p-3 mb-3 ${info.unavailable ? 'border-warning/50 bg-warning-surface text-warning-surface-foreground' : info.canDrive ? 'border-success/40 bg-success-surface text-success-surface-foreground' : 'border-error/40 bg-error-surface text-error-surface-foreground'}`}>
+      <div className={`rounded-xl border p-3 mb-3 ${info.unavailable || info.undetermined ? 'border-warning/50 bg-warning-surface text-warning-surface-foreground' : info.canDrive ? 'border-success/40 bg-success-surface text-success-surface-foreground' : 'border-error/40 bg-error-surface text-error-surface-foreground'}`}>
         <div className="flex items-center gap-2">
-          {info.unavailable ? <AlertTriangle className="w-5 h-5" /> : info.canDrive ? <CheckCircle2 className="w-5 h-5" /> : <XCircle className="w-5 h-5" />}
-          <div className="font-semibold">{info.unavailable ? 'HOS availability unavailable' : info.canDrive ? 'You can drive right now' : 'You cannot drive right now'}</div>
+          {info.unavailable || info.undetermined ? <AlertTriangle className="w-5 h-5" /> : info.canDrive ? <CheckCircle2 className="w-5 h-5" /> : <XCircle className="w-5 h-5" />}
+          <div className="font-semibold">{info.unavailable ? 'HOS availability unavailable' : info.undetermined ? 'Availability undetermined' : info.canDrive ? 'You can drive right now' : 'You cannot drive right now'}</div>
         </div>
+        {info.undetermined && (
+          <div className="mt-2">
+            <p className="text-xs">{info.undeterminedReason}</p>
+            <Button asChild variant="outline" size="sm" className="mt-2 bg-transparent">
+              <Link to="/agricultural">Review claims</Link>
+            </Button>
+          </div>
+        )}
         {info.unavailable && (
           <div className="mt-2">
             <p className="text-xs">{info.unavailableReason}</p>
@@ -133,9 +146,9 @@ export default function Compliance() {
       {/* HOS clock grid */}
       <div className="grid grid-cols-2 gap-2 mb-3">
         <ClockCard icon={Clock} label="14-hour window" value={info.windowRemainingMs == null ? '--' : fmtDur(info.windowRemainingMs)} />
-        <ClockCard icon={Coffee} label="30-min break" value={info.unavailable ? '--' : (info.breakSatisfied ? 'Satisfied' : (info.breakRequired ? 'Required now' : 'Not yet required'))} />
-        <ClockCard icon={Gauge} label={`Cycle ${hos.cycle.cycleLimit}/${hos.cycle.cycleDays}`} value={info.cycleRemainingHours == null ? '--' : `${info.cycleRemainingHours.toFixed(1)} hr left`} note={!info.unavailable && info.cycleUnverified ? info.cycleUnverifiedReason : ''} />
-        <ClockCard icon={RotateCcw} label="34-hour restart" value={info.unavailable ? '--' : (info.restartCompleted ? 'Completed' : (info.restartInProgress ? `${fmtDur(info.restartInProgress.remainingMs)} left` : 'Not in progress'))} />
+        <ClockCard icon={Coffee} label="30-min break" value={(info.unavailable || info.breakAgriculturalUnavailable) ? '--' : (info.breakSatisfied ? 'Satisfied' : (info.breakRequired ? 'Required now' : 'Not yet required'))} />
+        <ClockCard icon={Gauge} label={`Cycle ${hos.cycle.cycleLimit}/${hos.cycle.cycleDays}`} value={info.cycleRemainingHours == null ? '--' : `${info.cycleRemainingHours.toFixed(1)} hr left`} note={!info.unavailable && !info.undetermined && info.cycleUnverified ? info.cycleUnverifiedReason : ''} />
+        <ClockCard icon={RotateCcw} label="34-hour restart" value={(info.unavailable || info.restartAgriculturalUnavailable) ? '--' : (info.restartCompleted ? 'Completed' : (info.restartInProgress ? `${fmtDur(info.restartInProgress.remainingMs)} left` : 'Not in progress'))} />
       </div>
 
       {/* Split sleeper — always informational, never a warning */}

@@ -29,6 +29,7 @@ import EngineTests from './pages/EngineTests';
 import VehicleInspection from './pages/VehicleInspection';
 import LogAssistant from '@/pages/LogAssistant';
 import Ifta from '@/pages/Ifta';
+import AgriculturalClaims from '@/pages/AgriculturalClaims';
 
 const AuthenticatedApp = () => {
   const { isLoadingAuth, isLoadingPublicSettings, authError, navigateToLogin } = useAuth();
@@ -85,6 +86,7 @@ const AuthenticatedApp = () => {
           <Route path="/vehicle-inspection" element={<VehicleInspection />} />
           <Route path="/log-assistant" element={<LogAssistant key="current-log-assistant-v2" />} />
           <Route path="/ifta" element={<Ifta />} />
+          <Route path="/agricultural" element={<AgriculturalClaims />} />
         </Route>
       </Route>
       <Route path="*" element={<PageNotFound />} />
