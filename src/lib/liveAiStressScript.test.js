@@ -31,7 +31,7 @@ const todayIso = (hm) => {
 const fp = { start_time: 'explicit', end_time: 'explicit', status: 'explicit', city: 'explicit', state: 'explicit' };
 const pe = (status, city, state, s, e) => ({ duty_status: status, city, state, start_timestamp: todayIso(s), end_timestamp: e ? todayIso(e) : null, field_provenance: fp, ambiguous_fields: [] });
 
-const PROMPT_VERSION = 'r3-2026-09-21-driving-destination';
+const PROMPT_VERSION = 'r4-2026-10-20-missing-start-time';
 const withDest = (e, city, state) => ({ ...e, destination_city: city, destination_state: state });
 function defaultModel(input) {
   // The r3 function: every interpret response echoes prompt_version; a Driving event carries its destination.

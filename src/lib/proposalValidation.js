@@ -371,6 +371,13 @@ export function validateProposal(existing, proposed, opts = {}) {
       message: mismatch.reason,
     });
   }
+  // Fabricated / unspecified driving starts and unrequested rest / pre-trip
+  // events — AI proposals only (gated on the explicit guard, which only an AI
+  // proposal carries), recomputed on the proposal as edited so a driver who
+  // fixes the start time in Edit Proposal immediately unlocks Apply.
+  if (explicitGuard) {
+    warnings.push(...findFabricatedTimestampIssues(proposed, opts.narrative || ''));
+  }
   // Described-movement gate: if the driver explicitly described a driving
   // movement (A→B) the proposal omits, block Apply until the missing Driving
   // event is added. Never invents driving from a bare city difference — only
@@ -787,6 +794,86 @@ function fmtGap(ms) {
   const h = ms / H;
   if (h < 1) return `${Math.round(ms / MIN)} min`;
   return `${h.toFixed(1)} h`;
+}
+
+// ---------------------------------------------------------------------------
+// FABRICATED / UNSPECIFIED DRIVING START + UNREQUESTED REST / PRE-TRIP EVENTS.
+// ----------------------------------------------------------------------------
+// The AI may only propose a driving start time the driver stated or a clearly
+// labeled inference can establish. Three deterministic failures must never
+// reach the saved log:
+//   1. MIDNIGHT PLACEHOLDER — a DRIVING start at exactly 12:00 AM the driver
+//      never stated (no midnight/12 AM wording in the narrative) is only a
+//      placeholder for a missing start time. Blocked until the driver states
+//      the actual start — in the narrative (clarification reply) or by editing
+//      the event here (which marks it driver-confirmed).
+//   2. UNLABELED FABRICATION — when the narrative states NO times at all, a
+//      DRIVING start that is not provenance-tagged "inferred" (claimed
+//      explicit, or no provenance at all) is an invented time. Blocked.
+//   3. UNREQUESTED REST / PRE-TRIP — an OFF_DUTY/SLEEPER_BERTH event (or a
+//      pre-trip) the driver never described is fabricated activity. Blocked
+//      unless the narrative mentions rest/pre-trip or the driver added the
+//      event themselves.
+// Runs ONLY for AI proposals (gated on the explicit guard, which only an AI
+// proposal carries) — manual timeline edits are the driver's own words and are
+// never second-guessed here. Recomputed on the proposal AS EDITED, so a driver
+// who fixes the start time in Edit Proposal immediately unlocks Apply.
+// ---------------------------------------------------------------------------
+const FAB_STATED_TIME_RE = /\b\d{1,2}(?::\d{2})?\s*(?:a\.?m\.?|p\.?m\.?)\b|\b\d{1,2}:\d{2}\b|\bmidnight\b/i;
+const FAB_STATED_MIDNIGHT_RE = /\b(?:midnight|12\s*a\.?m\.?|00:00)\b/i;
+const FAB_REST_WORDING_RE = /\b(?:off[ -]?duty|fuera de servicio|sleeper|litera|dormitorio|slept|sleep(?:ing)?|rest(?:ed|ing)?|descans\w*|to bed|in bed|overnight|day off|10[- ]hour|34[- ]hour|reset|vacation|holiday|home time)\b/i;
+const FAB_PRETRIP_WORDING_RE = /\bpre[- ]?trip\b|inspecci[oó]n previa/i;
+const clockWallOf = (v) => {
+  const m = String(v || '').match(/T(\d{2}):(\d{2})/);
+  return m ? `${m[1]}:${m[2]}` : '';
+};
+
+export function findFabricatedTimestampIssues(proposed, narrative = '') {
+  const issues = [];
+  const text = String(narrative || '');
+  const driverStatedAnyTime = FAB_STATED_TIME_RE.test(text);
+  const driverStatedMidnight = FAB_STATED_MIDNIGHT_RE.test(text);
+  const restWording = FAB_REST_WORDING_RE.test(text);
+  const pretripWording = FAB_PRETRIP_WORDING_RE.test(text);
+  for (const [eventIndex, event] of (proposed || []).entries()) {
+    if (!event || !event.start_timestamp) continue;
+    // The driver's own explicit entry (edited here in review, or added by hand)
+    // is by definition driver-confirmed — never flagged.
+    if (event.driver_confirmed_times || event.driver_confirmed_status) continue;
+    if (event.source === 'manual' || event.method_of_creation === 'Manual') continue;
+    const provenance = event.field_provenance || {};
+    const clock = clockWallOf(event.start_time_local || event.start_timestamp);
+    if (event.duty_status === 'DRIVING' && clock === '00:00' && !driverStatedMidnight) {
+      issues.push({
+        type: 'fabricated_midnight_start', severity: 'blocking', title: 'DRIVING START TIME NOT SPECIFIED',
+        message: 'You did not state when this driving started, so 12:00 AM is only a placeholder. Tell LogbookAI the actual start time, or edit the event below and set it — it cannot be saved as-is.',
+        eventIndex,
+      });
+      continue;
+    }
+    if (event.duty_status === 'DRIVING' && !driverStatedAnyTime && provenance.start_time !== 'inferred') {
+      issues.push({
+        type: 'fabricated_start_time', severity: 'blocking', title: 'DRIVING START TIME NOT SPECIFIED',
+        message: 'You did not state a start time, and this proposal does not clearly mark where its start time came from. Provide the actual start time before saving.',
+        eventIndex,
+      });
+    }
+    if ((event.duty_status === 'OFF_DUTY' || event.duty_status === 'SLEEPER_BERTH') && !restWording) {
+      issues.push({
+        type: 'unrequested_rest_event', severity: 'blocking', title: 'UNREQUESTED OFF-DUTY / SLEEPER EVENT',
+        message: 'You never described any off-duty or sleeper time, but the proposal includes one. Edit the proposal to remove or correct it, or re-ask LogbookAI without it.',
+        eventIndex,
+      });
+    }
+    if (event.duty_status === 'ON_DUTY' && /pre[- ]?trip/i.test(`${event.activity_type || ''} ${event.remark || ''}`) && !pretripWording) {
+      issues.push({
+        type: 'unrequested_pretrip', severity: 'blocking', title: 'UNREQUESTED PRE-TRIP EVENT',
+        message: 'You did not mention a pre-trip inspection, but the proposal includes one. Remove it or confirm you actually did it before saving.',
+        eventIndex,
+      });
+    }
+  }
+  return issues;
 }
 
 // ---------------------------------------------------------------------------

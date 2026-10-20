@@ -24,7 +24,10 @@ const UNAVAILABLE_MSG = 'LogbookAI is temporarily unavailable. Your request has 
 // Echoed on every interpret response so a test run can prove WHICH prompt/schema
 // revision actually served the call (the live stress test found prompt edits
 // that were not verifiably deployed). Bump when the prompt or schema changes.
-const PROMPT_VERSION = 'r3-2026-09-21-driving-destination';
+// r4-2026-10-20: missing driving start times must never default to midnight or
+// "now"; unrequested OFF_DUTY/SLEEPER events are forbidden; bare-hour meridiem
+// times ("8 AM", "midnight") are now extracted as deterministic explicit facts.
+const PROMPT_VERSION = 'r4-2026-10-20-missing-start-time';
 
 // The strict output schema requires city/state strings, so the model sometimes
 // writes a literal placeholder for an unknown location. A placeholder is not a
@@ -233,6 +236,8 @@ ABSOLUTE SAFETY RULES:
 - NEVER fabricate an activity the driver did not describe (sleeper, off-duty, fuel, breaks, pre-trips, inspections, locations, driving). You MAY infer a reasonable best-guess for an unstated DETAIL the driver clearly implied, but never invent an activity that was not part of the narrative.
 - NEVER convert Driving to another status, or alter an explicitly stated time/location/status, merely to make a log HOS-compliant. Preserve the facts; let the deterministic compliance review surface any violation.
 - NEVER invent a pre-trip. If the driver describes driving but did not mention a pre-trip, do NOT add a pre-trip event (the deterministic review will offer one).
+- NEVER add an OFF_DUTY or SLEEPER_BERTH event the driver did not describe (assumed rest, day padding, "obvious" sleep). If the driver described rest, log exactly what they described; otherwise return no such event.
+- MISSING DRIVING START TIME: when the driver describes DRIVING without stating a start time, NEVER default the start to 00:00 (midnight) or to the current time — a placeholder must never masquerade as the actual driving start. If a reliable anchor exists (a prior event's end, an explicit sequence point), use it and mark start_time field_provenance "inferred", naming its source in summary. If NO reliable anchor exists, set requires_clarification=true, ask ONE question for the start time, and still return your best-guess proposal with start_time marked "inferred" and listed in ambiguous_fields. A driving start of exactly 00:00 that the driver did not state is ALWAYS wrong.
 - If the driver DOES say they did a pre-trip (or "pre-trip inspection") but does not state how long it took, default its duration to 15 minutes — LogbookAI's standard pre-trip duration, not a claimed federal requirement. Mark that event's end_time (and start_time if likewise unstated) field_provenance "inferred", add it to ambiguous_fields, and say in summary that a 15-minute default was used. If the driver states an explicit duration or end time for the pre-trip, use that instead and mark it "explicit".
 - A DRIVING segment the driver says is current/ongoing ("then I started driving", "then go to driving", no stated arrival) MUST be proposed with end_time=null and status=DRIVING marked "explicit" — it does not need a destination. Do NOT invent a destination city for it, and do NOT copy the start city into destination_city just to appear complete; city/state should simply be its own starting location, and destination_city/destination_state stay EMPTY.
 - DRIVING DESTINATION: when the driver states or clearly implies where a DRIVING segment ARRIVES ("drove to Orlando", "left Miami ... got to Orlando at 9", "from Miami to Orlando", "headed to Tampa", "arrived in Houston"), set that DRIVING event's destination_city/destination_state to the arrival place, resolved by the same LOCATION PRECEDENCE as any other location. city/state remain where the segment STARTS (the origin). NEVER drop a stated destination and NEVER move it into city. Do NOT create an extra On Duty/Off Duty event at the destination unless the driver described one (that would fabricate an activity), and never change the driver's stated departure/arrival times to make the trip look feasible. If the driver named no destination for a segment, leave destination_city and destination_state empty.
@@ -442,13 +447,22 @@ function isApproximateMention(text, matchIndex) {
   return APPROX_QUALIFIER_RE.test(lookback);
 }
 
+// Colon times ("8:30", "8:30 AM") plus bare-hour meridiem times ("8 AM",
+// "9 pm") and the word "midnight". A bare number WITHOUT a meridiem
+// ("drove 8 hours", "300 miles") is never a time fact — only a meridiem or
+// a colon makes digits a clock reading. The bare-hour pattern refuses a
+// match whose digits are part of a preceding colon time ("8:30" -> "30 am").
 function extractExplicitFacts(input) {
   const text = String(input || '');
-  const times = [...text.matchAll(/\b(\d{1,2}):(\d{2})\s*(a\.?m\.?|p\.?m\.?)?\b/gi)]
-    .map(m => {
-      const candidates = clockCandidates(m[1], m[2], m[3]);
-      return { raw: m[0], normalized: candidates[0], candidates, approximate: isApproximateMention(text, m.index) };
-    });
+  const times = [
+    ...text.matchAll(/\b(\d{1,2}):(\d{2})\s*(a\.?m\.?|p\.?m\.?)?\b/gi),
+    ...text.matchAll(/(?<![:\d])(\d{1,2})\s*(a\.?m\.?|p\.?m\.?)\b/gi),
+    ...text.matchAll(/\bmidnight\b/gi),
+  ].map(m => {
+    if (/^midnight$/i.test(m[0])) return { raw: m[0], normalized: '00:00', candidates: ['00:00'], approximate: isApproximateMention(text, m.index) };
+    const candidates = clockCandidates(m[1], m[2] || '0', m[3]);
+    return { raw: m[0], normalized: candidates[0], candidates, approximate: isApproximateMention(text, m.index) };
+  });
   const locations = [...text.matchAll(/\b([A-Z][A-Za-z.'-]*(?:\s+[A-Z][A-Za-z.'-]*){0,3}),\s*([A-Z]{2})\b/g)]
     .map(m => ({ raw: m[0], city: m[1].trim(), state: m[2].toUpperCase() }));
   // Bilingual (English + Spanish) so the explicit-fact guard is equally

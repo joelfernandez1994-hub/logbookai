@@ -140,7 +140,7 @@ function mileageWarnings(legs, prompt) {
 }
 
 // ---- 2. SMOKE TEST: one real call, print the structured response, verify the r3 schema/prompt is LIVE ----
-const EXPECTED_PROMPT_VERSION = 'r3-2026-09-21-driving-destination';
+const EXPECTED_PROMPT_VERSION = 'r4-2026-10-20-missing-start-time';
 const SMOKE = {
   id: 'S00', cat: 'smoke', prompt: 'Left Miami at 8 AM and got to Orlando at 9 AM',
   includeCities: ['Miami', 'Orlando'], routeConflict: true,

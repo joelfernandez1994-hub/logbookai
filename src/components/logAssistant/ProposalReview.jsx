@@ -163,15 +163,24 @@ export default function ProposalReview({ existing, proposed, cycleType, tz, onAp
   // A driver typing a city/state in Edit Proposal is the authoritative source
   // of that location — flag it so the ambiguous-city guard (which blocks a
   // model-chosen state) accepts the driver's own choice.
+  // Driver edits are the authoritative source: a location edit marks the
+  // location driver-confirmed (ambiguous-city guard), a status edit marks the
+  // status driver-confirmed, and a timestamp edit marks the times
+  // driver-confirmed — each clears the matching fabricated-start / unrequested
+  // event guard for that event.
   const updateField = (i, field, val) => setEvents(prev => prev.map((e, idx) => idx === i
-    ? { ...e, [field]: val, ...((field === 'city' || field === 'state') ? { driver_confirmed_location: true } : {}) }
+    ? { ...e, [field]: val,
+        ...((field === 'city' || field === 'state') ? { driver_confirmed_location: true } : {}),
+        ...(field === 'duty_status' ? { driver_confirmed_status: true } : {}) }
     : e));
   const updateMileage = (i, val) => {
     const mileage = val === '' ? '' : Math.max(0, Number(val));
     setMileageEdited(true);
     setEvents(prev => prev.map((event, idx) => idx === i ? { ...event, mileage, mileage_source: 'manual' } : event));
   };
-  const updateTs = (i, field, localVal) => updateField(i, field, localVal ? new Date(localVal).toISOString() : null);
+  const updateTs = (i, field, localVal) => setEvents(prev => prev.map((e, idx) => idx === i
+    ? { ...e, [field]: localVal ? new Date(localVal).toISOString() : null, driver_confirmed_times: true }
+    : e));
 
   const addPreTrip = ({ start_timestamp, duration_min, city, state, alreadySatisfied }) => {
     if (alreadySatisfied) { setPretripOpen(false); return; }
@@ -420,6 +429,9 @@ export default function ProposalReview({ existing, proposed, cycleType, tz, onAp
                 <div className="flex-1">
                   <div className="font-semibold text-card-foreground">{STATUS_LABELS[e.duty_status] || e.duty_status}{e.activity_type ? ` · ${e.activity_type}` : ''}</div>
                   <div className="text-muted-foreground">{[e.city, e.state].filter(Boolean).join(', ')}{e.remark ? ` — ${e.remark}` : ''}</div>
+                  {e.field_provenance?.start_time === 'inferred' && (
+                    <div className="text-[11px] text-warning mt-1">Start time inferred by LogbookAI — please verify it is correct before applying.</div>
+                  )}
                   {e.duty_status === 'DRIVING' && e.mileage != null && Number.isFinite(Number(e.mileage)) && (
                     <div className="text-card-foreground mt-1">{Number(e.mileage).toFixed(1)} mi <span className="text-muted-foreground">({e.mileage_source === 'route' ? 'road route' : e.mileage_source === 'driver_stated' ? 'as you stated' : e.mileage_source === 'manual' ? 'driver edited' : 'estimated fallback'})</span></div>
                   )}

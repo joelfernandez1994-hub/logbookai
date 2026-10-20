@@ -15,7 +15,7 @@
  *   The script verifies: not the editor page, app id, logged-in email === testEmail,
  *   role is not admin, carrier timezone === America/New_York. It then makes ONE real
  *   manualLogAssistant call ("Left Miami at 8 AM and got to Orlando at 9 AM"), prints the
- *   raw structured response, and checks it: prompt_version r3-2026-09-21-driving-destination,
+ *   raw structured response, and checks it: prompt_version r4-2026-10-20-missing-start-time,
  *   DRIVING Miami FL -> destination_city/destination_state Orlando FL, 8 AM and 9 AM kept
  *   exactly, route lookup performed, impossible travel flagged. The full run stays locked
  *   unless the version, destination and times checks pass.
@@ -550,7 +550,7 @@ function mileageWarnings(legs, prompt) {
 }
 
 // ---- 2. SMOKE TEST: one real call, print the structured response, verify the r3 schema/prompt is LIVE ----
-const EXPECTED_PROMPT_VERSION = 'r3-2026-09-21-driving-destination';
+const EXPECTED_PROMPT_VERSION = 'r4-2026-10-20-missing-start-time';
 const SMOKE = {
   id: 'S00', cat: 'smoke', prompt: 'Left Miami at 8 AM and got to Orlando at 9 AM',
   includeCities: ['Miami', 'Orlando'], routeConflict: true,
@@ -652,5 +652,4 @@ console.table(rows.map((r) => ({ id: r.id, cat: r.cat, result: r.pass ? 'PASS' :
 console.table(totals);
 window.__liveAiResults = { meta: { email: me.email, tz, cycle, mode, ranAt: new Date().toISOString() }, totals, rows, raw };
 try { if (typeof copy === 'function') copy(JSON.stringify(window.__liveAiResults)); } catch (e) { /* clipboard optional */ }
-return totals;
-})();
+return totals;})();
