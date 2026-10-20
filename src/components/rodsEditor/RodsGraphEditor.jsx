@@ -7,13 +7,13 @@ import {
 } from '@/lib/rodsEditor';
 import { applyTimelineOps } from '@/lib/timelineWriter';
 import { computeGraphLayout, getLabelIntervalHours, LEFT_W } from '@/lib/rodsGraphLayout';
-import { xToHour, beginDrawGesture, updateDrawGesture, finalizeDrawGesture, autoScrollDelta } from '@/lib/rodsGraphGesture';
+import { xToHour, beginDrawGesture, updateDrawGesture, finalizeDrawGesture, autoScrollDelta, clampScroll } from '@/lib/rodsGraphGesture';
 import EventSheet from './EventSheet';
 import ProposedChangeDialog from './ProposedChangeDialog';
 import TimeBubble from './TimeBubble';
 import RodsGrid from '@/components/RodsGrid';
 import { Button } from '@/components/ui/button';
-import { Pencil, Eye, ShieldCheck, GripVertical, ZoomIn, Maximize2, AlertTriangle, RefreshCw } from 'lucide-react';
+import { Pencil, Eye, ShieldCheck, GripVertical, ZoomIn, Maximize2, AlertTriangle, RefreshCw, ChevronLeft, ChevronRight } from 'lucide-react';
 
 // Explicit "zoom in for precise edits" window — the default is always the
 // full day (undefined/null zoomHours); tapping Zoom switches to this many
@@ -108,6 +108,8 @@ export default function RodsGraphEditor({
   const gesture = useRef(null);
   const lastClientX = useRef(null);
   const rafRef = useRef(0);
+  const pan = useRef(null); // active drag-to-pan gesture (zoomed view only)
+  const [scrollX, setScrollX] = useState(0); // live scrollLeft, for the window readout + button states
 
   useEffect(() => {
     const el = scrollRef.current; if (!el) return;
@@ -188,6 +190,35 @@ export default function RodsGraphEditor({
 
   useEffect(() => () => stopAutoScroll(), [stopAutoScroll]);
 
+  // ---- zoomed-view panning ----
+  // Two ways to move the visible ~5h window, per explicit direction:
+  //   1. Direct swipe/drag: a touch on the ruler or label areas pans
+  //      natively (container touch-action: pan-x); a mouse drag anywhere
+  //      except the duty rows pans here; and a SECOND finger touching a row
+  //      while one is already drawing cancels the draw and pans instead.
+  //   2. The prev/next chevron buttons in the mode bar (window stepping).
+  // Drawing itself is unchanged: one finger pressed ON a row still draws.
+  const onPanPointerDown = useCallback((e) => {
+    if (!zoomed || e.pointerType === 'touch') return; // touch pans natively
+    pan.current = { pointerId: e.pointerId, lastX: e.clientX };
+    try { e.currentTarget.setPointerCapture(e.pointerId); } catch (_) {}
+  }, [zoomed]);
+  const onPanPointerMove = useCallback((e) => {
+    const p = pan.current; if (!p || e.pointerId !== p.pointerId) return;
+    const sc = scrollRef.current; if (!sc) return;
+    sc.scrollLeft = clampScroll(sc.scrollLeft - (e.clientX - p.lastX), contentW, sc.clientWidth);
+    p.lastX = e.clientX;
+  }, [contentW]);
+  const onPanPointerUp = useCallback((e) => {
+    const p = pan.current; if (!p || e.pointerId !== p.pointerId) return;
+    pan.current = null;
+  }, []);
+  // Step the visible window by half a window per tap, clamped to the day.
+  const panWindow = useCallback((dir) => {
+    const sc = scrollRef.current; if (!sc) return;
+    sc.scrollBy({ left: dir * pxPerHour * (visibleHours / 2), behavior: 'smooth' });
+  }, [pxPerHour, visibleHours]);
+
   // ---- pointer handlers (shared by rows + handles) ----
   // The 'draw' branch is a thin wrapper around updateDrawGesture/
   // finalizeDrawGesture (rodsGraphGesture.js): one continuous swipe
@@ -197,6 +228,7 @@ export default function RodsGraphEditor({
   // of inserts. The duty status is fixed at touch-down (beginDrawGesture)
   // and never re-derived from vertical position here either.
   const onPointerMove = useCallback((e) => {
+    if (pan.current) return; // two-finger pan in progress — not a draw update
     const g = gesture.current; if (!g) return;
     lastClientX.current = e.clientX;
     const hour = hourFromClientX(e.clientX);
@@ -239,6 +271,16 @@ export default function RodsGraphEditor({
 
   const onPointerDownRow = (e, status) => {
     if (readOnly || mode !== 'edit') return;
+    e.stopPropagation(); // rows draw; the scroll container's pan handler must not also fire
+    if (gesture.current && zoomed) {
+      // Second finger while already drawing: switch to panning (the standard
+      // drawing-surface escape hatch) — cancel the draw cleanly and pan.
+      e.preventDefault();
+      stopAutoScroll(); gesture.current = null; setDraft(null); setBubble(null);
+      pan.current = { pointerId: e.pointerId, lastX: e.clientX };
+      try { e.currentTarget.setPointerCapture(e.pointerId); } catch (_) {}
+      return;
+    }
     e.preventDefault();
     const hour = hourFromClientX(e.clientX);
     if (hour == null) {
@@ -343,6 +385,13 @@ export default function RodsGraphEditor({
 
   const hourLabels = []; for (let h = 0; h <= 24; h++) hourLabels.push(h);
 
+  // Zoomed-view window readout + button enablement, derived from the live
+  // scroll position (kept current by the container's onScroll).
+  const maxScroll = Math.max(0, contentW - containerW);
+  const windowLabel = zoomed && pxPerHour
+    ? `${hourLabel(Math.round(scrollX / pxPerHour))}–${hourLabel(Math.min(24, Math.round((scrollX + pxPerHour * visibleHours) / pxPerHour)))}`
+    : '';
+
   return (
     <div className="select-none">
       {/* mode bar */}
@@ -359,9 +408,20 @@ export default function RodsGraphEditor({
         )}
         {editMode ? (
           zoomed ? (
-            <Button size="sm" variant="outline" onClick={() => setZoomHours(null)}>
-              <Maximize2 className="w-3.5 h-3.5 mr-1" /> Full Day
-            </Button>
+            <div className="flex items-center gap-1">
+              <Button size="sm" variant="outline" data-testid="zoom-pan-prev" aria-label="Earlier hours"
+                disabled={scrollX <= 0.5} onClick={() => panWindow(-1)}>
+                <ChevronLeft className="w-4 h-4" />
+              </Button>
+              <span className="text-[11px] tabular-nums text-muted-foreground text-center min-w-[52px]">{windowLabel}</span>
+              <Button size="sm" variant="outline" data-testid="zoom-pan-next" aria-label="Later hours"
+                disabled={scrollX >= maxScroll - 0.5} onClick={() => panWindow(1)}>
+                <ChevronRight className="w-4 h-4" />
+              </Button>
+              <Button size="sm" variant="outline" onClick={() => setZoomHours(null)}>
+                <Maximize2 className="w-3.5 h-3.5 mr-1" /> Full Day
+              </Button>
+            </div>
           ) : (
             <Button size="sm" variant="outline" onClick={() => setZoomHours(ZOOM_WINDOW_HOURS)}>
               <ZoomIn className="w-3.5 h-3.5 mr-1" /> Zoom
@@ -374,7 +434,7 @@ export default function RodsGraphEditor({
 
       {editMode && (
         <div className="text-[11px] text-warning-surface-foreground bg-warning-surface border border-warning/50 rounded-md px-2.5 py-1.5 mb-2">
-          <b>{t('rodsEditor.editMode')}</b> — {zoomed ? `Zoomed to ~${visibleHours}h — drag near the edge to keep going. ` : ''}Press a row and drag to draw. Tap a segment to edit.
+          <b>{t('rodsEditor.editMode')}</b> — {zoomed ? `Zoomed to ~${visibleHours}h — swipe the ruler, use the arrows, or drag near the edge to keep going. ` : ''}Press a row and drag to draw. Tap a segment to edit.
         </div>
       )}
 
@@ -413,10 +473,13 @@ export default function RodsGraphEditor({
         <RodsGrid segments={daySegs.map((s) => ({ status: s.status, startHour: s.startHour, endHour: s.endHour }))} />
       ) : (
       <div ref={scrollRef} className={`rounded-lg border border-border bg-graph ${zoomed ? 'overflow-x-auto overflow-y-hidden touch-pan-x graph-scroll' : 'overflow-hidden'}`}
-        style={zoomed ? { touchAction: 'pan-x' } : undefined}>
+        style={zoomed ? { touchAction: 'pan-x' } : undefined}
+        onScroll={(e) => setScrollX(e.currentTarget.scrollLeft)}
+        onPointerDown={onPanPointerDown} onPointerMove={onPanPointerMove}
+        onPointerUp={onPanPointerUp} onPointerCancel={onPanPointerUp}>
         <div ref={contentRef} data-testid="rods-edit-grid"
           onPointerMove={onPointerMove} onPointerUp={onPointerUp} onPointerCancel={onPointerUp}
-          style={{ width: contentW, position: 'relative', height: TOP_PAD + ROW_H * 4 + 6 }}>
+          style={{ width: contentW, position: 'relative', height: TOP_PAD + ROW_H * 4 + 6, cursor: zoomed ? 'grab' : undefined }}>
           {/* hour ruler labels */}
           {hourLabels.map((h) => (
             <div key={`lab${h}`} className="absolute pointer-events-none text-[9px] tabular-nums select-none"

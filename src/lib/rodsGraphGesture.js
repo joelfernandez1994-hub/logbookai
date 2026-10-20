@@ -73,6 +73,16 @@ export function finalizeDrawGesture(gesture) {
 // returns the scrollLeft delta to apply this tick (0 = not near an edge).
 // `edge`/`factor` match the original auto-scroll tuning (48px activation
 // zone, 0.4 ease per animation-frame tick).
+// Clamp a requested horizontal scroll offset to the pannable range of the
+// zoomed graph. Pure math so the prev/next window buttons and the drag-to-
+// pan gesture share ONE definition of the valid scroll range — both the
+// caller and the browser's own clamping agree, and a stale scroll state can
+// never park the view outside [0, contentW - clientW].
+export function clampScroll(scrollLeft, contentW, clientW) {
+  const max = Math.max(0, contentW - clientW);
+  return Math.min(Math.max(0, scrollLeft), max);
+}
+
 export function autoScrollDelta(clientX, viewportLeft, viewportRight, edge = 48, factor = 0.4) {
   const rightDist = viewportRight - clientX;
   const leftDist = clientX - viewportLeft;

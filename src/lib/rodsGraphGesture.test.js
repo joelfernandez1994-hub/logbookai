@@ -257,3 +257,29 @@ describe('REGRESSION — Edit Log Graph chrome routing (the actual tablet bug)',
     expect(shouldUseFullScreenEditGraph({ isMobileWidth: false, isTouchCapable: false })).toBe(false);
   });
 });
+
+// ============================================================================
+// REGRESSION — zoomed-graph pan range (prev/next buttons + drag-to-pan).
+// The scroll offset the pan gestures and window buttons compute must always
+// land inside [0, contentW - clientW]: never negative, never past the last
+// hour, and a no-op when the graph is not zoomed (content fits the viewport).
+// ============================================================================
+import { clampScroll } from './rodsGraphGesture';
+
+describe('REGRESSION — zoomed-graph pan range clamping', () => {
+  it('clamps past-the-end scrolls to the max scroll offset', () => {
+    // contentW = 64 label gutter + 24h * 59px/h zoom scale, clientW = 360 phone.
+    const contentW = 64 + 24 * 59, clientW = 360;
+    const max = contentW - clientW;
+    expect(clampScroll(max + 500, contentW, clientW)).toBe(max);
+    expect(clampScroll(max, contentW, clientW)).toBe(max);
+  });
+
+  it('clamps negative scrolls to 0 — the view can never park before midnight', () => {
+    expect(clampScroll(-120, 64 + 24 * 59, 360)).toBe(0);
+  });
+
+  it('is a no-op when the graph is not zoomed (full day fits the width)', () => {
+    expect(clampScroll(0, 360, 360)).toBe(0);
+  });
+});
