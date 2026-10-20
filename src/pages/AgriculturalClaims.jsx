@@ -55,7 +55,7 @@ export default function AgriculturalClaims() {
         edit_reason: note,
         action,
       });
-    } catch (e) { /* best-effort audit trail */ }
+    } catch { /* best-effort audit trail */ }
   };
 
   const saveClaim = async (data) => {
