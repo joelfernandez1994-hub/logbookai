@@ -12,7 +12,22 @@ const SCRIPT = fs.readFileSync('scripts/liveAiStress.console.js', 'utf8');
 const GLOBALS = ['window', 'location', 'localStorage', 'fetch', 'copy'];
 let saved;
 
-const todayIso = (hm) => { const [h, m] = hm.split(':').map(Number); return new Date(Date.UTC(2026, 8, 21, h + 4, m)).toISOString(); }; // EDT
+// The script stamps "today" in the carrier timezone; the mock model must return the same wall
+// times, so compute them the same DST-safe way instead of a hardcoded date (which goes stale
+// whenever the suite runs on a different day than it was authored on).
+const TZ_NAME = 'America/New_York';
+const nyOffsetMs = (d) => {
+  const p = {}; new Intl.DateTimeFormat('en-US', { timeZone: TZ_NAME, hour12: false, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' })
+    .formatToParts(d).forEach((x) => { if (x.type !== 'literal') p[x.type] = x.value; });
+  return Date.UTC(+p.year, +p.month - 1, +p.day, p.hour === '24' ? 0 : +p.hour, +p.minute, +p.second) - d.getTime();
+};
+const todayIso = (hm) => {
+  const [h, m] = hm.split(':').map(Number);
+  const [y, mo, d] = new Date().toLocaleDateString('en-CA', { timeZone: TZ_NAME }).split('-').map(Number);
+  const wall = Date.UTC(y, mo - 1, d, h, m);
+  let inst = wall; for (let i = 0; i < 2; i++) inst = wall - nyOffsetMs(new Date(inst));
+  return new Date(inst).toISOString();
+};
 const fp = { start_time: 'explicit', end_time: 'explicit', status: 'explicit', city: 'explicit', state: 'explicit' };
 const pe = (status, city, state, s, e) => ({ duty_status: status, city, state, start_timestamp: todayIso(s), end_timestamp: e ? todayIso(e) : null, field_provenance: fp, ambiguous_fields: [] });
 

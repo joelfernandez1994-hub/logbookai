@@ -260,13 +260,20 @@ describe('AI corrections and deletes touch only the intended event', () => {
     expect(d.resolvedDeletes).toHaveLength(0);
   });
 
-  it('"move my sleeper time to 10 PM" that would leave an unlogged gap is flagged BLOCKING at review, not saved silently', () => {
+  it('"move my sleeper time to 10 PM" that would leave an unlogged gap is flagged at review as a review-level warning (gaps are never blocking, never silently dropped)', () => {
     const events = seed(row('OFF_DUTY', 0, 6), row('ON_DUTY', 6, 20, { remark: 'Work' }), row('SLEEPER_BERTH', 20, null));
     const sleeper = events.find((e) => e.duty_status === 'SLEEPER_BERTH');
     const edited = { ...sleeper, start_timestamp: at(22), field_provenance: fp };
     const withoutTarget = events.filter((e) => e.id !== sleeper.id);
     const v = validateProposal(withoutTarget, [edited], { cycleType: CYCLE, tz: TZ, now: new Date('2026-09-14T23:00:00-04:00'), narrative: 'move my sleeper time to 10 PM' });
-    expect(hasBlocking(v.warnings)).toBe(true);
-    expect(v.warnings.some((w) => w.type === 'elapsed_gap' || w.title === 'TIMELINE STRUCTURE')).toBe(true);
+    // Canonical rule: an unlogged interval is a gap the driver sees at review, not a
+    // blocker and never silently assigned (recorded decision: coverage gaps are
+    // review-level so a log with a missing stretch can still be saved, visibly).
+    const gapWarning = v.warnings.find((w) => w.type === 'elapsed_gap' || w.title === 'TIMELINE STRUCTURE');
+    expect(gapWarning).toBeTruthy();
+    expect(gapWarning.severity).toBe('review');
+    expect(hasBlocking(v.warnings)).toBe(false);
+    // And the edit itself is only a proposal: nothing is saved until the driver confirms.
+    expect(reload().find((e) => e.id === sleeper.id).start_timestamp).toBe(at(20));
   });
 });
