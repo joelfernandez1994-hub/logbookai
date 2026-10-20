@@ -106,6 +106,17 @@ export default function Logs() {
     () => hasSufficientCycleHistory(events, cycleType, profile?.entered_prior_history, tz, selectedDate),
     [events, cycleType, profile?.entered_prior_history, tz, selectedDate]
   );
+  // Agricultural claims: the shared clock-availability determination gates the
+  // cycle recap on this log date the same way every other surface gates it —
+  // claimed work in the lookback window makes the cycle unavailable (never
+  // estimated). Unaffected days keep the standard numbers unchanged.
+  // (Must run BEFORE cycleUsable below: agCycleAvailable is consumed there.)
+  const agEval = useMemo(() => {
+    const hosSel = computeHOS(events, cycleType, tz, selectedDate, { historyComplete: sufficientHistory });
+    return evaluateAgriculturalClocks({ claims, events, hos: hosSel, cycleType, tz, now: selectedDate });
+  }, [claims, events, cycleType, tz, selectedDate, sufficientHistory]);
+  const agCycleAvailable = !(agEval && agEval.clocks && agEval.clocks.cycle && agEval.clocks.cycle.unavailable);
+
   const cycleUsable = dayValidity.valid && sufficientHistory && agCycleAvailable;
 
   // Non-blocking review warnings that were unresolved when this day's events
@@ -125,16 +136,6 @@ export default function Logs() {
     return out;
   }, [events, dateStr, tz, dayValidity]);
   const cycle = useMemo(() => computeCycle(events, cycleType, tz, selectedDate), [events, cycleType, tz, selectedDate]);
-
-  // Agricultural claims: the shared clock-availability determination gates the
-  // cycle recap on this log date the same way every other surface gates it —
-  // claimed work in the lookback window makes the cycle unavailable (never
-  // estimated). Unaffected days keep the standard numbers unchanged.
-  const agEval = useMemo(() => {
-    const hosSel = computeHOS(events, cycleType, tz, selectedDate, { historyComplete: sufficientHistory });
-    return evaluateAgriculturalClocks({ claims, events, hos: hosSel, cycleType, tz, now: selectedDate });
-  }, [claims, events, cycleType, tz, selectedDate, sufficientHistory]);
-  const agCycleAvailable = !(agEval && agEval.clocks && agEval.clocks.cycle && agEval.clocks.cycle.unavailable);
 
   const cert = certifications.find(c => c.log_date === dateStr && !c.is_superseded);
   const isCertified = !!cert;
