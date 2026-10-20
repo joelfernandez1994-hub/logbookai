@@ -20,6 +20,18 @@
 //      purely stationary narrative ("off duty all day in Houston, TX") must
 //      never be reinterpreted as a movement just because the AI backend
 //      attached a location_confirmation or paraphrase mentioning that city.
+//
+// ORIGIN / CURRENT-LOCATION CLASSIFICATION (root-cause fix for the reported
+// "described driving to Houston" false positive): a location the driver is
+// ALREADY at — the trip's origin/current location — is never a destination a
+// Driving event must arrive at. Starting a drive FROM a place can never, by
+// itself, require a previous drive INTO that place. The backstop's movement
+// candidates are therefore classified against the structured trip intent
+// (deterministically — the driver's own current-location phrasing plus the
+// proposed timeline's own structure) and any candidate whose "destination" is
+// actually the trip's origin is dropped BEFORE coverage is evaluated. Regex
+// movements (the driver's own explicit travel verbs) are NOT filtered — an
+// explicitly described "drove to X" always requires a covering Driving event.
 // ============================================================================
 
 import { describesTravel } from './stationaryDayRule';
@@ -53,9 +65,12 @@ function captureCityAt(str) {
 }
 
 // Case-insensitive triggers (verbs), used only to LOCATE the movement; the
-// city itself is captured case-sensitively via captureCityAt.
+// city itself is captured case-sensitively via captureCityAt. "driving" is
+// included so the driver's own words "… driving to <City>" (typed or a voice
+// transcript, e.g. "log me driving to San Antonio") are an explicitly
+// described segment at the regex layer — not left to the heuristic backstop.
 const FROM_TRIGGER = /\bdrove\s+from\s+/gi;
-const TO_TRIGGER = /\b(?:drove|continued|headed|left|made\s+it)\b(?:\s+(?:driving|for|it|on))?\s+to\s+/gi;
+const TO_TRIGGER = /\b(?:drove|driving|continued|headed|left|made\s+it)\b(?:\s+(?:driving|for|it|on))?\s+to\s+/gi;
 
 export function extractDescribedMovements(narrative, provenance = {}) {
   const text = String(narrative || '');
@@ -85,6 +100,32 @@ export function extractDescribedMovements(narrative, provenance = {}) {
       if (destSeen.has(key)) continue;
       destSeen.add(key);
       moves.push({ from: null, to: dest, evidence: 'regex' });
+    }
+    // "then <City> to <City>" — a chained leg of a trip the driver already
+    // described with a travel verb ("drove from Dallas to Houston, then
+    // Houston to San Antonio"). Without this, the second explicitly
+    // described leg is invisible to the regex layer and the backstop never
+    // runs (it only fires when the regex found nothing).
+    if (describesTravel(text)) {
+      const seenPairs = new Set(moves.map(mv => `${normCity(mv.from?.city)}>${normCity(mv.to.city)}`));
+      const CHAIN_TRIGGER = /\b(?:then|afterwards|after\s+that)\s+/gi;
+      for (const m of text.matchAll(CHAIN_TRIGGER)) {
+        const after = text.slice(m.index + m[0].length);
+        const from = captureCityAt(after);
+        if (!from || !from.city) continue;
+        const fromText = from.city + (from.state ? ', ' + from.state : '');
+        const fi = after.indexOf(fromText);
+        if (fi < 0) continue;
+        const rest = after.slice(fi + fromText.length);
+        const toMatch = rest.match(/^\s+to\s+/i);
+        if (!toMatch) continue;
+        const to = captureCityAt(rest.slice(toMatch[0].length));
+        if (!to || !to.city) continue;
+        const pair = `${normCity(from.city)}>${normCity(to.city)}`;
+        if (seenPairs.has(pair)) continue;
+        seenPairs.add(pair);
+        moves.push({ from, to, evidence: 'regex' });
+      }
     }
   }
   if (moves.length) return moves;
@@ -132,6 +173,52 @@ export function extractDescribedMovements(narrative, provenance = {}) {
     }
   }
   return moves;
+}
+
+// ---------------------------------------------------------------------------
+// ORIGIN CLASSIFICATION (deterministic, no AI).
+// ---------------------------------------------------------------------------
+// Source 1 — the driver's own current-location phrasing: "I'm in Houston",
+// "I am at Houston", "currently in Houston", "off duty in Houston until 6 AM",
+// "on duty in Dallas", "in Laredo until 9". Only explicitly first-person or
+// status-anchored phrases qualify ("in" alone is far too broad to trust).
+const NARRATIVE_ORIGIN_RE = /\b(?:(?:i\s*'?m|i\s+am|im|we\s*'?re|we\s+are)\s+(?:currently\s+)?(?:in|at)|currently\s+(?:in|at)|(?:off\s+duty|on\s+duty|sleeper(?:\s+berth)?)\s+(?:in|at))\s+/gi;
+// "… in Houston until 6 AM" — a bounded stay names the driver's current place.
+const UNTIL_ORIGIN_RE = /\b(?:in|at)\s+([A-Za-z][A-Za-z .'-]*?)\s+until\b/gi;
+
+export function extractNarrativeOrigins(narrative) {
+  const text = String(narrative || '');
+  const out = [];
+  if (!text) return out;
+  for (const m of text.matchAll(NARRATIVE_ORIGIN_RE)) {
+    const c = captureCityAt(text.slice(m.index + m[0].length));
+    if (c && c.city) out.push(c.city);
+  }
+  for (const m of text.matchAll(UNTIL_ORIGIN_RE)) {
+    if (m[1] && m[1].trim()) out.push(m[1].trim());
+  }
+  return out;
+}
+
+// Source 2 — the proposed timeline's own structure. By the data model a
+// DRIVING event's city/state are where the segment STARTS (the destination
+// lives in destination_city/destination_state), so:
+//   * every non-driving event positioned BEFORE the first proposed Driving
+//     event is the origin/current location the trip departs from, and
+//   * every Driving event's own city is the start of that leg.
+// Neither can ever be a required arrival point on its own.
+export function originCitySet(proposed, narrative = '') {
+  const set = new Set();
+  for (const c of extractNarrativeOrigins(narrative)) set.add(normCity(c));
+  const sorted = [...(proposed || [])].filter(p => p && p.start_timestamp)
+    .sort((a, b) => new Date(a.start_timestamp) - new Date(b.start_timestamp));
+  const firstDrivingIdx = sorted.findIndex(p => p.duty_status === 'DRIVING');
+  sorted.forEach((p, i) => {
+    if (!p.city) return;
+    if (p.duty_status === 'DRIVING') set.add(normCity(p.city));
+    else if (firstDrivingIdx >= 0 && i < firstDrivingIdx) set.add(normCity(p.city));
+  });
+  return set;
 }
 
 function locMatch(eventCity, eventState, target) {
@@ -206,8 +293,17 @@ export function describedMovementCoverage(proposed, narrative, provenance = {}) 
   // genuine travel narratives never reach here with the stationary flag.
   if ((proposed || []).some(p => p && p.stationary)) return [];
   const moves = extractDescribedMovements(narrative, provenance);
+  const origins = originCitySet(proposed, narrative);
   const warnings = [];
   for (const m of moves) {
+    // ORIGIN CLASSIFICATION GATE: an AI-provenance movement whose "destination"
+    // is actually the trip's origin/current location (canonicalized "current
+    // location"/"here" confirmation, a restated departure city, or a matched
+    // current-location phrase) is NOT a described movement — the driver starts
+    // there; no Driving event must arrive at it. Regex movements (the driver's
+    // own explicit travel verbs, e.g. "drove to Houston") are never filtered:
+    // an explicitly described segment always requires covering.
+    if (m.evidence === 'ai_provenance' && m.to?.city && origins.has(normCity(m.to.city))) continue;
     if (movementCovered(proposed, m)) continue;
     const label = m.from && m.from.city
       ? `${m.from.city}${m.from.state ? ', ' + m.from.state : ''} → ${m.to.city}${m.to.state ? ', ' + m.to.state : ''}`

@@ -112,7 +112,10 @@ export default function ProposalReview({ existing, proposed, cycleType, tz, onAp
 
   const warnings = useMemo(() => {
     const ws = [...validation.warnings];
-    if (effectiveRouteWarning) ws.push(effectiveRouteWarning);
+    // A successful (conflict-free) route validation is INFORMATIONAL: it renders
+    // on its own green card below and never counts as a review warning — it
+    // must not turn the proposal amber or persist as a saved review note.
+    if (effectiveRouteWarning && effectiveRouteWarning.severity !== 'success') ws.push(effectiveRouteWarning);
     // Driver-stated mileage vs the routed distance: review-only, never blocks
     // and never rewrites the driver's figure.
     if (effectiveRouteWarning?.legs) ws.push(...statedMileageWarnings(effectiveRouteWarning.legs, narrative));
@@ -319,6 +322,18 @@ export default function ProposalReview({ existing, proposed, cycleType, tz, onAp
               </div>
             </div>
           ))}
+        </div>
+      )}
+
+      {/* Successful route validation: informational, never warning-styled. */}
+      {effectiveRouteWarning?.severity === 'success' && (
+        <div data-testid="route-validation-ok" className="rounded-lg border border-success/40 bg-success-surface p-2 mb-2 flex items-start gap-2">
+          <ShieldCheck className="w-4 h-4 mt-0.5 shrink-0 text-success" />
+          <div className="text-xs flex-1 text-success-surface-foreground">
+            <div className="font-semibold">Route validated</div>
+            <div>{effectiveRouteWarning.message}</div>
+            {effectiveRouteWarning.note && <div className="text-[11px] mt-0.5 opacity-80">{effectiveRouteWarning.note}</div>}
+          </div>
         </div>
       )}
 

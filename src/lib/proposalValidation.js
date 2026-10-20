@@ -752,9 +752,15 @@ export async function addRouteWarning(proposed, { routingProvider = fetchRoute, 
   const title = blockingConflicts.length ? 'ROUTE / TRAVEL-TIME CONFLICT — REVIEW'
     : explicitConflictLegs.length ? 'ROUTE TIMING LOOKS UNUSUAL'
       : 'ROUTE VALIDATION';
+  // A conflict-free validation is INFORMATIONAL, not a warning: every proposed
+  // driving segment checked out against its road route. severity 'success'
+  // keeps ProposalReview from counting it as an amber review item (or
+  // persisting it as a saved review note) while the card itself still shows
+  // the driver exactly what was checked.
   return {
     type: 'route_reasonableness',
-    severity: blockingConflicts.length ? 'blocking' : 'review',
+    severity: blockingConflicts.length ? 'blocking' : (explicitConflictLegs.length ? 'review' : 'success'),
+    isInformational: !blockingConflicts.length && !explicitConflictLegs.length,
     title,
     message: details.join(' '),
     isFuture,
