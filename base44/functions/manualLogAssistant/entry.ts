@@ -448,21 +448,37 @@ function isApproximateMention(text, matchIndex) {
 }
 
 // Colon times ("8:30", "8:30 AM") plus bare-hour meridiem times ("8 AM",
-// "9 pm") and the word "midnight". A bare number WITHOUT a meridiem
+// "9 pm") and the words "midnight"/"noon". A bare number WITHOUT a meridiem
 // ("drove 8 hours", "300 miles") is never a time fact — only a meridiem or
 // a colon makes digits a clock reading. The bare-hour pattern refuses a
 // match whose digits are part of a preceding colon time ("8:30" -> "30 am").
+//
+// Each pattern is mapped SEPARATELY: a bare-hour match's group 2 is the
+// MERIDIEM, while a colon match's group 2 is MINUTES. The old single-array
+// .map() read every match through the colon shape, so "6 AM" became
+// clockCandidates('6', 'AM', undefined) -> NaN-minute candidates that could
+// never match the proposal's real "06:00" boundary — a perfectly correct
+// proposal was false-blocked as "Explicit clock time was dropped".
+function makeTimeFact(raw, candidates, text, index) {
+  return { raw, normalized: candidates[0], candidates, approximate: isApproximateMention(text, index) };
+}
 function extractExplicitFacts(input) {
   const text = String(input || '');
-  const times = [
-    ...text.matchAll(/\b(\d{1,2}):(\d{2})\s*(a\.?m\.?|p\.?m\.?)?\b/gi),
-    ...text.matchAll(/(?<![:\d])(\d{1,2})\s*(a\.?m\.?|p\.?m\.?)\b/gi),
-    ...text.matchAll(/\bmidnight\b/gi),
-  ].map(m => {
-    if (/^midnight$/i.test(m[0])) return { raw: m[0], normalized: '00:00', candidates: ['00:00'], approximate: isApproximateMention(text, m.index) };
-    const candidates = clockCandidates(m[1], m[2] || '0', m[3]);
-    return { raw: m[0], normalized: candidates[0], candidates, approximate: isApproximateMention(text, m.index) };
-  });
+  const times = [];
+  // Colon form: group 2 = minutes, group 3 = optional meridiem.
+  for (const m of text.matchAll(/\b(\d{1,2}):(\d{2})\s*(a\.?m\.?|p\.?m\.?)?\b/gi)) {
+    times.push(makeTimeFact(m[0], clockCandidates(m[1], m[2], m[3]), text, m.index));
+  }
+  // Bare-hour meridiem form: group 2 = the MERIDIEM, minutes are 00.
+  for (const m of text.matchAll(/(?<![:\d])(\d{1,2})\s*(a\.?m\.?|p\.?m\.?)\b/gi)) {
+    times.push(makeTimeFact(m[0], clockCandidates(m[1], '0', m[2]), text, m.index));
+  }
+  for (const m of text.matchAll(/\bmidnight\b/gi)) {
+    times.push(makeTimeFact(m[0], ['00:00'], text, m.index)); // 12 AM
+  }
+  for (const m of text.matchAll(/\bnoon\b/gi)) {
+    times.push(makeTimeFact(m[0], ['12:00'], text, m.index)); // 12 PM
+  }
   const locations = [...text.matchAll(/\b([A-Z][A-Za-z.'-]*(?:\s+[A-Z][A-Za-z.'-]*){0,3}),\s*([A-Z]{2})\b/g)]
     .map(m => ({ raw: m[0], city: m[1].trim(), state: m[2].toUpperCase() }));
   // Bilingual (English + Spanish) so the explicit-fact guard is equally

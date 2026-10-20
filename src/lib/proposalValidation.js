@@ -819,7 +819,7 @@ function fmtGap(ms) {
 // never second-guessed here. Recomputed on the proposal AS EDITED, so a driver
 // who fixes the start time in Edit Proposal immediately unlocks Apply.
 // ---------------------------------------------------------------------------
-const FAB_STATED_TIME_RE = /\b\d{1,2}(?::\d{2})?\s*(?:a\.?m\.?|p\.?m\.?)\b|\b\d{1,2}:\d{2}\b|\bmidnight\b/i;
+const FAB_STATED_TIME_RE = /\b\d{1,2}(?::\d{2})?\s*(?:a\.?m\.?|p\.?m\.?)\b|\b\d{1,2}:\d{2}\b|\b(?:midnight|noon)\b/i;
 const FAB_STATED_MIDNIGHT_RE = /\b(?:midnight|12\s*a\.?m\.?|00:00)\b/i;
 const FAB_REST_WORDING_RE = /\b(?:off[ -]?duty|fuera de servicio|sleeper|litera|dormitorio|slept|sleep(?:ing)?|rest(?:ed|ing)?|descans\w*|to bed|in bed|overnight|day off|10[- ]hour|34[- ]hour|reset|vacation|holiday|home time)\b/i;
 const FAB_PRETRIP_WORDING_RE = /\bpre[- ]?trip\b|inspecci[oó]n previa/i;

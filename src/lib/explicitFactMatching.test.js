@@ -52,12 +52,25 @@ function isApproximateMention(text, matchIndex) {
   const lookback = text.slice(Math.max(0, matchIndex - 20), matchIndex);
   return APPROX_QUALIFIER_RE.test(lookback);
 }
+function makeTimeFact(raw, candidates, text, index) {
+  return { raw, normalized: candidates[0], candidates, approximate: isApproximateMention(text, index) };
+}
 function extractExplicitTimes(input) {
   const text = String(input || '');
-  return [...text.matchAll(/\b(\d{1,2}):(\d{2})\s*(a\.?m\.?|p\.?m\.?)?\b/gi)].map((m) => {
-    const candidates = clockCandidates(m[1], m[2], m[3]);
-    return { raw: m[0], normalized: candidates[0], candidates, approximate: isApproximateMention(text, m.index) };
-  });
+  const times = [];
+  for (const m of text.matchAll(/\b(\d{1,2}):(\d{2})\s*(a\.?m\.?|p\.?m\.?)?\b/gi)) {
+    times.push(makeTimeFact(m[0], clockCandidates(m[1], m[2], m[3]), text, m.index));
+  }
+  for (const m of text.matchAll(/(?<![:\d])(\d{1,2})\s*(a\.?m\.?|p\.?m\.?)\b/gi)) {
+    times.push(makeTimeFact(m[0], clockCandidates(m[1], '0', m[2]), text, m.index));
+  }
+  for (const m of text.matchAll(/\bmidnight\b/gi)) {
+    times.push(makeTimeFact(m[0], ['00:00'], text, m.index));
+  }
+  for (const m of text.matchAll(/\bnoon\b/gi)) {
+    times.push(makeTimeFact(m[0], ['12:00'], text, m.index));
+  }
+  return times;
 }
 
 function ev(start, end, extra = {}) {
@@ -251,5 +264,80 @@ describe('REGRESSION — Spanish "alrededor"/"a eso de" hedge vocabulary (live V
     expect(guard.blocking).toBe(false);
     expect(guard.droppedExplicitEvents).toEqual([]);
     expect(guard.approximateMismatches).toEqual([]);
+  });
+});
+
+// ============================================================================
+// REGRESSION — bare-hour meridiem times and 12 AM/PM / noon / midnight.
+// ----------------------------------------------------------------------------
+// Live bug (driver report "Could not safely build a proposal — Explicit clock
+// time was dropped, changed silently, or tagged inferred. (\"6 AM\")"): the
+// old single-array .map() read a bare-hour match's meridiem group as MINUTES,
+// so "6 AM" produced NaN-minute candidates that could never match the real
+// "06:00" boundary. A proposal the AI had built correctly was false-blocked.
+// Also: "noon" was never extracted at all.
+// ============================================================================
+describe('REGRESSION — bare-hour meridiem times map group 2 as MERIDIEM (live "6 AM" bug)', () => {
+  it('"6 AM" is a real fact with candidate 06:00 — never NaN', () => {
+    const fact = extractExplicitTimes('off duty until 6 AM')[0];
+    expect(fact.candidates).toEqual(['06:00']);
+    expect(fact.candidates.every((c) => /^\d{2}:\d{2}$/.test(c))).toBe(true);
+  });
+
+  it('every hour 1–12 in AM and PM form maps to the correct 24-hour value', () => {
+    for (let h = 1; h <= 12; h++) {
+      const amExpected = `${String(h % 12).padStart(2, '0')}:00`;
+      const pmExpected = `${String(h === 12 ? 12 : h + 12).padStart(2, '0')}:00`;
+      expect(extractExplicitTimes(`stopped at ${h} AM`)[0].candidates).toEqual([amExpected]);
+      expect(extractExplicitTimes(`stopped at ${h} PM`)[0].candidates).toEqual([pmExpected]);
+    }
+  });
+
+  it('representative values: 1 AM, 6 PM, 11 AM, 11 PM', () => {
+    expect(extractExplicitTimes('at 1 AM')[0].candidates).toEqual(['01:00']);
+    expect(extractExplicitTimes('at 6 PM')[0].candidates).toEqual(['18:00']);
+    expect(extractExplicitTimes('at 11 AM')[0].candidates).toEqual(['11:00']);
+    expect(extractExplicitTimes('at 11 PM')[0].candidates).toEqual(['23:00']);
+  });
+
+  it('noon is 12:00 and midnight is 00:00 (12 PM and 12 AM too)', () => {
+    expect(extractExplicitTimes('started rolling at noon')[0].candidates).toEqual(['12:00']);
+    expect(extractExplicitTimes('went off duty at midnight')[0].candidates).toEqual(['00:00']);
+    expect(extractExplicitTimes('lunch at 12 PM')[0].candidates).toEqual(['12:00']);
+    expect(extractExplicitTimes('back on duty at 12 AM')[0].candidates).toEqual(['00:00']);
+  });
+
+  it('a bare hour WITHOUT a meridiem is still never a time fact', () => {
+    expect(extractExplicitTimes('drove 8 hours and 300 miles at night')).toHaveLength(0);
+  });
+
+  it('a hedged bare hour is approximate: "around 6 AM"', () => {
+    expect(extractExplicitTimes('left around 6 AM')[0].approximate).toBe(true);
+  });
+
+  it('LIVE SCREENSHOT SCENARIO: stated "6 AM"/"06:00" boundaries are preserved — no false block', () => {
+    const times = extractExplicitTimes('off duty in Miami, FL until 6 AM, 15-minute pre-trip, driving from 6:15 AM to 10:15 AM to Orlando');
+    const events = [
+      ev('2026-10-20T00:00:00', '2026-10-20T06:00:00', { duty_status: 'OFF_DUTY' }),
+      ev('2026-10-20T06:00:00', '2026-10-20T06:15:00', { duty_status: 'ON_DUTY' }),
+      ev('2026-10-20T06:15:00', '2026-10-20T10:15:00', { duty_status: 'DRIVING' }),
+    ];
+    const guard = detectExplicitFactAlterations(events, { times, locations: [], statuses: [] });
+    expect(guard.blocking).toBe(false);
+    expect(guard.droppedExplicitEvents).toEqual([]);
+  });
+
+  it('a genuinely dropped exact bare-hour time still blocks — the safeguard is never weakened', () => {
+    const times = extractExplicitTimes('started driving at exactly 6 AM');
+    const events = [ev('2026-10-20T07:00:00', '2026-10-20T09:00:00')]; // nowhere near 06:00
+    const guard = detectExplicitFactAlterations(events, { times });
+    expect(guard.blocking).toBe(true);
+    expect(guard.droppedExplicitEvents.some((i) => i.type === 'time' && i.value.includes('6 AM'))).toBe(true);
+  });
+
+  it('a stated "noon" fact is preserved when a 12:00 boundary exists, and blocks when dropped', () => {
+    const times = extractExplicitTimes('took my 30 at noon then rolled again');
+    expect(detectExplicitFactAlterations([ev('2026-10-20T11:30:00', '2026-10-20T12:00:00')], { times }).blocking).toBe(false);
+    expect(detectExplicitFactAlterations([ev('2026-10-20T13:00:00', '2026-10-20T13:30:00')], { times }).blocking).toBe(true);
   });
 });
