@@ -82,7 +82,14 @@ describe('validateProposal — Apply gate + history threading', () => {
     ];
     const res = validateProposal(events, [], { cycleType: '70_8', tz: UTC, now: NOW('2026-08-25T15:00:00Z') });
     expect(res.hos.calculable).toBe(false);
-    expect(hasBlocking(res.warnings)).toBe(true);
+    // Coverage gaps are review-level BY DESIGN: the entries that ARE logged
+    // stay saveable, the gap remains visible on the saved log for correction,
+    // and unresolved notices persist as review notes. Only structural
+    // contradictions (duplicates, same-start conflicts, negative durations)
+    // are blocking.
+    const gapWarning = res.warnings.find(w => w.type === 'elapsed_gap');
+    expect(gapWarning?.severity).toBe('review');
+    expect(hasBlocking(res.warnings)).toBe(false);
     const d = deriveHosDisplay(res.hos, res.historyComplete);
     expect(d.driving.value).toBe('--');
     expect(d.window14.value).toBe('--');

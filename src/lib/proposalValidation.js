@@ -833,7 +833,7 @@ export function deriveHosDisplay(hos, historyComplete) {
     return { value: br.satisfied ? 'Satisfied' : (br.breakRequired ? 'Required' : 'Not yet'), note: '', state: 'real' };
   })();
   const cycle = (() => {
-    if (!historyComplete) return { value: '--', note: 'HOS unavailable—review timeline', state: 'unverified' };
+    if (!historyComplete) return { value: '--', note: 'Cycle unverified — prior history incomplete', state: 'unverified' };
     const rem = hos.cycle.cycleRemainingHours;
     if (rem <= 0) return { value: '0.0 hr', note: `${hos.cycle.cycleUsedHours.toFixed(1)} used`, state: 'exhausted' };
     return { value: `${rem.toFixed(1)} hr`, note: `${hos.cycle.cycleUsedHours.toFixed(1)} used`, state: 'real' };

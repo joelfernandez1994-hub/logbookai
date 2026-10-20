@@ -112,7 +112,14 @@ export function evaluateAgriculturalClocks({ claims, events, hos, cycleType, tz,
   if (!list.length) return none;
   const intervals = claimIntervals(list, t);
   if (!intervals.length) return { ...none, claims: list };
-  const segments = normalizeEvents(events || [], t);
+  // Overlap detection must run against the SAME timeline the engine used.
+  // Callers normally pass raw events; when they don't, fall back to the
+  // normalized timeline already embedded in the engine result so an empty
+  // events array can never silently disable the overlap checks (that would
+  // show numeric clocks while a claim's work overlaps their history).
+  const segments = (events && events.length)
+    ? normalizeEvents(events, t)
+    : ((hos && hos.validity && hos.validity.segments) || []);
   const applicable = !!(hos && hos.calculable && hos.validity && hos.validity.valid);
   const nowMs = t.getTime();
   const clocks = {};

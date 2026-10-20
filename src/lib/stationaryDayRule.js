@@ -108,7 +108,9 @@ function parseCityState(str) {
   const commaM = s.match(/^([^,]+),\s*(.+)$/);
   if (commaM) {
     const city = commaM[1].trim();
-    const stateRaw = commaM[2].trim().split(/\s+/)[0];
+    // Punctuation inside the state token (e.g. a merged "…Miami, FL, FL"
+    // clarification reply) must not defeat the state match.
+    const stateRaw = commaM[2].trim().split(/\s+/)[0].replace(/[^A-Za-z]/g, '');
     if (!CITY_RE.test(city)) return null;
     const code = normalizeJurisdiction(stateRaw);
     if (code.length !== 2 || !isStateToken(stateRaw)) return null;

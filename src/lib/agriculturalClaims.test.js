@@ -27,10 +27,14 @@ function segs(list) {
 
 // A quiet, fully-reset baseline day: 10h off-duty reset 03:00–13:00Z (08:00–18:00
 // local is NOT needed — engine works on absolute times), then work.
+// Timeline is COMPLETE through `now` (trailing rest): an unresolved trailing
+// gap would make the day structurally invalid (engine safeguard), so the
+// fixture records 16:00–18:00Z as Off Duty rather than leaving it unrecorded.
 const BASE_SEGMENTS = segs([
   ['OFF_DUTY', '2026-10-19T02:00:00Z', '2026-10-19T12:00:00Z'], // 10h reset
   ['ON_DUTY', '2026-10-19T12:00:00Z', '2026-10-19T13:00:00Z'],
   ['DRIVING', '2026-10-19T13:00:00Z', '2026-10-19T16:00:00Z'],
+  ['OFF_DUTY', '2026-10-19T16:00:00Z', '2026-10-19T18:00:00Z'], // through now
 ]);
 
 const NOW = D('2026-10-19T18:00:00Z');
