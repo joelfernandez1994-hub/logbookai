@@ -261,7 +261,12 @@
     "certifiedEditNote": "This log is certified. Editing will preserve the previous version in audit history and mark this day as needing re-certification.",
     "startTimeRequired": "Start time is required.",
     "endAfterStart": "End time must be after the start time.",
-    "editLog": "Edit Log"
+    "editLog": "Edit Log",
+    "pickDate": "Jump to date",
+    "openCalendar": "Open calendar",
+    "prevMonth": "Previous month",
+    "nextMonth": "Next month",
+    "calendarTimezoneNote": "Dates shown in your logbook timezone."
   },
   "inspection": {
     "mode": "INSPECTION MODE",

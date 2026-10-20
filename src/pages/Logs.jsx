@@ -13,7 +13,8 @@ import { insertEvent, editEvent, deleteEventById, clearDayEvents } from '@/lib/t
 
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
-import { ChevronLeft, ChevronRight, BadgeCheck, AlertTriangle, Pencil, Trash2, Plus, Bot, Eraser } from 'lucide-react';
+import { ChevronLeft, ChevronRight, BadgeCheck, AlertTriangle, Pencil, Trash2, Plus, Bot, Eraser, CalendarDays } from 'lucide-react';
+import LogCalendarPicker from '@/components/LogCalendarPicker';
 import { useEffect } from 'react';
 import DailyMilesCard from '@/components/DailyMilesCard';
 import TimelineGapNotice from '@/components/TimelineGapNotice';
@@ -47,6 +48,7 @@ export default function Logs() {
   const [clearing, setClearing] = useState(false);
   const [certifying, setCertifying] = useState(false);
   const [fixOpen, setFixOpen] = useState(false);
+  const [showPicker, setShowPicker] = useState(false);
 
   const tz = carrier?.home_terminal_timezone || 'America/Chicago';
   const cycleType = carrier?.hos_cycle || '70_8';
@@ -71,7 +73,20 @@ export default function Logs() {
   }, [location.search]);
 
   const dateStr = useMemo(() => dateKeyInTz(selectedDate, tz), [selectedDate, tz]);
+  const todayStr = useMemo(() => dateKeyInTz(new Date(), tz), [tz]);
   const grid = useMemo(() => getDisplayGrid(events, dateStr, tz), [events, dateStr, tz]);
+
+  // Keep the selected date in the URL (?date=) without triggering router
+  // navigation, so a refresh or browser-back return to /logs restores the
+  // exact day the driver was viewing. The existing location.search effect
+  // above re-reads it on remount.
+  useEffect(() => {
+    if (!dateStr) return;
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('date') !== dateStr) {
+      window.history.replaceState(null, '', `/logs?date=${dateStr}`);
+    }
+  }, [dateStr]);
 
   // Cycle recap gating (deterministic, recalculated from persisted events on
   // every save/edit/delete/refresh): the recorded Driving + On-Duty subtotal
@@ -118,6 +133,11 @@ export default function Logs() {
   }, [tz]);
 
   const shiftDay = (delta) => {
+    if (delta > 0) {
+      // Completed activity can never be recorded in the future.
+      const nextKey = dateKeyInTz(new Date(selectedDate.getTime() + delta * 24 * 3600000), tz);
+      if (nextKey > todayStr) return;
+    }
     setSelectedDate(new Date(selectedDate.getTime() + delta * 24 * 3600000));
   };
 
@@ -213,14 +233,24 @@ export default function Logs() {
 
       <div className="flex items-center justify-between mb-3">
         <Button variant="ghost" size="sm" onClick={() => shiftDay(-1)}><ChevronLeft className="w-4 h-4" /></Button>
-        <div className="text-center">
-          <div className="font-semibold text-foreground">{selectedDate.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric', timeZone: tz })}</div>
-          {isCertified
-            ? <span className="text-xs text-success font-medium">✓ {t('logs.certified')}</span>
-            : <span className="text-xs text-warning font-medium">{t('logs.needsCertification')}</span>}
+        <div className="flex items-center gap-1.5">
+          <div className="text-center">
+            <div className="font-semibold text-foreground">{selectedDate.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric', timeZone: tz })}</div>
+            {isCertified
+              ? <span className="text-xs text-success font-medium">✓ {t('logs.certified')}</span>
+              : <span className="text-xs text-warning font-medium">{t('logs.needsCertification')}</span>}
+          </div>
+          <button onClick={() => setShowPicker(true)} aria-label={t('logs.openCalendar')}
+            className="inline-flex items-center justify-center min-h-[40px] min-w-[40px] rounded-lg text-muted-foreground hover:text-foreground hover:bg-accent/50 transition-colors">
+            <CalendarDays className="w-4 h-4" />
+          </button>
         </div>
         <Button variant="ghost" size="sm" onClick={() => shiftDay(1)}><ChevronRight className="w-4 h-4" /></Button>
       </div>
+
+      <LogCalendarPicker open={showPicker} onOpenChange={setShowPicker}
+        selectedDateStr={dateStr} maxDateStr={todayStr} tz={tz}
+        onSelect={(key) => setSelectedDate(new Date(key + 'T12:00:00'))} />
 
       {dayWarnings.length > 0 && (
         <div className="rounded-xl border border-warning/50 bg-warning-surface p-3 mb-3">

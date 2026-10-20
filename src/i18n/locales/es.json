@@ -261,7 +261,12 @@
     "certifiedEditNote": "Este registro está certificado. Editarlo conservará la versión anterior en el historial de auditoría y marcará este día como que necesita re-certificación.",
     "startTimeRequired": "Se requiere la hora de inicio.",
     "endAfterStart": "La hora de fin debe ser posterior a la hora de inicio.",
-    "editLog": "Editar Registro"
+    "editLog": "Editar Registro",
+    "pickDate": "Ir a una fecha",
+    "openCalendar": "Abrir calendario",
+    "prevMonth": "Mes anterior",
+    "nextMonth": "Mes siguiente",
+    "calendarTimezoneNote": "Fechas mostradas en la zona horaria de su registro."
   },
   "inspection": {
     "mode": "MODO DE INSPECCIÓN",
