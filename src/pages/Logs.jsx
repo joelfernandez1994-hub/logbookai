@@ -4,7 +4,9 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import { dutyStatusLabel } from '@/i18n';
 import { useDriverData } from '@/hooks/useDriverData';
 import { computeHOS, computeCycle, computeRecordedToday, dateKeyInTz, fmtHours, hasSufficientCycleHistory } from '@/lib/hosEngine';
-import { validateTimeline } from '@/lib/timelineEngine';
+import { validateTimeline, startOfDayInTz } from '@/lib/timelineEngine';
+import { verifyRestHistory, isStaleRestHistoryNote } from '@/lib/restHistoryVerification';
+import RestHistoryNotice from '@/components/RestHistoryNotice';
 import { getDisplayGrid } from '@/lib/timelineDisplay';
 import RodsGraphEditor from '@/components/rodsEditor/RodsGraphEditor';
 import { getCertifications, getAgriculturalClaims } from '@/lib/driverData';
@@ -119,6 +121,16 @@ export default function Logs() {
 
   const cycleUsable = dayValidity.valid && sufficientHistory && agCycleAvailable;
 
+  // Rest-history verification for the SELECTED day (deterministic, from the
+  // full persisted timeline): a saved "HOS REST HISTORY UNVERIFIED" note is a
+  // save-time snapshot — suppressed once recomputation verifies a qualifying
+  // reset; while unverified, the exact unresolved interval is surfaced below.
+  // (Declared BEFORE dayWarnings, which consumes it in its filter.)
+  const restHistory = useMemo(() => {
+    const dayEnd = new Date(startOfDayInTz(new Date(dateStr + 'T12:00:00'), tz).getTime() + 24 * 3600000);
+    return verifyRestHistory(events, { tz, asOf: dayEnd.getTime() > Date.now() ? new Date() : dayEnd });
+  }, [events, dateStr, tz]);
+
   // Non-blocking review warnings that were unresolved when this day's events
   // were saved (e.g. timeline gaps) — deduped and shown on the day banner and
   // beside the affected entries below, so the driver can still correct them.
@@ -129,12 +141,13 @@ export default function Logs() {
       if (!e?.start_timestamp || dateKeyInTz(new Date(e.start_timestamp), tz) !== dateStr) continue;
       for (const n of (e.review_notes || [])) {
         if (isTimelineNote(n) && dayValidity.valid) continue; // gap corrected — no longer applies
+        if (isStaleRestHistoryNote(n, restHistory)) continue; // rest verified since save — no longer applies
         const k = `${n.title}|${n.message}`;
         if (!seen.has(k)) { seen.add(k); out.push(n); }
       }
     }
     return out;
-  }, [events, dateStr, tz, dayValidity]);
+  }, [events, dateStr, tz, dayValidity, restHistory]);
   const cycle = useMemo(() => computeCycle(events, cycleType, tz, selectedDate), [events, cycleType, tz, selectedDate]);
 
   const cert = certifications.find(c => c.log_date === dateStr && !c.is_superseded);
@@ -148,6 +161,22 @@ export default function Logs() {
     }
     return days;
   }, [tz]);
+
+  // Day-strip classification (independent indicators): certification is its
+  // own marker, and the warning triangle means an ACTUAL unresolved issue for
+  // that day (structurally invalid timeline, or rest history that still
+  // cannot be verified) — never "merely not certified yet".
+  const dayFlags = useMemo(() => {
+    const flags = {};
+    for (const dk of dayKeys) {
+      const dayEnd = new Date(startOfDayInTz(new Date(dk + 'T12:00:00'), tz).getTime() + 24 * 3600000);
+      const asOf = dayEnd.getTime() > Date.now() ? new Date() : dayEnd;
+      const valid = validateTimeline(events, { now: asOf, dateStr: dk, timezone: tz }).valid;
+      const rh = verifyRestHistory(events, { tz, asOf });
+      flags[dk] = { issue: !valid || !rh.verified };
+    }
+    return flags;
+  }, [dayKeys, events, tz]);
 
   const shiftDay = (delta) => {
     if (delta > 0) {
@@ -241,7 +270,10 @@ export default function Logs() {
               className={`shrink-0 rounded-lg border px-3 py-2 text-xs text-card-foreground ${dk === dateStr ? 'border-primary bg-accent text-accent-foreground' : 'border-border'}`}>
               <div className="font-medium">{d.toLocaleDateString('en-US', { weekday: 'short', day: 'numeric' })}</div>
               <div className="flex items-center gap-1 mt-0.5">
-                {dc ? <BadgeCheck className="w-3 h-3 text-success" /> : <AlertTriangle className="w-3 h-3 text-warning" />}
+                {dc
+                  ? <BadgeCheck className="w-3 h-3 text-success" />
+                  : <span aria-label="Not certified" className="w-3 h-3 rounded-full border border-border inline-block" />}
+                {(dayFlags[dk] || {}).issue ? <AlertTriangle className="w-3 h-3 text-warning" /> : null}
               </div>
             </button>
           );
@@ -285,6 +317,16 @@ export default function Logs() {
       <ClaimBanner claims={claims} dateStr={dateStr} tz={tz}
         showCalcNotice={!!(agEval && agEval.anyUnavailable)} onClaimsChanged={reload} editedBy={profile?.legal_name} />
       <TimelineGapNotice events={events} dateStr={dateStr} tz={tz} now={new Date()} />
+      <RestHistoryNotice verification={restHistory} tz={tz}
+        onEdit={restHistory && restHistory.status === 'unverified' && restHistory.unresolvedRange
+          ? () => {
+              setPrefill({
+                start_timestamp: restHistory.unresolvedRange.start.toISOString(),
+                end_timestamp: restHistory.unresolvedRange.end.toISOString(),
+              });
+              setAdding(true);
+            }
+          : null} />
       <RouteTimeConflictNotice events={events} dateStr={dateStr} tz={tz} speedProfile={speedProfile} now={new Date()} onFix={() => setFixOpen(true)} />
       <DailyMilesCard events={events} dateStr={dateStr} tz={tz} speedProfile={speedProfile} />
 
@@ -328,7 +370,7 @@ export default function Logs() {
         </div>
         <div className="space-y-1">
           {grid.remarks.map((r, i) => {
-            const evNotes = ((events.find(e => e.id === r.id)?.review_notes) || []).filter((n) => !(isTimelineNote(n) && dayValidity.valid));
+            const evNotes = ((events.find(e => e.id === r.id)?.review_notes) || []).filter((n) => !(isTimelineNote(n) && dayValidity.valid) && !isStaleRestHistoryNote(n, restHistory));
             return (
             <div key={i} className="rounded-lg border border-border p-2">
               <div className="flex items-center gap-2">

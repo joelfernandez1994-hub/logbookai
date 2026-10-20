@@ -30,6 +30,8 @@ import { Truck, Clock, Coffee, RotateCcw, AlertTriangle, MapPin, Bot, ClipboardL
 import DailyMilesCard from '@/components/DailyMilesCard';
 import TimezoneIndicator from '@/components/TimezoneIndicator';
 import TimelineGapNotice from '@/components/TimelineGapNotice';
+import RestHistoryNotice from '@/components/RestHistoryNotice';
+import { verifyRestHistory } from '@/lib/restHistoryVerification';
 import PullToRefresh from '@/components/PullToRefresh';
 
 // Display labels are translated via dutyStatusLabel() (presentation layer
@@ -105,6 +107,11 @@ export default function Today() {
   const agEval = useMemo(() => evaluateAgriculturalClocks({ claims, events, hos, cycleType, tz, now }),
     [claims, events, hos, cycleType, tz, now]);
   const hosEff = useMemo(() => applyAgriculturalAvailability(hos, agEval), [hos, agEval]);
+  // Rest-history verification (deterministic, from the full persisted
+  // timeline): while unverified the 11h/14h clocks already read '--' above;
+  // this surfaces the exact interval that prevents verification with a
+  // direct route to the log editor. Verified histories render nothing.
+  const restHistory = useMemo(() => verifyRestHistory(events, { tz, asOf: now }), [events, tz, now]);
 
   useEffect(() => { const t = setTimeout(() => setNow(new Date()), 30000); return () => clearTimeout(t); }, [now]);
 
@@ -346,6 +353,7 @@ export default function Today() {
         </div>
       )}
       <TimelineGapNotice events={events} dateStr={todayKey} tz={tz} now={now} />
+      <RestHistoryNotice verification={restHistory} tz={tz} onEdit={() => setEditLogOpen(true)} />
       <ClaimBanner claims={claims} dateStr={todayKey} tz={tz}
         showCalcNotice={!!(agEval && agEval.anyUnavailable)} onClaimsChanged={reload} editedBy={profile?.legal_name} />
 
