@@ -7,6 +7,7 @@ import { computeHOS, computeCycle, computeRecordedToday, dateKeyInTz, fmtHours, 
 import { validateTimeline, startOfDayInTz } from '@/lib/timelineEngine';
 import { verifyRestHistory, isStaleRestHistoryNote } from '@/lib/restHistoryVerification';
 import RestHistoryNotice from '@/components/RestHistoryNotice';
+import CurrentAvailabilityNotice from '@/components/CurrentAvailabilityNotice';
 import { getDisplayGrid } from '@/lib/timelineDisplay';
 import RodsGraphEditor from '@/components/rodsEditor/RodsGraphEditor';
 import { getCertifications, getAgriculturalClaims } from '@/lib/driverData';
@@ -149,6 +150,14 @@ export default function Logs() {
     return out;
   }, [events, dateStr, tz, dayValidity, restHistory]);
   const cycle = useMemo(() => computeCycle(events, cycleType, tz, selectedDate), [events, cycleType, tz, selectedDate]);
+
+  // Manual-mode current-availability context for TODAY: past days evaluate at
+  // their real day-end; today evaluates as of now so a trailing unrecorded
+  // stretch is classified (verified-through) instead of invalidating the day.
+  const hosSelected = useMemo(() => {
+    const dayEnd = new Date(startOfDayInTz(new Date(dateStr + 'T12:00:00'), tz).getTime() + 24 * 3600000);
+    return computeHOS(events, cycleType, tz, dayEnd.getTime() > Date.now() ? new Date() : dayEnd, { historyComplete: sufficientHistory });
+  }, [events, cycleType, tz, dateStr, sufficientHistory]);
 
   const cert = certifications.find(c => c.log_date === dateStr && !c.is_superseded);
   const isCertified = !!cert;
@@ -317,6 +326,7 @@ export default function Logs() {
       <ClaimBanner claims={claims} dateStr={dateStr} tz={tz}
         showCalcNotice={!!(agEval && agEval.anyUnavailable)} onClaimsChanged={reload} editedBy={profile?.legal_name} />
       <TimelineGapNotice events={events} dateStr={dateStr} tz={tz} now={new Date()} />
+      {dateStr === todayStr && <CurrentAvailabilityNotice hos={hosSelected} tz={tz} onEdit={() => setAdding(true)} />}
       <RestHistoryNotice verification={restHistory} tz={tz}
         onEdit={restHistory && restHistory.status === 'unverified' && restHistory.unresolvedRange
           ? () => {

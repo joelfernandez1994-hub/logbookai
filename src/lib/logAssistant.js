@@ -233,6 +233,41 @@ export function whatCanIDo(events, cycleType, tz, now = new Date(), enteredPrior
     usableDriveMs = 0;
   }
 
+  // MANUAL MODE — trailing unrecorded stretch: the driver's last verified
+  // record ends before now. Historical clocks stay verified through that
+  // record, but the unrecorded time could contain driving or on-duty work, so
+  // a current can-drive-now verdict is withheld ("Availability undetermined")
+  // rather than presenting historical remaining hours as permission to drive.
+  if (hos.availability?.status === 'verified_through' && hos.availability.lastVerifiedAt) {
+    return {
+      unavailable: false,
+      undetermined: true,
+      undeterminedReason: `Your last verified duty-status record ends at ${fmtClockShort(hos.availability.lastVerifiedAt, tz)}. HOS values are verified through that time, but your activity after it has not been recorded — update your log to confirm your current HOS availability.`,
+      currentAvailabilityUnverified: true,
+      lastVerifiedAt: hos.availability.lastVerifiedAt,
+      cycleUnverified,
+      cycleUnverifiedReason,
+      canDrive: null,
+      driveBlockers: [],
+      driveEligibleAt: null,
+      driveRemainingMs,
+      usableDriveMs: null,
+      windowRemainingMs,
+      breakRequired: hos.break30.breakRequired,
+      breakSatisfied: hos.break30.satisfied,
+      cycleRemainingHours,
+      cycleRemainingMs,
+      cycleReturningTomorrow: hos.cycle.returningTomorrowHours,
+      tenHourCompletesAt,
+      thirtyFourCompletesAt,
+      splitAvailableNow,
+      splitConditional,
+      restartInProgress: restart.inProgress || null,
+      restartCompleted: restart.completed || null,
+      restingNow,
+    };
+  }
+
   // Agricultural claims: whenever a required clock is unavailable the overall
   // drive answer is "Availability undetermined" — never a yes/no verdict and
   // never a numeric remaining value for the affected clock. Other

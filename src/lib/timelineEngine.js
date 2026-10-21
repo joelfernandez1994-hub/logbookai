@@ -282,6 +282,8 @@ export function validateTimeline(rawEvents, opts = {}) {
 
   let hasOverlap = norm.conflicts.length > 0;
   let hasElapsedGap = false;
+  let hasTrailingGap = false;
+  let lastCoveredMs = null;
   let totalCoveredDuration = 0;
   let isContinuousThroughNow = false;
   let expectedDuration = null;
@@ -299,8 +301,9 @@ export function validateTimeline(rawEvents, opts = {}) {
       .sort((a, b) => a.start - b.start);
     let cursor = dayStart.getTime();
     let lastOngoing = false;
+    let hasInteriorGap = false;
     for (const s of clipped) {
-      if (s.start.getTime() > cursor + 1000) hasElapsedGap = true;
+      if (s.start.getTime() > cursor + 1000) hasInteriorGap = true;
       if (s.start.getTime() < cursor - 1000) hasOverlap = true;
       const from = Math.max(cursor, s.start.getTime());
       if (s.end.getTime() > from) totalCoveredDuration += s.end.getTime() - from;
@@ -311,12 +314,44 @@ export function validateTimeline(rawEvents, opts = {}) {
     // CONTINUOUS with `now` by construction — flagging a trailing gap here
     // would only be measuring how long it's been since the last re-render,
     // not a real hole in the log. Only a genuinely completed/closed last
-    // segment that stops short of `targetEnd` is a real elapsed gap. This
-    // exception only applies to the CURRENT day (isCurrent) — a past day's
-    // trailing coverage must still reach its real day-end.
-    if (!(isCurrent && lastOngoing) && cursor < targetEnd.getTime() - 1000) hasElapsedGap = true;
-    isContinuousThroughNow = !hasElapsedGap && !hasOverlap && cursor >= targetEnd.getTime() - 1000;
+    // segment that stops short of `targetEnd` is a coverage shortfall.
+    const tailShort = !(isCurrent && lastOngoing) && cursor < targetEnd.getTime() - 1000;
+    if (hasInteriorGap) {
+      // A gap BETWEEN records (a historical hole inside the day) remains
+      // blocking: elapsed duty time is unaccounted and HOS math cannot be
+      // trusted across it.
+      hasElapsedGap = true;
+    } else if (tailShort) {
+      if (isCurrent) {
+        // MANUAL-MODE TRAILING GAP (current day, tail only): the most
+        // recent COMPLETED record ends before now. HOS through that record
+        // is fully calculable from verified history, so this must NOT block
+        // the clocks — the old behavior invalidated the entire day for
+        // being even one minute behind the current clock, which forced
+        // drivers to drag their final event to the current minute before
+        // any HOS value would appear. This is a recordkeeping condition,
+        // not a calculation-blocking one: activity after the last record is
+        // unrecorded and could contain driving/on-duty work, so CURRENT
+        // availability is withheld (see hosEngine.computeHOS →
+        // availability). The gap is never filled, extended, or assumed Off
+        // Duty, and the issue stays visible as a warning.
+        hasTrailingGap = true;
+      } else {
+        // A past day's trailing coverage must still reach its real day-end;
+        // the completed-day 24h total check below flags it as well.
+        hasElapsedGap = true;
+      }
+    }
+    if (tailShort) lastCoveredMs = cursor;
+    isContinuousThroughNow = !hasElapsedGap && !hasTrailingGap && !hasOverlap && cursor >= targetEnd.getTime() - 1000;
     if (hasElapsedGap) issues.push({ type: 'elapsed_gap', severity: 'blocking', message: 'Elapsed duty-status coverage has an unassigned gap.' });
+    if (hasTrailingGap) {
+      issues.push({
+        type: 'trailing_gap', severity: 'warning',
+        message: 'The most recent duty-status record ends before the current time. HOS is verified through that record; activity after it is unrecorded, so current availability is not established.',
+        lastCoveredMs: cursor,
+      });
+    }
     const hours = totalCoveredDuration / H;
     if (hours > expectedDuration / H + 0.01) issues.push({ type: 'daily_total', severity: 'blocking', message: 'Covered time exceeds elapsed time.' });
     if (!isCurrent && Math.abs(hours - 24) > 0.01) issues.push({ type: 'daily_total', severity: 'blocking', message: `Completed day totals ${hours.toFixed(2)}h (expected 24h).` });
@@ -333,6 +368,8 @@ export function validateTimeline(rawEvents, opts = {}) {
     hasOverlap,
     hasDuplicateCoverage,
     hasElapsedGap,
+    hasTrailingGap,
+    lastCoveredMs,
     totalCoveredDuration,
     isContinuousThroughNow,
     expectedDuration,

@@ -31,6 +31,7 @@ import DailyMilesCard from '@/components/DailyMilesCard';
 import TimezoneIndicator from '@/components/TimezoneIndicator';
 import TimelineGapNotice from '@/components/TimelineGapNotice';
 import RestHistoryNotice from '@/components/RestHistoryNotice';
+import CurrentAvailabilityNotice from '@/components/CurrentAvailabilityNotice';
 import { verifyRestHistory } from '@/lib/restHistoryVerification';
 import PullToRefresh from '@/components/PullToRefresh';
 
@@ -354,6 +355,10 @@ export default function Today() {
       )}
       <TimelineGapNotice events={events} dateStr={todayKey} tz={tz} now={now} />
       <RestHistoryNotice verification={restHistory} tz={tz} onEdit={() => setEditLogOpen(true)} />
+      {/* Manual mode: last verified record ends before now — clocks above are
+          verified through that record; current can-drive availability is
+          withheld until the driver records the trailing stretch. */}
+      <CurrentAvailabilityNotice hos={hos} tz={tz} onEdit={() => setEditLogOpen(true)} />
       <ClaimBanner claims={claims} dateStr={todayKey} tz={tz}
         showCalcNotice={!!(agEval && agEval.anyUnavailable)} onClaimsChanged={reload} editedBy={profile?.legal_name} />
 

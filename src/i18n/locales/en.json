@@ -285,6 +285,12 @@
     "editLogGraph": "Edit Log Graph",
     "editMode": "EDIT MODE"
   },
+  "availability": {
+    "unverifiedTitle": "Current availability not confirmed",
+    "unverifiedBody": "Your last verified duty-status record ended at {{time}} {{tzName}}. Your qualifying rest is verified, but your activity after {{time}} has not been recorded. Update your log to confirm your current HOS availability.",
+    "updateLog": "Update your log",
+    "verifiedThrough": "HOS verified through {{time}}"
+  },
   "warnings": {
     "timeGapTitle": "Time gap between duty records",
     "timeGapBody": "Your log must be continuous. Add a duty record for each missing time slot:",

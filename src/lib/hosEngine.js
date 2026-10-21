@@ -944,11 +944,15 @@ export function runComplianceCheck(rawEvents, cycleType, timezone, now = new Dat
     return issues;
   }
 
-  const governing = opts.governingOverride || computeGoverningReset(segments, now);
-  const drive = computeDrivingLimit(segments, now, governing);
-  const window = compute14HourWindow(segments, now, governing);
-  const brk = compute30MinBreak(segments, now);
-  const cycle = computeCycle(segments, cycleType, timezone, now);
+  // Manual-mode trailing gap: rule math runs through the last VERIFIED record
+  // so no violation is ever computed from unrecorded (unknown) time.
+  const trailingGap = !!validity.hasTrailingGap && Number.isFinite(validity.lastCoveredMs);
+  const evalNow = trailingGap ? new Date(validity.lastCoveredMs) : now;
+  const governing = opts.governingOverride || computeGoverningReset(segments, evalNow);
+  const drive = computeDrivingLimit(segments, evalNow, governing);
+  const window = compute14HourWindow(segments, evalNow, governing);
+  const brk = compute30MinBreak(segments, evalNow);
+  const cycle = computeCycle(segments, cycleType, timezone, evalNow);
 
   // 11-hour / 14-hour — SKIPPED when the governing reset is unverified (the
   // contiguous backward walk stopped at a gap/conflict before any qualifying
@@ -979,6 +983,12 @@ export function runComplianceCheck(rawEvents, cycleType, timezone, now = new Dat
   }
   if (!opts.historyComplete) {
     issues.missingInfo.push({ message: 'Cycle calculation incomplete — previous duty history required. Available hours may be overstated until prior days are entered.' });
+  }
+  // Log completeness — SEPARATE from HOS: a current-day trailing gap does not
+  // block the clocks above (all verified through lastCoveredMs), but it is
+  // still a real, unrecorded stretch of duty time the driver must close.
+  if (trailingGap) {
+    issues.missingInfo.push({ rule: 'Log Completeness', message: `Your most recent duty-status record ends at ${fmtClock(validity.lastCoveredMs)}. HOS values are verified through that time; activity after it has not been recorded. Update your log to confirm your current HOS availability.` });
   }
 
   // Overlapping events
@@ -1072,22 +1082,46 @@ export function computeHOS(rawEvents, cycleType, timezone, now = new Date(), opt
       cycle: { cycleType, cycleLimit: cycleType === '60_7' ? 60 : 70, cycleDays: cycleType === '60_7' ? 7 : 8, cycleUsedHours: 0, cycleRemainingHours: 0, returningTomorrowHours: 0, dailyTotals: [], recordedTodayHours: computeRecordedToday(rawEvents, timezone, now) },
       restart: { completed: null, inProgress: null },
       split: { status: 'none', note: 'Timeline correction required.' },
+      availability: { status: 'unverified', lastVerifiedAt: null },
       historyComplete: false,
     };
   }
   const segments = validity.segments;
-  const governing = opts.governingOverride || computeGoverningReset(segments, now);
-  const driving = computeDrivingLimit(segments, now, governing);
-  const window14 = compute14HourWindow(segments, now, governing);
-  const break30 = compute30MinBreak(segments, now);
-  const cycle = computeCycle(segments, cycleType, timezone, now);
-  const restart = compute34Restart(segments, now);
+  // MANUAL-MODE TRAILING GAP — evaluate every clock through the last VERIFIED
+  // record (validity.lastCoveredMs) instead of the wall clock. The trailing,
+  // unrecorded stretch may contain unknown driving/on-duty time, so the values
+  // below are "verified through lastVerifiedAt" — real, trustworthy HOS
+  // history — while a current can-drive-now verdict is withheld
+  // (result.availability.status = 'verified_through'). This is the root-cause
+  // fix for Manual Mode requiring the final event to reach the current minute
+  // before any clock would compute: a completed qualifying rest is verified
+  // from the recorded timestamps alone. Live Tracking never takes this path —
+  // its ongoing status already covers to `now`, so availability is 'verified'.
+  const trailingGap = !!validity.hasTrailingGap && Number.isFinite(validity.lastCoveredMs);
+  const lastVerifiedMs = trailingGap ? validity.lastCoveredMs : null;
+  const evalNow = trailingGap ? new Date(lastVerifiedMs) : now;
+  const governing = opts.governingOverride || computeGoverningReset(segments, evalNow);
+  const driving = computeDrivingLimit(segments, evalNow, governing);
+  const window14 = compute14HourWindow(segments, evalNow, governing);
+  const break30 = compute30MinBreak(segments, evalNow);
+  const cycle = computeCycle(segments, cycleType, timezone, evalNow);
+  const restart = compute34Restart(segments, evalNow);
   const split = governing.split;
 
   let currentStatus = null;
   for (let i = segments.length - 1; i >= 0; i--) {
     if (segments[i].start <= now) { currentStatus = segments[i]; break; }
   }
+
+  const nowMs = now instanceof Date ? now.getTime() : new Date(now).getTime();
+  const availability = trailingGap
+    ? {
+        status: 'verified_through',
+        lastVerifiedAt: new Date(lastVerifiedMs),
+        // Absolute size of the unrecorded stretch (display only).
+        unverifiedIntervalMs: Math.max(0, nowMs - lastVerifiedMs),
+      }
+    : { status: 'verified', lastVerifiedAt: null, unverifiedIntervalMs: 0 };
 
   const result = {
     calculable: true,
@@ -1100,6 +1134,7 @@ export function computeHOS(rawEvents, cycleType, timezone, now = new Date(), opt
     cycle,
     restart,
     split,
+    availability,
     historyComplete: opts.historyComplete !== false,
   };
 

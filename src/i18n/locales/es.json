@@ -285,6 +285,12 @@
     "editLogGraph": "Editar Gráfico de Registro",
     "editMode": "MODO DE EDICIÓN"
   },
+  "availability": {
+    "unverifiedTitle": "Disponibilidad actual sin confirmar",
+    "unverifiedBody": "Su último registro de estado de servicio verificado terminó a las {{time}} {{tzName}}. Su descanso calificado está verificado, pero su actividad después de las {{time}} no ha sido registrada. Actualice su registro para confirmar su disponibilidad de HOS actual.",
+    "updateLog": "Actualizar su registro",
+    "verifiedThrough": "HOS verificado hasta las {{time}}"
+  },
   "warnings": {
     "timeGapTitle": "Espacio de tiempo entre registros de servicio",
     "timeGapBody": "Su registro debe ser continuo. Agregue un registro de servicio para cada intervalo de tiempo faltante:",
