@@ -44,7 +44,10 @@ function drawDay(doc, driver, carrier, events, dateStr, timezone, certification,
   let y = M;
 
   const grid = getDailyGrid(events, dateStr, timezone);
-  const hos = computeHOS(events, cycleType, timezone, grid.dayEnd, { historyComplete: true });
+  // Current day evaluates as of now (verified through the last record on a
+  // manual-mode day) — never as a completed day against midnight, which
+  // invalidated the recap the moment the last record ended.
+  const hos = computeHOS(events, cycleType, timezone, grid.isCurrent ? new Date() : grid.dayEnd, { historyComplete: true });
 
   // --- Title bar ---
   doc.setFontSize(15); doc.setFont(undefined, 'bold');

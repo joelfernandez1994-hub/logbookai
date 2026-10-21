@@ -14,6 +14,7 @@ import { generateLogsPdf } from '@/lib/pdfGenerator';
 import { Button } from '@/components/ui/button';
 import { ChevronLeft, ChevronRight, Share2, X, ShieldCheck } from 'lucide-react';
 import TimezoneIndicator from '@/components/TimezoneIndicator';
+import CurrentAvailabilityNotice from '@/components/CurrentAvailabilityNotice';
 
 const STATUS_LABELS = { OFF_DUTY: 'Off Duty', SLEEPER_BERTH: 'Sleeper', DRIVING: 'Driving', ON_DUTY: 'On Duty' };
 
@@ -112,12 +113,19 @@ export default function Inspection() {
   const selectedKey = dayKeys[Math.max(0, Math.min(7, dayOffset + 7))];
   const grid = useMemo(() => getDailyGrid(events, selectedKey, tz), [events, selectedKey, tz]);
   const historyComplete = useMemo(() => hasSufficientCycleHistory(events, cycleType, profile?.entered_prior_history, tz, grid.dayEnd), [events, cycleType, profile, tz, grid.dayEnd]);
-  const hosForDay = useMemo(() => computeHOS(events, cycleType, tz, grid.dayEnd, { historyComplete }), [events, cycleType, tz, grid.dayEnd, historyComplete]);
+  // Evaluate the CURRENT day as of NOW: a completed-day evaluation against
+  // midnight marked every manual-mode day invalid the moment its last record
+  // ended (the same trailing-gap coupling fixed in validateTimeline). Past
+  // days still evaluate at their real day-end.
+  const [inspNow, setInspNow] = useState(new Date());
+  useEffect(() => { const t2 = setTimeout(() => setInspNow(new Date()), 30000); return () => clearTimeout(t2); }, [inspNow]);
+  const hosEvalNow = grid.isCurrent ? inspNow : grid.dayEnd;
+  const hosForDay = useMemo(() => computeHOS(events, cycleType, tz, hosEvalNow, { historyComplete }), [events, cycleType, tz, hosEvalNow, historyComplete]);
   const hosDisplay = useMemo(() => deriveHosDisplay(hosForDay, historyComplete), [hosForDay, historyComplete]);
   // Agricultural claims: same shared availability determination as Today and
   // Logs, evaluated as of the end of the selected inspection day.
-  const agEval = useMemo(() => evaluateAgriculturalClocks({ claims, events, hos: hosForDay, cycleType, tz, now: grid.dayEnd }),
-    [claims, events, hosForDay, cycleType, tz, grid.dayEnd]);
+  const agEval = useMemo(() => evaluateAgriculturalClocks({ claims, events, hos: hosForDay, cycleType, tz, now: hosEvalNow }),
+    [claims, events, hosForDay, cycleType, tz, hosEvalNow]);
   const agClocks = agEval?.clocks || {};
   const agDriveOff = !!agClocks.driving?.unavailable;
   const agWindowOff = !!agClocks.window14?.unavailable;
@@ -178,6 +186,10 @@ export default function Inspection() {
           availability state and explanation as Today, Logs, and exports. */}
       <ClaimBanner claims={claims} dateStr={selectedKey} tz={tz}
         showCalcNotice={!!(agEval && agEval.anyUnavailable)} editedBy={profile?.legal_name} />
+
+      {/* Manual-mode trailing gap on the current day: clocks above are
+          verified through the last record; current availability is withheld. */}
+      <CurrentAvailabilityNotice hos={hosForDay} tz={tz} />
 
       {/* Recap — all values sourced from hosForDay.cycle via recapDisplay */}
       <div className="bg-card text-card-foreground rounded-xl p-3 mb-3 text-sm">
