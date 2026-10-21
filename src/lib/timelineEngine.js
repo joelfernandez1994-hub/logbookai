@@ -382,6 +382,62 @@ export function canComputeHOS(rawEvents, now = new Date()) {
 }
 
 // ---------------------------------------------------------------------------
+// PARTIAL-CALCULATION ANCHOR (opt-in, used by computeHOS's allowPartial path).
+// Finds the latest instant on the log day where recorded coverage is
+// CONTINUOUS from local midnight through that instant — i.e. the START of the
+// day's first INTERNAL (between-records) gap. HOS recalculated AS OF that
+// instant is fully trustworthy (it only reads recorded history), so Today can
+// show real clock values instead of blanks while everything after the gap
+// stays unverified. Returns null when:
+//   - there is no internal gap (a trailing unrecorded stretch is handled by
+//     the verified-through path, never here),
+//   - nothing is recorded before the gap (no verified stretch exists to
+//     calculate from — clocks must stay unavailable rather than appear "full"),
+//   - or an unresolved data conflict (duplicate / same-start / negative
+//     duration) makes EVERY instant untrustworthy.
+// Purely deterministic — reads recorded timestamps only, never fills or
+// extends anything.
+// ---------------------------------------------------------------------------
+export function findPartialHosAnchor(rawEvents, now, timezone) {
+  const t = now instanceof Date ? now : new Date(now);
+  if (findDuplicates(rawEvents).length) return null;
+  for (const e of (rawEvents || [])) {
+    if (!e || !e.start_timestamp || !e.end_timestamp) continue;
+    if (num(e.end_timestamp) < num(e.start_timestamp)) return null;
+  }
+  const norm = normalizeTimeline(rawEvents, t);
+  if (norm.conflicts.length) return null;
+  if (!timezone) return null;
+  const dateStr = new Intl.DateTimeFormat('en-CA', {
+    timeZone: timezone, year: 'numeric', month: '2-digit', day: '2-digit',
+  }).format(t);
+  const [y, m, d] = dateStr.split('-').map(Number);
+  const utcMid = Date.UTC(y, m - 1, d);
+  const dayStart = new Date(utcMid - tzOffsetMs(new Date(utcMid), timezone));
+  const dayEnd = new Date(dayStart.getTime() + 24 * H);
+  const isCurrent = dayStart <= t && t < dayEnd;
+  const targetEnd = isCurrent ? t.getTime() : dayEnd.getTime();
+  const clipped = norm.segments
+    .filter(s => s.end > dayStart && s.start < targetEnd)
+    .map(s => ({
+      start: Math.max(s.start.getTime(), dayStart.getTime()),
+      end: Math.min(s.end.getTime(), targetEnd),
+      is_ongoing: !!s.is_ongoing,
+    }))
+    .sort((a, b) => a.start - b.start);
+  if (!clipped.length) return null;
+  let cursor = dayStart.getTime();
+  for (const s of clipped) {
+    if (s.start > cursor + 1000) {
+      if (cursor <= dayStart.getTime()) return null; // gap starts at day open
+      return { instant: new Date(cursor), gapStart: new Date(s.start) };
+    }
+    cursor = Math.max(cursor, s.end);
+  }
+  return null; // coverage is continuous — no internal gap on this day
+}
+
+// ---------------------------------------------------------------------------
 // CANONICAL INSERT — add/replace an event while keeping the timeline
 // continuous and non-overlapping. Rules:
 //   - reject exact duplicates (same start + status) -> { duplicate: true }

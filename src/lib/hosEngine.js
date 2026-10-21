@@ -25,7 +25,7 @@
 // and driving time moving forward as the tiebreak.
 // ============================================================================
 
-import { normalizedSegments, dailyTotals as canonicalDailyTotals, validateTimeline } from './timelineEngine';
+import { normalizedSegments, dailyTotals as canonicalDailyTotals, validateTimeline, findPartialHosAnchor } from './timelineEngine';
 
 const MS = {
   MINUTE: 60 * 1000,
@@ -1072,6 +1072,43 @@ export function computeHOS(rawEvents, cycleType, timezone, now = new Date(), opt
     let openStatus = null;
     for (let i = segs.length - 1; i >= 0; i--) {
       if (segs[i].start <= now) { openStatus = segs[i]; break; }
+    }
+    const nowMsInvalid = now instanceof Date ? now.getTime() : new Date(now).getTime();
+    // OPT-IN PARTIAL / LAST-KNOWN PATH (Today screen): an INTERNAL gap
+    // (between recorded events) no longer blanks every clock. Clocks
+    // recalculated AS OF the last continuously recorded instant use only
+    // verified recorded history, so they are returned with partial:true and
+    // an availability that still withholds the current can-drive verdict —
+    // they are never presented as current driving eligibility. Unresolved
+    // data conflicts (duplicates, same-start, negative durations) never take
+    // this path, and default callers (proposals, compliance, inspection)
+    // are unchanged — only consumers passing allowPartial see it.
+    if (opts.allowPartial) {
+      const anchor = findPartialHosAnchor(rawEvents, now, timezone);
+      if (anchor && anchor.instant.getTime() < nowMsInvalid) {
+        const partial = computeHOS(rawEvents, cycleType, timezone, anchor.instant, { ...opts, allowPartial: false });
+        if (partial.calculable) {
+          return {
+            ...partial,
+            partial: true,
+            partialAsOf: anchor.instant,
+            // The wall-clock answer to "what is my status right now" (the open
+            // status at `now`), not the pre-gap status the anchor-time
+            // evaluation would produce.
+            currentStatus: openStatus,
+            availability: {
+              status: 'verified_through',
+              lastVerifiedAt: anchor.instant,
+              unverifiedIntervalMs: Math.max(0, nowMsInvalid - anchor.instant.getTime()),
+              partialHistory: true,
+            },
+            // Keep the PRIMARY validity (with its real blocking issues) so
+            // callers can still see why the full day is not verified.
+            validity,
+            historyComplete: opts.historyComplete !== false,
+          };
+        }
+      }
     }
     return {
       calculable: false, validity, currentStatus: openStatus,

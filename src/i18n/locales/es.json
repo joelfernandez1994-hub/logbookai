@@ -36,6 +36,11 @@
     "whatCanIDo": "¿Qué puede hacer LogbookAI?",
     "timelineCorrectionRequired": "HOS no disponible hasta completar su registro",
     "timelineCorrectionRequiredHelp": "Su línea de tiempo tiene un segmento faltante o superpuesto, por lo que los valores de HOS aún no se pueden calcular. Edite el registro para corregir la línea de tiempo.",
+    "logIncompleteTitle_one": "Registro incompleto: 1 espacio de tiempo sin registrar",
+    "logIncompleteTitle_other": "Registro incompleto: {{count}} espacios de tiempo sin registrar",
+    "logIncompleteReview": "Revisar",
+    "logIncompleteHide": "Ocultar",
+    "logConflictTitle": "Conflicto en el registro: HOS no disponible hasta corregirlo",
     "todaysLog": "Registro de 24 Horas de Hoy",
     "dailyDvir": "DVIR Diario",
     "addAnother": "Agregar Otro",
@@ -69,6 +74,7 @@
     "elevenHourLimit": "límite de 11 hrs",
     "sinceTime": "desde las {{time}}",
     "unavailable": "HOS no disponible—revise la línea de tiempo",
+    "basedOnLogged": "Calculado con el tiempo registrado hasta las {{time}}; no es la disponibilidad actual para conducir.",
     "satisfied": "Satisfecho",
     "timeLeft": "quedan {{time}}",
     "breakRequiredNow": "Descanso requerido ahora",
@@ -289,7 +295,9 @@
     "unverifiedTitle": "Disponibilidad actual sin confirmar",
     "unverifiedBody": "Su último registro de estado de servicio verificado terminó a las {{time}} {{tzName}}. Su descanso calificado está verificado, pero su actividad después de las {{time}} no ha sido registrada. Actualice su registro para confirmar su disponibilidad de HOS actual.",
     "updateLog": "Actualizar su registro",
-    "verifiedThrough": "HOS verificado hasta las {{time}}"
+    "verifiedThrough": "HOS verificado hasta las {{time}}",
+    "partialTitle": "Estado actual no registrado",
+    "partialBody": "Las horas de servicio se calculan con su tiempo registrado hasta las {{time}}. Termine de registrar su día para ver su disponibilidad actual."
   },
   "warnings": {
     "timeGapTitle": "Espacio de tiempo entre registros de servicio",

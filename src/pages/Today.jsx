@@ -29,7 +29,7 @@ import { shouldUseFullScreenEditGraph } from '@/lib/editLogChrome';
 import { Truck, Clock, Coffee, RotateCcw, AlertTriangle, MapPin, Bot, ClipboardList, ClipboardCheck, Gauge, Moon, HelpCircle, ShieldCheck, Plus, PencilLine, X, Check } from 'lucide-react';
 import DailyMilesCard from '@/components/DailyMilesCard';
 import TimezoneIndicator from '@/components/TimezoneIndicator';
-import TimelineGapNotice from '@/components/TimelineGapNotice';
+import LogIncompleteNotice from '@/components/LogIncompleteNotice';
 import RestHistoryNotice from '@/components/RestHistoryNotice';
 import CurrentAvailabilityNotice from '@/components/CurrentAvailabilityNotice';
 import { verifyRestHistory } from '@/lib/restHistoryVerification';
@@ -100,7 +100,13 @@ export default function Today() {
   const openSafetyDefects = useMemo(() => (dvirs || []).filter(d => d.has_safety_defect && d.repair_status === 'pending'), [dvirs]);
 
   const timelineValidation = useMemo(() => validateTimeline(events, { now, dateStr: dateKeyInTz(now, tz), timezone: tz }), [events, now, tz]);
-  const hos = useMemo(() => computeHOS(events, cycleType, tz, now, { historyComplete }),
+  // allowPartial: when the day has an INTERNAL unlogged gap, clocks are still
+  // calculated AS OF the last continuously recorded instant — real, verified
+  // history — instead of going blank. They are labeled "based on logged time"
+  // below and never presented as current driving eligibility. Unresolved data
+  // conflicts (duplicates, same-start, negative durations) keep everything
+  // unavailable. The HOS engine math itself is untouched.
+  const hos = useMemo(() => computeHOS(events, cycleType, tz, now, { historyComplete, allowPartial: true }),
     [events, cycleType, tz, now, historyComplete]);
   // Agricultural claims (49 CFR 395.1(k)): the shared clock-availability
   // determination marks any clock whose calculation history a claim's work
@@ -137,6 +143,11 @@ export default function Today() {
   }
 
   const todayKey = dateKeyInTz(now, tz);
+  // Partial calculation label: states plainly that the values reflect LOGGED
+  // time through the verified instant — not permission to drive right now.
+  const loggedNote = hos.partial && hos.partialAsOf
+    ? t('hos.basedOnLogged', { time: fmtClock(hos.partialAsOf, tz) })
+    : null;
   const current = hos.currentStatus;
   const displayStatus = optimisticStatus || current?.duty_status;
   const displaySince = optimisticStatus ? optimisticSince : current?.start;
@@ -341,19 +352,11 @@ export default function Today() {
         </Button>
       </div>
 
-      {!timelineValidation.valid && (
-        <div className="rounded-xl border border-warning/50 bg-warning-surface p-3 mb-3 flex gap-2">
-          <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5 text-warning" />
-          <div className="flex-1">
-            <div className="text-xs font-medium text-warning-surface-foreground">{t('today.timelineCorrectionRequired')}</div>
-            <div className="text-xs text-warning-surface-foreground opacity-80 mt-0.5 mb-2">{t('today.timelineCorrectionRequiredHelp')}</div>
-            <Button size="sm" variant="outline" className="h-7 text-[11px] px-2 border-warning/50 text-warning-surface-foreground hover:bg-warning/10" onClick={() => setEditLogOpen(true)}>
-              <PencilLine className="w-3 h-3 mr-1" /> {t('logs.editLog')}
-            </Button>
-          </div>
-        </div>
-      )}
-      <TimelineGapNotice events={events} dateStr={todayKey} tz={tz} now={now} />
+      {/* Log incomplete — ONE compact, collapsed summary for ordinary
+          recordkeeping warnings (unlogged time gaps). Serious data conflicts
+          (duplicates, same-start, negative durations) render prominently
+          inside the component and are never hidden or collapsed. */}
+      <LogIncompleteNotice events={events} dateStr={todayKey} tz={tz} now={now} validity={timelineValidation} onEdit={() => setEditLogOpen(true)} />
       <RestHistoryNotice verification={restHistory} tz={tz} onEdit={() => setEditLogOpen(true)} />
       {/* Manual mode: last verified record ends before now — clocks above are
           verified through that record; current can-drive availability is
@@ -362,19 +365,27 @@ export default function Today() {
       <ClaimBanner claims={claims} dateStr={todayKey} tz={tz}
         showCalcNotice={!!(agEval && agEval.anyUnavailable)} onClaimsChanged={reload} editedBy={profile?.legal_name} />
 
+      {/* Clocks gate on hos.calculable (which includes the verified partial
+          calculation), NOT timelineValidation.valid — an internal gap no
+          longer blanks every clock. When partial, each card carries the
+          "based on logged time through X — not current availability" note. */}
       <div className="grid grid-cols-2 gap-2 mb-3">
-        <ClockCard label={t('hos.drivingRemaining')} value={timelineValidation.valid && hosEff.driving.applicable ? fmtDur(hosEff.driving.drivingRemainingMs) : '--'}
-          sublabel={timelineValidation.valid && hosEff.driving.applicable ? (hosEff.driving.expiresAt ? t('hos.expiresAt', { time: fmtClock(hosEff.driving.expiresAt, tz) }) : t('hos.elevenHourLimit')) : (hosEff.driving.agriculturalUnavailable ? t('agricultural.clockUnavailableShort') : t('hos.unavailable'))}
-          status={timelineValidation.valid && hosEff.driving.applicable ? clockStatus(hosEff.driving.drivingRemainingMs) : 'disabled'} icon={Truck} />
-        <ClockCard label={t('hos.window14')} value={timelineValidation.valid && hosEff.window14.applicable ? fmtDur(hosEff.window14.remainingMs) : '--'}
-          sublabel={timelineValidation.valid && hosEff.window14.applicable ? (hosEff.window14.windowStart ? t('hos.sinceTime', { time: fmtClock(hosEff.window14.windowStart, tz) }) : '') : (hosEff.window14.agriculturalUnavailable ? t('agricultural.clockUnavailableShort') : t('hos.unavailable'))}
-          status={timelineValidation.valid && hosEff.window14.applicable ? clockStatus(hosEff.window14.remainingMs) : 'disabled'} icon={Clock} />
-        <ClockCard label={t('hos.break30')} value={timelineValidation.valid && !hosEff.break30.agriculturalUnavailable ? (hosEff.break30.satisfied ? t('hos.satisfied') : t('hos.timeLeft', { time: fmtDur(hosEff.break30.remainingBeforeBreakMs) })) : '--'}
-          sublabel={timelineValidation.valid && !hosEff.break30.agriculturalUnavailable ? (hosEff.break30.breakRequired ? t('hos.breakRequiredNow') : t('hos.eightHourRule')) : (hosEff.break30.agriculturalUnavailable ? t('agricultural.clockUnavailableShort') : t('hos.unavailable'))}
-          status={timelineValidation.valid && !hosEff.break30.agriculturalUnavailable ? (hosEff.break30.breakRequired ? 'critical' : 'normal') : 'disabled'} icon={Coffee} />
-        <ClockCard label={t('hos.cycleLabel', { limit: hosEff.cycle.cycleLimit, days: hosEff.cycle.cycleDays })} value={timelineValidation.valid && !hosEff.cycle.agriculturalUnavailable ? t('hos.hoursLeft', { hours: hosEff.cycle.cycleRemainingHours.toFixed(1) }) : '--'}
-          sublabel={timelineValidation.valid && !hosEff.cycle.agriculturalUnavailable ? t('hos.usedBackTomorrow', { used: hosEff.cycle.cycleUsedHours.toFixed(1), back: hosEff.cycle.returningTomorrowHours.toFixed(1) }) : (hosEff.cycle.agriculturalUnavailable ? t('agricultural.clockUnavailableShort') : t('hos.unavailable'))}
-          status={timelineValidation.valid && !hosEff.cycle.agriculturalUnavailable ? clockStatus(hosEff.cycle.cycleRemainingHours * 3600000) : 'disabled'} icon={Gauge} />
+        <ClockCard label={t('hos.drivingRemaining')} value={hos.calculable && hosEff.driving.applicable ? fmtDur(hosEff.driving.drivingRemainingMs) : '--'}
+          sublabel={hos.calculable && hosEff.driving.applicable ? (hosEff.driving.expiresAt ? t('hos.expiresAt', { time: fmtClock(hosEff.driving.expiresAt, tz) }) : t('hos.elevenHourLimit')) : (hosEff.driving.agriculturalUnavailable ? t('agricultural.clockUnavailableShort') : t('hos.unavailable'))}
+          note={loggedNote && hosEff.driving.applicable ? loggedNote : null}
+          status={hos.calculable && hosEff.driving.applicable ? clockStatus(hosEff.driving.drivingRemainingMs) : 'disabled'} icon={Truck} />
+        <ClockCard label={t('hos.window14')} value={hos.calculable && hosEff.window14.applicable ? fmtDur(hosEff.window14.remainingMs) : '--'}
+          sublabel={hos.calculable && hosEff.window14.applicable ? (hosEff.window14.windowStart ? t('hos.sinceTime', { time: fmtClock(hosEff.window14.windowStart, tz) }) : '') : (hosEff.window14.agriculturalUnavailable ? t('agricultural.clockUnavailableShort') : t('hos.unavailable'))}
+          note={loggedNote && hosEff.window14.applicable ? loggedNote : null}
+          status={hos.calculable && hosEff.window14.applicable ? clockStatus(hosEff.window14.remainingMs) : 'disabled'} icon={Clock} />
+        <ClockCard label={t('hos.break30')} value={hos.calculable && !hosEff.break30.agriculturalUnavailable ? (hosEff.break30.satisfied ? t('hos.satisfied') : t('hos.timeLeft', { time: fmtDur(hosEff.break30.remainingBeforeBreakMs) })) : '--'}
+          sublabel={hos.calculable && !hosEff.break30.agriculturalUnavailable ? (hosEff.break30.breakRequired ? t('hos.breakRequiredNow') : t('hos.eightHourRule')) : (hosEff.break30.agriculturalUnavailable ? t('agricultural.clockUnavailableShort') : t('hos.unavailable'))}
+          note={loggedNote && !hosEff.break30.agriculturalUnavailable ? loggedNote : null}
+          status={hos.calculable && !hosEff.break30.agriculturalUnavailable ? (hosEff.break30.breakRequired ? 'critical' : 'normal') : 'disabled'} icon={Coffee} />
+        <ClockCard label={t('hos.cycleLabel', { limit: hosEff.cycle.cycleLimit, days: hosEff.cycle.cycleDays })} value={hos.calculable && !hosEff.cycle.agriculturalUnavailable ? t('hos.hoursLeft', { hours: hosEff.cycle.cycleRemainingHours.toFixed(1) }) : '--'}
+          sublabel={hos.calculable && !hosEff.cycle.agriculturalUnavailable ? t('hos.usedBackTomorrow', { used: hosEff.cycle.cycleUsedHours.toFixed(1), back: hosEff.cycle.returningTomorrowHours.toFixed(1) }) : (hosEff.cycle.agriculturalUnavailable ? t('agricultural.clockUnavailableShort') : t('hos.unavailable'))}
+          note={loggedNote && !hosEff.cycle.agriculturalUnavailable ? loggedNote : null}
+          status={hos.calculable && !hosEff.cycle.agriculturalUnavailable ? clockStatus(hosEff.cycle.cycleRemainingHours * 3600000) : 'disabled'} icon={Gauge} />
       </div>
 
       {restartProgress && (

@@ -1,4 +1,4 @@
-export default function ClockCard({ label, value, sublabel, status = 'normal', icon: Icon }) {
+export default function ClockCard({ label, value, sublabel, status = 'normal', icon: Icon, note }) {
   const tone = {
     normal: 'border-border bg-card text-card-foreground',
     warning: 'border-warning/50 bg-warning-surface text-warning-surface-foreground',
@@ -14,6 +14,7 @@ export default function ClockCard({ label, value, sublabel, status = 'normal', i
       </div>
       <div className="text-xl font-bold mt-0.5 tabular-nums">{value}</div>
       {sublabel && <div className="text-[11px] opacity-70 mt-0.5">{sublabel}</div>}
+      {note && <div className="text-[10px] opacity-60 mt-1 leading-snug">{note}</div>}
     </div>
   );
 }

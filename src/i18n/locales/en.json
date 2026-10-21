@@ -36,6 +36,11 @@
     "whatCanIDo": "What can LogbookAI do?",
     "timelineCorrectionRequired": "HOS unavailable until your log is complete",
     "timelineCorrectionRequiredHelp": "Your timeline has a missing or overlapping segment, so HOS values can't be calculated yet. Edit the log to correct the timeline.",
+    "logIncompleteTitle_one": "Log incomplete — 1 unlogged time gap",
+    "logIncompleteTitle_other": "Log incomplete — {{count}} unlogged time gaps",
+    "logIncompleteReview": "Review",
+    "logIncompleteHide": "Hide",
+    "logConflictTitle": "Timeline conflict — HOS unavailable until corrected",
     "todaysLog": "Today's 24-Hour Log",
     "dailyDvir": "Daily DVIR",
     "addAnother": "Add Another",
@@ -69,6 +74,7 @@
     "elevenHourLimit": "11-hr limit",
     "sinceTime": "since {{time}}",
     "unavailable": "HOS unavailable—review timeline",
+    "basedOnLogged": "Based on logged time through {{time}} — not current driving availability.",
     "satisfied": "Satisfied",
     "timeLeft": "{{time}} left",
     "breakRequiredNow": "Break required now",
@@ -289,7 +295,9 @@
     "unverifiedTitle": "Current availability not confirmed",
     "unverifiedBody": "Your last verified duty-status record ended at {{time}} {{tzName}}. Your qualifying rest is verified, but your activity after {{time}} has not been recorded. Update your log to confirm your current HOS availability.",
     "updateLog": "Update your log",
-    "verifiedThrough": "HOS verified through {{time}}"
+    "verifiedThrough": "HOS verified through {{time}}",
+    "partialTitle": "Current status not recorded",
+    "partialBody": "Hours of service are calculated from your logged time through {{time}}. Finish logging your day to see your current availability."
   },
   "warnings": {
     "timeGapTitle": "Time gap between duty records",
