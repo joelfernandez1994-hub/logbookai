@@ -13,11 +13,16 @@ import { Button } from '@/components/ui/button';
 // time, an event ending before it starts) are never hidden or collapsed — they
 // render prominently in their own error card. Never edits, fills, or extends
 // anything on its own.
-export default function LogIncompleteNotice({ events, dateStr, tz, now = new Date(), validity, onEdit }) {
+// excludeGaps: gaps already surfaced by another notice (e.g. the trailing
+// unlogged stretch covered by CurrentAvailabilityNotice) so a single
+// unlogged interval is never reported by two separate notices.
+export default function LogIncompleteNotice({ events, dateStr, tz, now = new Date(), validity, onEdit, excludeGaps = [] }) {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);
-  const gaps = findTimelineGaps(events, dateStr, tz, now);
+  const gaps = findTimelineGaps(events, dateStr, tz, now).filter(
+    (g) => !excludeGaps.some((x) => new Date(x.start).getTime() === g.start.getTime() && new Date(x.end).getTime() === g.end.getTime())
+  );
   // Blocking issues that are NOT plain coverage gaps: duplicates, same-start
   // conflicts, negative durations. These make every HOS instant untrustworthy
   // and always stay prominent.

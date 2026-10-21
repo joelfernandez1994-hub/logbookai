@@ -7,8 +7,9 @@ import { computeHOS, fmtDur, fmtClock, dateKeyInTz, hasSufficientCycleHistory } 
 import LogGraph from '@/components/LogGraph';
 import ClockCard from '@/components/ClockCard';
 import StatusChangeSheet from '@/components/StatusChangeSheet';
-import { changeStatus, insertEvent, editEvent, updateEventFields } from '@/lib/timelineWriter';
+import { changeStatus, insertEvent, editEvent, updateEventFields, deleteEventById } from '@/lib/timelineWriter';
 import { validateTimeline } from '@/lib/timelineEngine';
+import { findTimelineGaps } from '@/lib/tripSync';
 import { getDvirs, saveDvir } from '@/lib/dvirData';
 import { saveDriverProfile, getCertifications, getAgriculturalClaims } from '@/lib/driverData';
 import { evaluateAgriculturalClocks, applyAgriculturalAvailability } from '@/lib/agriculturalClaims';
@@ -82,6 +83,7 @@ export default function Today() {
   const [claims, setClaims] = useState([]);
   const [editLogOpen, setEditLogOpen] = useState(false);
   const [editingEvent, setEditingEvent] = useState(null);
+  const [deletingEventId, setDeletingEventId] = useState(null);
   const [eventSaving, setEventSaving] = useState(false);
   const [eventSaveError, setEventSaveError] = useState('');
 
@@ -100,6 +102,10 @@ export default function Today() {
   const openSafetyDefects = useMemo(() => (dvirs || []).filter(d => d.has_safety_defect && d.repair_status === 'pending'), [dvirs]);
 
   const timelineValidation = useMemo(() => validateTimeline(events, { now, dateStr: dateKeyInTz(now, tz), timezone: tz }), [events, now, tz]);
+  // Unlogged stretches on today's log (same finder the LogIncompleteNotice
+  // uses). Needed here so the trailing stretch can be routed to
+  // CurrentAvailabilityNotice instead of being double-reported.
+  const gapsToday = useMemo(() => findTimelineGaps(events, dateKeyInTz(now, tz), tz, now), [events, tz, now]);
   // allowPartial: when the day has an INTERNAL unlogged gap, clocks are still
   // calculated AS OF the last continuously recorded instant — real, verified
   // history — instead of going blank. They are labeled "based on logged time"
@@ -149,6 +155,20 @@ export default function Today() {
     ? t('hos.basedOnLogged', { time: fmtClock(hos.partialAsOf, tz) })
     : null;
   const current = hos.currentStatus;
+  // Current availability withheld (last verified record ends before now)?
+  const av = hos?.availability;
+  const availabilityUnverified = !!(av && av.status === 'verified_through' && av.lastVerifiedAt);
+  // The trailing unlogged stretch (its end is "now") — owned by the
+  // availability notice, so the gap summary never repeats it.
+  const trailingGap = availabilityUnverified
+    ? gapsToday.find((g) => now.getTime() - g.end.getTime() < 120000)
+    : null;
+  // ONE calculation timestamp beside the balances, whichever mode produced
+  // it: partial ("based on logged time") or trailing gap ("verified
+  // through"). Never presented as permission to drive right now.
+  const clockNote = loggedNote || (availabilityUnverified
+    ? t('hos.verifiedThroughNote', { time: fmtClock(av.lastVerifiedAt, tz) })
+    : null);
   const displayStatus = optimisticStatus || current?.duty_status;
   const displaySince = optimisticStatus ? optimisticSince : current?.start;
   const todayDvirs = (dvirs || []).filter(d => d.log_date === todayKey);
@@ -229,6 +249,20 @@ export default function Today() {
       setEventSaveError(e?.message || t('logs.saveEventError'));
     } finally {
       setEventSaving(false);
+    }
+  };
+
+  // Same canonical delete path as the Logs tab: deleteEventById (audit
+  // snapshot via the shared timeline writer) → reload. No extra eligibility
+  // rules on Today — exact parity with Logs.
+  const handleDeleteEvent = async (id) => {
+    if (!id || deletingEventId) return;
+    setDeletingEventId(id);
+    try {
+      await deleteEventById(events, id, { editedBy: profile?.legal_name, reason: 'Manual delete' });
+      await reload();
+    } finally {
+      setDeletingEventId(null);
     }
   };
 
@@ -346,7 +380,9 @@ export default function Today() {
           logic below is untouched). */}
       <div className="rounded-xl border border-border bg-card p-3 mb-4">
         <div className="flex items-center justify-between mb-2"><div className="text-sm font-semibold text-card-foreground">{t('today.todaysLog')}</div><TimezoneIndicator tz={tz} /></div>
-        <LogGraph events={events} dateStr={todayKey} timezone={tz} onEditEvent={(id) => setEditingEvent(events.find(e => e.id === id))} />
+        <LogGraph events={events} dateStr={todayKey} timezone={tz}
+          onEditEvent={(id) => setEditingEvent(events.find(e => e.id === id))}
+          onDeleteEvent={handleDeleteEvent} />
         <Button variant="outline" size="sm" className="w-full mt-3" onClick={() => setEditLogOpen(true)}>
           <PencilLine className="w-3.5 h-3.5 mr-1" /> {t('logs.editLog')}
         </Button>
@@ -356,12 +392,12 @@ export default function Today() {
           recordkeeping warnings (unlogged time gaps). Serious data conflicts
           (duplicates, same-start, negative durations) render prominently
           inside the component and are never hidden or collapsed. */}
-      <LogIncompleteNotice events={events} dateStr={todayKey} tz={tz} now={now} validity={timelineValidation} onEdit={() => setEditLogOpen(true)} />
+      <LogIncompleteNotice events={events} dateStr={todayKey} tz={tz} now={now} validity={timelineValidation} excludeGaps={trailingGap ? [trailingGap] : []} onEdit={() => setEditLogOpen(true)} />
       <RestHistoryNotice verification={restHistory} tz={tz} onEdit={() => setEditLogOpen(true)} />
       {/* Manual mode: last verified record ends before now — clocks above are
           verified through that record; current can-drive availability is
           withheld until the driver records the trailing stretch. */}
-      <CurrentAvailabilityNotice hos={hos} tz={tz} onEdit={() => setEditLogOpen(true)} />
+      <CurrentAvailabilityNotice hos={hos} tz={tz} trailingGap={trailingGap} onEdit={() => setEditLogOpen(true)} />
       <ClaimBanner claims={claims} dateStr={todayKey} tz={tz}
         showCalcNotice={!!(agEval && agEval.anyUnavailable)} onClaimsChanged={reload} editedBy={profile?.legal_name} />
 
@@ -372,19 +408,19 @@ export default function Today() {
       <div className="grid grid-cols-2 gap-2 mb-3">
         <ClockCard label={t('hos.drivingRemaining')} value={hos.calculable && hosEff.driving.applicable ? fmtDur(hosEff.driving.drivingRemainingMs) : '--'}
           sublabel={hos.calculable && hosEff.driving.applicable ? (hosEff.driving.expiresAt ? t('hos.expiresAt', { time: fmtClock(hosEff.driving.expiresAt, tz) }) : t('hos.elevenHourLimit')) : (hosEff.driving.agriculturalUnavailable ? t('agricultural.clockUnavailableShort') : t('hos.unavailable'))}
-          note={loggedNote && hosEff.driving.applicable ? loggedNote : null}
+          note={clockNote && hosEff.driving.applicable ? clockNote : null}
           status={hos.calculable && hosEff.driving.applicable ? clockStatus(hosEff.driving.drivingRemainingMs) : 'disabled'} icon={Truck} />
         <ClockCard label={t('hos.window14')} value={hos.calculable && hosEff.window14.applicable ? fmtDur(hosEff.window14.remainingMs) : '--'}
           sublabel={hos.calculable && hosEff.window14.applicable ? (hosEff.window14.windowStart ? t('hos.sinceTime', { time: fmtClock(hosEff.window14.windowStart, tz) }) : '') : (hosEff.window14.agriculturalUnavailable ? t('agricultural.clockUnavailableShort') : t('hos.unavailable'))}
-          note={loggedNote && hosEff.window14.applicable ? loggedNote : null}
+          note={clockNote && hosEff.window14.applicable ? clockNote : null}
           status={hos.calculable && hosEff.window14.applicable ? clockStatus(hosEff.window14.remainingMs) : 'disabled'} icon={Clock} />
         <ClockCard label={t('hos.break30')} value={hos.calculable && !hosEff.break30.agriculturalUnavailable ? (hosEff.break30.satisfied ? t('hos.satisfied') : t('hos.timeLeft', { time: fmtDur(hosEff.break30.remainingBeforeBreakMs) })) : '--'}
           sublabel={hos.calculable && !hosEff.break30.agriculturalUnavailable ? (hosEff.break30.breakRequired ? t('hos.breakRequiredNow') : t('hos.eightHourRule')) : (hosEff.break30.agriculturalUnavailable ? t('agricultural.clockUnavailableShort') : t('hos.unavailable'))}
-          note={loggedNote && !hosEff.break30.agriculturalUnavailable ? loggedNote : null}
+          note={clockNote && !hosEff.break30.agriculturalUnavailable ? clockNote : null}
           status={hos.calculable && !hosEff.break30.agriculturalUnavailable ? (hosEff.break30.breakRequired ? 'critical' : 'normal') : 'disabled'} icon={Coffee} />
         <ClockCard label={t('hos.cycleLabel', { limit: hosEff.cycle.cycleLimit, days: hosEff.cycle.cycleDays })} value={hos.calculable && !hosEff.cycle.agriculturalUnavailable ? t('hos.hoursLeft', { hours: hosEff.cycle.cycleRemainingHours.toFixed(1) }) : '--'}
           sublabel={hos.calculable && !hosEff.cycle.agriculturalUnavailable ? t('hos.usedBackTomorrow', { used: hosEff.cycle.cycleUsedHours.toFixed(1), back: hosEff.cycle.returningTomorrowHours.toFixed(1) }) : (hosEff.cycle.agriculturalUnavailable ? t('agricultural.clockUnavailableShort') : t('hos.unavailable'))}
-          note={loggedNote && !hosEff.cycle.agriculturalUnavailable ? loggedNote : null}
+          note={clockNote && !hosEff.cycle.agriculturalUnavailable ? clockNote : null}
           status={hos.calculable && !hosEff.cycle.agriculturalUnavailable ? clockStatus(hosEff.cycle.cycleRemainingHours * 3600000) : 'disabled'} icon={Gauge} />
       </div>
 

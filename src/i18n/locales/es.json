@@ -75,6 +75,7 @@
     "sinceTime": "desde las {{time}}",
     "unavailable": "HOS no disponible—revise la línea de tiempo",
     "basedOnLogged": "Calculado con el tiempo registrado hasta las {{time}}; no es la disponibilidad actual para conducir.",
+    "verifiedThroughNote": "Verificado hasta las {{time}}; no es la disponibilidad actual para conducir.",
     "satisfied": "Satisfecho",
     "timeLeft": "quedan {{time}}",
     "breakRequiredNow": "Descanso requerido ahora",

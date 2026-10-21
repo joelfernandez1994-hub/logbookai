@@ -75,6 +75,7 @@
     "sinceTime": "since {{time}}",
     "unavailable": "HOS unavailable—review timeline",
     "basedOnLogged": "Based on logged time through {{time}} — not current driving availability.",
+    "verifiedThroughNote": "Verified through {{time}} — not current driving availability.",
     "satisfied": "Satisfied",
     "timeLeft": "{{time}} left",
     "breakRequiredNow": "Break required now",

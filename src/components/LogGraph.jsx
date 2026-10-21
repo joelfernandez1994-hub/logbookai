@@ -1,4 +1,4 @@
-import { PencilLine } from 'lucide-react';
+import { PencilLine, Trash2 } from 'lucide-react';
 import { fmtHours } from '@/lib/hosEngine';
 import { getDisplayGrid } from '@/lib/timelineDisplay';
 import { validateTimeline } from '@/lib/timelineEngine';
@@ -21,7 +21,7 @@ function formatDurationHours(h) {
   return `${mm}m`;
 }
 
-export default function LogGraph({ events, dateStr, timezone, interactive = true, totalsOverride = null, onEditEvent }) {
+export default function LogGraph({ events, dateStr, timezone, interactive = true, totalsOverride = null, onEditEvent, onDeleteEvent }) {
   const now = new Date();
   const grid = getDisplayGrid(events, dateStr, timezone, now);
   const displayedTotals = totalsOverride || grid.totals;
@@ -66,8 +66,13 @@ export default function LogGraph({ events, dateStr, timezone, interactive = true
             <span className="text-muted-foreground tabular-nums shrink-0">{formatDurationHours(s.endHour - s.startHour)}</span>
             <span className="truncate flex-1 text-muted-foreground">{[s.city, s.state].filter(Boolean).join(', ')}{s.remark ? ` — ${s.remark}` : ''}</span>
             {onEditEvent && s.id && (
-              <button type="button" onClick={() => onEditEvent(s.id)} aria-label="Edit event" className="shrink-0 inline-flex items-center justify-center min-h-[36px] min-w-[36px] text-muted-foreground hover:text-foreground">
+              <button type="button" onClick={() => onEditEvent(s.id)} aria-label="Edit event" className="shrink-0 inline-flex items-center justify-center min-h-[44px] min-w-[44px] text-muted-foreground hover:text-foreground">
                 <PencilLine className="w-3.5 h-3.5" />
+              </button>
+            )}
+            {onDeleteEvent && s.id && (
+              <button type="button" onClick={() => onDeleteEvent(s.id)} aria-label="Delete event" className="shrink-0 inline-flex items-center justify-center min-h-[44px] min-w-[44px] text-error hover:opacity-80">
+                <Trash2 className="w-3.5 h-3.5" />
               </button>
             )}
           </div>
