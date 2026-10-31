@@ -7,6 +7,7 @@
 import { dateKeyInTz } from './hosEngine';
 import { normalizedSegments, startOfDayInTz } from './timelineEngine';
 import { base44 } from '@/api/base44Client';
+import { cachedRead, invalidateReads } from './readCache';
 
 const H = 3600000;
 
@@ -109,18 +110,21 @@ export function findTimelineGaps(events, dateStr, tz, now = new Date()) {
 
 // Persisted daily miles (manual override or last auto value).
 export async function getDailyMiles(dateStr) {
-  try {
-    const list = await base44.entities.DailySummary.filter({ log_date: dateStr }, '-created_date', 1);
-    return list && list[0] ? list[0] : null;
-  } catch (e) { return null; }
+  return cachedRead(`dailyMiles:${dateStr}`, async () => {
+    try {
+      const list = await base44.entities.DailySummary.filter({ log_date: dateStr }, '-created_date', 1);
+      return list && list[0] ? list[0] : null;
+    } catch (e) { return null; }
+  });
 }
 
 export async function saveDailyMiles(dateStr, miles, source = 'manual') {
   const existing = await getDailyMiles(dateStr);
-  if (existing && existing.id) {
-    return await base44.entities.DailySummary.update(existing.id, { miles, miles_source: source });
-  }
-  return await base44.entities.DailySummary.create({ log_date: dateStr, miles, miles_source: source });
+  const saved = existing && existing.id
+    ? await base44.entities.DailySummary.update(existing.id, { miles, miles_source: source })
+    : await base44.entities.DailySummary.create({ log_date: dateStr, miles, miles_source: source });
+  invalidateReads();
+  return saved;
 }
 
 export async function saveAutoMilesIfNotManual(dateStr, miles) {
@@ -129,6 +133,7 @@ export async function saveAutoMilesIfNotManual(dateStr, miles) {
   const record = existing?.id
     ? await base44.entities.DailySummary.update(existing.id, { miles, miles_source: 'auto' })
     : await base44.entities.DailySummary.create({ log_date: dateStr, miles, miles_source: 'auto' });
+  invalidateReads();
   return { record, skippedManual: false };
 }
 
@@ -206,21 +211,28 @@ export async function saveOdometers(dateStr, beginOdometer, endOdometer) {
     end_odometer: e == null || Number.isNaN(e) ? null : e,
   };
   const existing = await getDailyMiles(dateStr);
-  if (existing && existing.id) return await base44.entities.DailySummary.update(existing.id, patch);
-  return await base44.entities.DailySummary.create({ log_date: dateStr, ...patch });
+  const saved = existing && existing.id
+    ? await base44.entities.DailySummary.update(existing.id, patch)
+    : await base44.entities.DailySummary.create({ log_date: dateStr, ...patch });
+  invalidateReads();
+  return saved;
 }
 
 export async function getAllDailySummaries() {
-  try {
-    const list = await base44.entities.DailySummary.list('-created_date', 400);
-    return list || [];
-  } catch (e) { return []; }
+  return cachedRead('dailySummaries', async () => {
+    try {
+      const list = await base44.entities.DailySummary.list('-created_date', 400);
+      return list || [];
+    } catch (e) { return []; }
+  });
 }
 
 export async function getFuelReceipts(daysBack = 30) {
-  try {
-    const since = new Date(Date.now() - (daysBack + 1) * 24 * H);
-    const all = await base44.entities.FuelReceipt.list('-created_date', 200);
-    return (all || []).filter(r => !r.receipt_date || new Date((r.receipt_date).slice(0, 10) + 'T12:00:00') >= since);
-  } catch (e) { return []; }
+  return cachedRead(`fuelReceipts:${daysBack}`, async () => {
+    try {
+      const since = new Date(Date.now() - (daysBack + 1) * 24 * H);
+      const all = await base44.entities.FuelReceipt.list('-created_date', 200);
+      return (all || []).filter(r => !r.receipt_date || new Date((r.receipt_date).slice(0, 10) + 'T12:00:00') >= since);
+    } catch (e) { return []; }
+  });
 }

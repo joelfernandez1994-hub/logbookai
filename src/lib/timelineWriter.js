@@ -15,6 +15,7 @@
 import { base44 } from '@/api/base44Client';
 import { planInsert, planReplaceRange, startOfDayInTz } from './timelineEngine';
 import { planEdit } from './rodsEditor';
+import { invalidateReads } from './readCache';
 
 const H = 3600000;
 
@@ -127,6 +128,9 @@ export async function applyTimelineOps(ops, allEvents = [], opts = {}) {
     const cert = certMap[d];
     if (cert) await base44.entities.Certification.update(cert.id, { is_superseded: true });
   }
+  // Drop cached reads (timeline, certifications, …) so the reload() every
+  // caller performs right after this write always reads fresh records.
+  invalidateReads();
   return { created };
 }
 

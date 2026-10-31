@@ -45,8 +45,7 @@ export default function More() {
   ];
 
   const loadAll = async () => {
-    const used = await getAIUsage();
-    const s = await getAppSettings();
+    const [used, s] = await Promise.all([getAIUsage(), getAppSettings()]);
     setSettings(s);
     setUsage({ used, allowance: profile?.ai_allowance_override ?? s.default_ai_allowance ?? 20 });
     try {
@@ -59,7 +58,9 @@ export default function More() {
       }
     } catch (e) {}
   };
-  useEffect(() => { loadAll(); }, [profile]);
+  // Depend on the values this actually reads (not the profile object identity,
+  // which changes on every data reload and re-ran these reads each time).
+  useEffect(() => { loadAll(); }, [profile?.id, profile?.ai_allowance_override]);
 
   const logout = async () => { await base44.auth.logout(); window.location.href = '/login'; };
 

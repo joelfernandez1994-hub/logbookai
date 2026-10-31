@@ -1,18 +1,25 @@
 import { base44 } from '@/api/base44Client';
 import { getTimelineEvents } from '@/lib/timelineData';
+import { cachedRead, invalidateReads } from '@/lib/readCache';
 
+// The three profile reads below are shared by every route mount — cached so
+// tab navigation doesn't re-issue the same requests (see @/lib/readCache).
 export async function getDriverProfile() {
-  const list = await base44.entities.DriverProfile.list('-created_date', 1);
-  return list && list[0] ? list[0] : null;
+  return cachedRead('driverProfile', async () => {
+    const list = await base44.entities.DriverProfile.list('-created_date', 1);
+    return list && list[0] ? list[0] : null;
+  });
 }
 
 export async function getCarrierProfile() {
-  const list = await base44.entities.CarrierProfile.list('-created_date', 1);
-  return list && list[0] ? list[0] : null;
+  return cachedRead('carrierProfile', async () => {
+    const list = await base44.entities.CarrierProfile.list('-created_date', 1);
+    return list && list[0] ? list[0] : null;
+  });
 }
 
 export async function getEquipment() {
-  return await base44.entities.Equipment.list('-created_date', 50);
+  return cachedRead('equipment', async () => await base44.entities.Equipment.list('-created_date', 50));
 }
 
 export async function getEvents(daysBack = 9) {
@@ -24,8 +31,10 @@ export async function getAllEvents() {
 }
 
 export async function getCertifications(daysBack = 9) {
-  const all = await base44.entities.Certification.list('-certified_at', 200);
-  return all || [];
+  return cachedRead('certifications', async () => {
+    const all = await base44.entities.Certification.list('-certified_at', 200);
+    return all || [];
+  });
 }
 
 export async function getTrips() {
@@ -37,10 +46,11 @@ export async function getCurrentOngoingEvent(events) {
 }
 
 export async function saveDriverProfile(data, existing) {
-  if (existing && existing.id) {
-    return await base44.entities.DriverProfile.update(existing.id, data);
-  }
-  return await base44.entities.DriverProfile.create(data);
+  const saved = existing && existing.id
+    ? await base44.entities.DriverProfile.update(existing.id, data)
+    : await base44.entities.DriverProfile.create(data);
+  invalidateReads();
+  return saved;
 }
 
 export async function saveCarrierProfile(data, existing) {
@@ -59,11 +69,14 @@ export async function saveCarrierProfile(data, existing) {
       }
     } catch (e) { /* best-effort */ }
   }
+  invalidateReads();
   return saved;
 }
 
 export async function saveEquipment(data) {
-  return await base44.entities.Equipment.create(data);
+  const saved = await base44.entities.Equipment.create(data);
+  invalidateReads();
+  return saved;
 }
 
 export async function getAppSettings() {
@@ -78,12 +91,15 @@ export async function getAIUsage() {
 }
 
 export async function getAgriculturalClaims() {
-  return await base44.entities.AgriculturalClaim.list('-created_date', 200);
+  return cachedRead('agriculturalClaims', async () =>
+    (await base44.entities.AgriculturalClaim.list('-created_date', 200)) || []);
 }
 
 export async function getDocuments(daysBack = 30) {
-  const all = await base44.entities.Document.list('-created_date', 500);
-  if (!all) return [];
-  const since = new Date(Date.now() - (daysBack + 1) * 24 * 3600000);
-  return all.filter(d => !d.log_date || new Date(d.log_date + 'T12:00:00') >= since);
+  return cachedRead(`documents:${daysBack}`, async () => {
+    const all = await base44.entities.Document.list('-created_date', 500);
+    if (!all) return [];
+    const since = new Date(Date.now() - (daysBack + 1) * 24 * 3600000);
+    return all.filter(d => !d.log_date || new Date(d.log_date + 'T12:00:00') >= since);
+  });
 }
