@@ -26,6 +26,7 @@ import { findAmbiguousCityIssues } from './ambiguousLocations';
 import { applyStatedMileage } from './statedMileage';
 import { normalizeCandidateTimeline } from './timelineNormalization';
 import { cleanLocationText } from './locationPlaceholders';
+import { resolveAverageMph, MANUAL_MILEAGE_SOURCES } from './mileageSpeed';
 
 const H = 3600000;
 const MIN = 60000;
@@ -561,12 +562,6 @@ export function computeProposalTotals(proposedEvents, dateStr, timezone, evaluat
   return { ...result, totalHours: Object.values(totalsMs).reduce((sum, ms) => sum + ms, 0) / H };
 }
 
-function fallbackMph(profileId) {
-  const profile = SPEED_PROFILES[profileId] || SPEED_PROFILES.conservative;
-  if (profile.mph) return profile.mph;
-  return profile.id === 'provider' ? 50 : 55;
-}
-
 // A location is usable as a leg endpoint when it has a non-empty trimmed city.
 // State is carried through but not required to be non-empty.
 function usableLocation(ev) {
@@ -698,11 +693,19 @@ function canEstimateMileage(leg) {
   return !!(leg.destinationKnown && !leg.isOngoing);
 }
 
+// Estimated Miles = Driving Hours × the driver's preferred average MPH
+// (65 by default, adjustable in More → Settings → Trip Preferences). A mileage
+// figure the driver entered or stated is NEVER replaced by either a route or a
+// speed estimate — only the automatic values are resolved here.
 export async function enrichProposalMileage(proposed, opts = {}) {
   const legs = await inspectProposalRoutes(proposed, opts);
-  const speed = fallbackMph(opts.speedProfile || DEFAULT_SPEED_PROFILE);
+  const speed = resolveAverageMph(opts.averageMph);
   let events = (proposed || []).map(event => ({ ...event }));
   for (const leg of legs) {
+    const current = events[leg.eventIndex];
+    const isDriverMileage = current?.mileage != null
+      && MANUAL_MILEAGE_SOURCES.includes(current?.mileage_source);
+    if (isDriverMileage) continue;
     const routeMiles = Number(leg.route?.miles);
     const hasRoadMiles = Number.isFinite(routeMiles) && routeMiles > 0.5;
     const canEstimate = canEstimateMileage(leg);

@@ -8,6 +8,7 @@ import { dateKeyInTz } from './hosEngine';
 import { normalizedSegments, startOfDayInTz } from './timelineEngine';
 import { base44 } from '@/api/base44Client';
 import { cachedRead, invalidateReads } from './readCache';
+import { estimateMilesFromDuration } from './mileageSpeed';
 
 const H = 3600000;
 
@@ -26,18 +27,19 @@ export function firstEventOfDay(events, dateStr, tz) {
   return evs.length ? evs[0] : null;
 }
 
-// Daily miles fallback: logged Driving hours × 65 mph. Used only when real
-// routed mileage is unavailable or incomplete (DailyMilesCard display + PDF).
-export function computeDailyMiles(events, dateStr, tz, speedProfile) {
+// Daily miles fallback: logged Driving hours × the driver's preferred average
+// driving speed (65 mph when unset). Used only when real routed mileage is
+// unavailable or incomplete (DailyMilesCard display + PDF) — a mileage figure
+// the driver entered or confirmed is never recalculated here.
+export function computeDailyMiles(events, dateStr, tz, averageMph) {
   const evs = dayEvents(events, dateStr, tz);
-  const mph = 65; // fallback estimate (Driving Hours × 65 mph)
   let driveMs = 0;
   for (const e of evs) {
     if (e.duty_status !== 'DRIVING') continue;
     const end = e.end_timestamp ? new Date(e.end_timestamp) : (e.is_ongoing ? new Date() : e._start);
     driveMs += Math.max(0, end - e._start);
   }
-  return (driveMs / H) * mph;
+  return estimateMilesFromDuration(driveMs / H, averageMph);
 }
 
 // Fuel stops the driver already logged today: duty events marked Fuel and

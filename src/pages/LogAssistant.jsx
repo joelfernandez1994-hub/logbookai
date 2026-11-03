@@ -10,6 +10,7 @@ import { formatLogDate } from '@/lib/timezones';
 import { addRouteWarning, enrichProposalMileage, fetchRoute, truckEtaHours, DEFAULT_SPEED_PROFILE } from '@/lib/proposalValidation';
 import { reconstructDrivingDurations } from '@/lib/drivingDurationReconstruction';
 import { saveProposalMiles } from '@/lib/tripSync';
+import { resolvePreferredMph } from '@/lib/mileageSpeed';
 import { insertEventsBatch, editEvent, deleteEventById, replaceRangeEvents } from '@/lib/timelineWriter';
 import { parseVoiceCommand } from '@/lib/voiceParser';
 import { validateInterpretResult, isQuestionIntent, shouldOfferApply, replaceDayRange, resolveEditTargets } from '@/lib/aiLayer';
@@ -122,7 +123,7 @@ export default function LogAssistant() {
     // still caught and surfaced by ProposalReview's own validateProposal call
     // (which re-normalizes the full existing+proposed timeline for warnings).
     const { events: selfNormalized } = normalizeCandidateTimeline(value.proposed_events);
-    const enriched = await enrichProposalMileage(selfNormalized, { routingProvider: fetchRoute, speedProfile, now: new Date(), narrative: value.original_input || '' });
+    const enriched = await enrichProposalMileage(selfNormalized, { routingProvider: fetchRoute, speedProfile, averageMph: resolvePreferredMph(profile), now: new Date(), narrative: value.original_input || '' });
     // Route-aware reconstruction: replace AI-inferred Driving durations with
     // routed truck-realistic travel time and cascade-shift subsequent inferred
     // events (explicit driver timestamps are never moved). Runs at proposal time

@@ -2,10 +2,11 @@ import { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Gauge, Pencil, Check, RotateCcw, Route, Sparkles } from 'lucide-react';
 import { computeDailyMiles, getDailyMiles, saveDailyMiles, saveOdometers, computeSuggestedMiles, getDrivingLegs } from '@/lib/tripSync';
+import { resolveAverageMph } from '@/lib/mileageSpeed';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 
-export default function DailyMilesCard({ events, dateStr, tz, speedProfile }) {
+export default function DailyMilesCard({ events, dateStr, tz, averageMph }) {
   const { t } = useTranslation();
   const [override, setOverride] = useState(null);
   const [editing, setEditing] = useState(false);
@@ -17,7 +18,8 @@ export default function DailyMilesCard({ events, dateStr, tz, speedProfile }) {
   const [beginOdo, setBeginOdo] = useState('');
   const [endOdo, setEndOdo] = useState('');
 
-  const autoMiles = Math.round(computeDailyMiles(events, dateStr, tz, speedProfile));
+  const mph = resolveAverageMph(averageMph);
+  const autoMiles = Math.round(computeDailyMiles(events, dateStr, tz, mph));
   const isManual = override?.miles_source === 'manual';
   const routedAvailable = !!suggestion?.available && !suggestion?.incomplete;
   const storedAuto = (!isManual && override?.miles_source === 'auto' && Number.isFinite(override?.miles)) ? Math.round(override.miles) : null;
@@ -27,7 +29,13 @@ export default function DailyMilesCard({ events, dateStr, tz, speedProfile }) {
       ? suggestion.miles
       : (storedAuto != null ? storedAuto : autoMiles);
   const hasSuggestion = !!suggestion?.available;
-  const sourceLabel = isManual ? 'manual' : (routedAvailable || storedAuto != null) ? 'routed' : 'est.';
+  const sourceLabel = isManual
+    ? t('dailyMiles.methodManual')
+    : routedAvailable
+      ? t('dailyMiles.methodRoute')
+      : storedAuto != null
+        ? t('dailyMiles.methodAutoSaved')
+        : t('dailyMiles.methodEstimate');
 
   useEffect(() => {
     let mounted = true;
@@ -110,7 +118,7 @@ export default function DailyMilesCard({ events, dateStr, tz, speedProfile }) {
             )}
           </div>
         </div>
-        {!routedAvailable && <div className="text-[11px] text-muted-foreground text-right">Fallback est: {autoMiles} mi @ 65 mph</div>}
+        {!routedAvailable && <div className="text-[11px] text-muted-foreground text-right">{t('dailyMiles.fallbackEstimate', { miles: autoMiles, mph })}</div>}
       </div>
 
       {(suggesting || hasSuggestion) && (

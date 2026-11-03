@@ -86,7 +86,11 @@
   },
   "settings": {
     "language": "Language",
-    "languageDescription": "Choose the app's display language. Ask LogbookAI understands both English and Spanish either way — exported PDFs, DVIR/IFTA reports, and certifications always stay in English."
+    "languageDescription": "Choose the app's display language. Ask LogbookAI understands both English and Spanish either way — exported PDFs, DVIR/IFTA reports, and certifications always stay in English.",
+    "tripPreferences": "Trip Preferences",
+    "averageSpeedLabel": "Average Driving Speed (MPH)",
+    "averageSpeedDescription": "Used only when mileage has to be estimated from driving time (driving hours × this speed). Road-route mileage and any mileage you enter always take priority, and previously saved logs are never changed.",
+    "averageSpeedRange": "Enter a speed between {{min}} and {{max}} MPH."
   },
   "common": {
     "cancel": "Cancel",
@@ -285,7 +289,12 @@
   "dailyMiles": {
     "totalMiles": "Total Miles",
     "beginOdometer": "Begin Odometer (Optional)",
-    "endOdometer": "End Odometer (Optional)"
+    "endOdometer": "End Odometer (Optional)",
+    "methodManual": "Manual",
+    "methodRoute": "Route Calculated",
+    "methodEstimate": "Speed Estimated",
+    "methodAutoSaved": "Auto (saved)",
+    "fallbackEstimate": "Speed est: {{miles}} mi @ {{mph}} mph"
   },
   "rodsEditor": {
     "view": "View",

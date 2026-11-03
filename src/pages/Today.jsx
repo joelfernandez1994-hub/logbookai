@@ -10,6 +10,7 @@ import StatusChangeSheet from '@/components/StatusChangeSheet';
 import { changeStatus, insertEvent, editEvent, updateEventFields, deleteEventById } from '@/lib/timelineWriter';
 import { validateTimeline } from '@/lib/timelineEngine';
 import { findTimelineGaps } from '@/lib/tripSync';
+import { resolvePreferredMph } from '@/lib/mileageSpeed';
 import { getDvirs, saveDvir } from '@/lib/dvirData';
 import { saveDriverProfile, getCertifications, getAgriculturalClaims } from '@/lib/driverData';
 import { evaluateAgriculturalClocks, applyAgriculturalAvailability } from '@/lib/agriculturalClaims';
@@ -512,7 +513,7 @@ export default function Today() {
         <button type="button" onClick={() => navigate('/vehicle-inspection')} className="text-[11px] text-muted-foreground underline mt-1">{t('today.viewInspectionHistory')}</button>
       </div>
 
-      <DailyMilesCard events={events} dateStr={todayKey} tz={tz} speedProfile={speedProfile} />
+      <DailyMilesCard events={events} dateStr={todayKey} tz={tz} averageMph={resolvePreferredMph(profile)} />
 
       {/* Primary action */}
       <Button className="w-full h-14 text-base font-semibold mb-3" disabled={!liveTrackingEnabled} onClick={() => setStatusOpen(true)}>

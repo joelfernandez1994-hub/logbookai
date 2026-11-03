@@ -75,6 +75,11 @@
       ],
       "default": "conservative"
     },
+    "average_driving_speed_mph": {
+      "type": "number",
+      "default": 65,
+      "description": "Driver's preferred average driving speed in MPH (25-90). Used ONLY to convert a known driving duration into a mileage estimate (Estimated Miles = Driving Hours x this speed) when no road-route mileage and no driver-entered mileage exist. Defaults to 65 when unset. Never affects HOS calculations, duty-status durations, the AI review-and-confirm flow, or mileage already saved on past log days \u2014 changing it only affects estimates made afterwards."
+    },
     "ifta_tracking_enabled": {
       "type": "boolean",
       "default": false,

@@ -9,6 +9,7 @@ import { limitingClock, maxDriveMiles, buildComplianceEdits, planTripStops, with
 import { buildParkingHandoff } from '@/lib/parkingProvider';
 import { findTruckStopsNearStop, rankTruckStops, pickTopStopsForType, classifyFit, buildPlannedStopFromTruckStop } from '@/lib/truckStopProvider';
 import { firstEventOfDay, loggedFuelStops, getFuelReceipts } from '@/lib/tripSync';
+import { resolvePreferredMph } from '@/lib/mileageSpeed';
 import DailyMilesCard from '@/components/DailyMilesCard';
 import TimelineGapNotice from '@/components/TimelineGapNotice';
 import BottomSelect from '@/components/BottomSelect';
@@ -289,7 +290,7 @@ export default function Trip() {
       <p className="text-xs text-muted-foreground mb-4">{t('trip.intro')}</p>
 
       <TimelineGapNotice events={events} dateStr={todayKey} tz={tz} now={now} />
-      <DailyMilesCard events={events} dateStr={todayKey} tz={tz} speedProfile={speedProfile} />
+      <DailyMilesCard events={events} dateStr={todayKey} tz={tz} averageMph={resolvePreferredMph(profile)} />
 
       <div className="rounded-xl border border-border bg-card p-3 mb-4 flex items-center justify-between">
         <div className="flex items-start gap-2">

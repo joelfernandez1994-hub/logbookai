@@ -11,6 +11,7 @@ import CurrentAvailabilityNotice from '@/components/CurrentAvailabilityNotice';
 import { getDisplayGrid } from '@/lib/timelineDisplay';
 import RodsGraphEditor from '@/components/rodsEditor/RodsGraphEditor';
 import { getCertifications, getAgriculturalClaims } from '@/lib/driverData';
+import { resolvePreferredMph } from '@/lib/mileageSpeed';
 import { evaluateAgriculturalClocks } from '@/lib/agriculturalClaims';
 import ClaimBanner from '@/components/agricultural/ClaimBanner';
 import { base44 } from '@/api/base44Client';
@@ -338,7 +339,7 @@ export default function Logs() {
             }
           : null} />
       <RouteTimeConflictNotice events={events} dateStr={dateStr} tz={tz} speedProfile={speedProfile} now={new Date()} onFix={() => setFixOpen(true)} />
-      <DailyMilesCard events={events} dateStr={dateStr} tz={tz} speedProfile={speedProfile} />
+      <DailyMilesCard events={events} dateStr={dateStr} tz={tz} averageMph={resolvePreferredMph(profile)} />
 
       {/* p-2 on mobile (down from p-3) so the shared graph editor gets a
           little more real width to plot the full 24-hour day in —

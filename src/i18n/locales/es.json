@@ -86,7 +86,11 @@
   },
   "settings": {
     "language": "Idioma",
-    "languageDescription": "Elija el idioma de la aplicación. Preguntar a LogbookAI entiende inglés y español por igual — los PDF exportados, los informes DVIR/IFTA y las certificaciones siempre permanecen en inglés."
+    "languageDescription": "Elija el idioma de la aplicación. Preguntar a LogbookAI entiende inglés y español por igual — los PDF exportados, los informes DVIR/IFTA y las certificaciones siempre permanecen en inglés.",
+    "tripPreferences": "Preferencias de Viaje",
+    "averageSpeedLabel": "Velocidad Promedio de Conducción (MPH)",
+    "averageSpeedDescription": "Solo se usa cuando las millas deben estimarse por el tiempo de conducción (horas de conducción × esta velocidad). Las millas por ruta y las millas que usted ingrese siempre tienen prioridad, y los registros ya guardados nunca se modifican.",
+    "averageSpeedRange": "Ingrese una velocidad entre {{min}} y {{max}} MPH."
   },
   "common": {
     "cancel": "Cancelar",
@@ -285,7 +289,12 @@
   "dailyMiles": {
     "totalMiles": "Millas Totales",
     "beginOdometer": "Odómetro Inicial (Opcional)",
-    "endOdometer": "Odómetro Final (Opcional)"
+    "endOdometer": "Odómetro Final (Opcional)",
+    "methodManual": "Manual",
+    "methodRoute": "Calculado por Ruta",
+    "methodEstimate": "Estimado por Velocidad",
+    "methodAutoSaved": "Automático (guardado)",
+    "fallbackEstimate": "Est. por velocidad: {{miles}} mi a {{mph}} mph"
   },
   "rodsEditor": {
     "view": "Ver",

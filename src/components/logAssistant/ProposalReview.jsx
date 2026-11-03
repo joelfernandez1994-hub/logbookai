@@ -433,7 +433,7 @@ export default function ProposalReview({ existing, proposed, cycleType, tz, onAp
                     <div className="text-[11px] text-warning mt-1">Start time inferred by LogbookAI — please verify it is correct before applying.</div>
                   )}
                   {e.duty_status === 'DRIVING' && e.mileage != null && Number.isFinite(Number(e.mileage)) && (
-                    <div className="text-card-foreground mt-1">{Number(e.mileage).toFixed(1)} mi <span className="text-muted-foreground">({e.mileage_source === 'route' ? 'road route' : e.mileage_source === 'driver_stated' ? 'as you stated' : e.mileage_source === 'manual' ? 'driver edited' : 'estimated fallback'})</span></div>
+                    <div className="text-card-foreground mt-1">{Number(e.mileage).toFixed(1)} mi <span className="text-muted-foreground">({e.mileage_source === 'route' ? 'Route Calculated' : e.mileage_source === 'driver_stated' ? 'Manual · as you stated' : e.mileage_source === 'manual' ? 'Manual · driver edited' : 'Speed Estimated'})</span></div>
                   )}
                   {e.duty_status === 'DRIVING' && e.mileage == null && (
                     <div className="mt-1">
@@ -466,7 +466,7 @@ export default function ProposalReview({ existing, proposed, cycleType, tz, onAp
           {mileageEdited ? 'Manual · driver edited'
             : isStationary ? 'Stationary · no driving'
               : hasUnknownMileage ? 'Auto · excludes unknown mileage (destination not yet known)'
-                : hasEstimatedMileage ? 'Auto · includes labeled estimate' : 'Auto · route calculated'}
+                : hasEstimatedMileage ? 'Route Calculated + Speed Estimated' : 'Auto · Route Calculated'}
         </div>
       </div>
 

@@ -35,7 +35,7 @@ const REPAIR_LABEL = {
 // FMCSA paper driver's daily log. The 24-hour graph is the visual focus; HOS
 // engine diagnostics live in a separate clean recap below the log.
 // ---------------------------------------------------------------------------
-function drawDay(doc, driver, carrier, events, dateStr, timezone, certification, cycleInfo, isFirst, cycleType, dailySummary, speedProfile, claims) {
+function drawDay(doc, driver, carrier, events, dateStr, timezone, certification, cycleInfo, isFirst, cycleType, dailySummary, averageMph, claims) {
   const W = doc.internal.pageSize.getWidth();
   const H = doc.internal.pageSize.getHeight();
   const M = 7; // margin
@@ -67,7 +67,7 @@ function drawDay(doc, driver, carrier, events, dateStr, timezone, certification,
   // required and always appears, populated from DailySummary.miles (falling back
   // to the deterministic driving-hours estimate when no value is stored yet).
   const ds = dailySummary || {};
-  const fbMiles = computeDailyMiles(events, dateStr, timezone, speedProfile);
+  const fbMiles = computeDailyMiles(events, dateStr, timezone, averageMph);
   const totalMilesVal = (ds.miles != null && Number.isFinite(ds.miles))
     ? String(Math.round(ds.miles))
     : (Number.isFinite(fbMiles) ? String(Math.round(fbMiles)) : '0');
@@ -258,7 +258,7 @@ export function generateLogsPdf(driver, carrier, events, dateStrs, timezone, cer
   dateStrs.forEach((dateStr, i) => {
     const cert = certifications.find(c => c.log_date === dateStr && !c.is_superseded);
     const cycle = computeCycle(events, cycleType, timezone, new Date(dateStr + 'T12:00:00'));
-    drawDay(doc, driver, carrier, events, dateStr, timezone, cert, cycle, i === 0, cycleType, dsByDate.get(dateStr), options.speedProfile, options.claims);
+    drawDay(doc, driver, carrier, events, dateStr, timezone, cert, cycle, i === 0, cycleType, dsByDate.get(dateStr), options.averageMph, options.claims);
   });
 
   if (options.includeDvir && options.dvirs && options.dvirs.length) {

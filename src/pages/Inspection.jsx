@@ -11,6 +11,7 @@ import ClaimBanner from '@/components/agricultural/ClaimBanner';
 import { getDvirs } from '@/lib/dvirData';
 import { getAllDailySummaries } from '@/lib/tripSync';
 import { generateLogsPdf } from '@/lib/pdfGenerator';
+import { resolvePreferredMph } from '@/lib/mileageSpeed';
 import { Button } from '@/components/ui/button';
 import { ChevronLeft, ChevronRight, Share2, X, ShieldCheck } from 'lucide-react';
 import TimezoneIndicator from '@/components/TimezoneIndicator';
@@ -87,7 +88,6 @@ export default function Inspection() {
 
   const tz = carrier?.home_terminal_timezone || 'America/Chicago';
   const cycleType = carrier?.hos_cycle || '70_8';
-  const speedProfile = profile?.trip_planning_speed_profile || 'conservative';
 
   useEffect(() => {
     (async () => {
@@ -134,7 +134,7 @@ export default function Inspection() {
 
   const allDates = useMemo(() => Array.from(new Set((events || []).map(e => e.log_date).filter(Boolean))).sort(), [events]);
 
-  const buildDoc = (dates, options) => generateLogsPdf(profile, carrier, events, dates, tz, certifications, cycleType, { ...options, dvirs, documents, dailySummaries, speedProfile, claims });
+  const buildDoc = (dates, options) => generateLogsPdf(profile, carrier, events, dates, tz, certifications, cycleType, { ...options, dvirs, documents, dailySummaries, averageMph: resolvePreferredMph(profile), claims });
 
   return (
     <div className="px-4 min-h-screen bg-background text-foreground safe-top">

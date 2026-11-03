@@ -14,6 +14,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { User, Building2, Truck, Bot, FileText, Settings, LogOut, Shield, ClipboardCheck, Trash2, Sun, Moon, Monitor, MapPin, Globe, Tractor } from 'lucide-react';
 import LocationInput from '@/components/LocationInput';
 import TimezoneSelect from '@/components/TimezoneSelect';
+import TripPreferencesCard from '@/components/settings/TripPreferencesCard';
 import { labelForIana } from '@/lib/timezones';
 
 const LANGUAGE_OPTIONS = [
@@ -175,6 +176,9 @@ export default function More() {
         </div>
         <div className="text-[11px] text-muted-foreground mt-2">{t('settings.languageDescription')}</div>
       </div>
+
+      {/* Trip Preferences — average driving speed used for mileage estimates */}
+      <TripPreferencesCard profile={profile} onSaved={reload} />
 
       {/* Settings list */}
       <div className="rounded-xl border border-border bg-card divide-y divide-border mb-4">
