@@ -2,10 +2,14 @@ import { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router-dom';
 import { useDriverData } from '@/hooks/useDriverData';
-import { computeHOS, fmtDur, dateKeyInTz } from '@/lib/hosEngine';
+import { computeHOS, fmtDur, fmtClock, dateKeyInTz } from '@/lib/hosEngine';
 import { whatCanIDo } from '@/lib/logAssistant';
 import { truckEtaHours, speedProfileLabel } from '@/lib/proposalValidation';
-import { limitingClock, maxDriveMiles, buildComplianceEdits, planTripStops, withFuelOpportunities, FRESH_TRIP_HOS_BASIS } from '@/lib/complianceStop';
+import { limitingClock, maxDriveMiles, buildComplianceEdits, withFuelOpportunities, FRESH_TRIP_HOS_BASIS } from '@/lib/complianceStop';
+import {
+  TRIP_HOS_STATE, PLAN_BASIS, resolveTripHosState, resolvePlanBasis,
+  departureRestRequirement, planTripStopsGuarded, buildStopLookupRequest,
+} from '@/lib/tripStopPlanning';
 import { buildParkingHandoff } from '@/lib/parkingProvider';
 import { findTruckStopsNearStop, rankTruckStops, pickTopStopsForType, classifyFit, buildPlannedStopFromTruckStop } from '@/lib/truckStopProvider';
 import { firstEventOfDay, loggedFuelStops, getFuelReceipts } from '@/lib/tripSync';
@@ -74,9 +78,21 @@ export default function Trip() {
   // cycleRemainingHours becomes null when unverified). Only a genuinely
   // invalid/incomplete timeline (`availability.unavailable`) should block
   // feasibility and stop suggestions.
-  const hosVerified = !availability.unavailable;
-  const cycleVerified = !availability.cycleUnverified;
-  const hos = computeHOS(events, cycleType, tz, now, { historyComplete: hosVerified && cycleVerified });
+  const historyComplete = !availability.unavailable && !availability.cycleUnverified;
+  const hos = computeHOS(events, cycleType, tz, now, { historyComplete });
+  // Current-vs-historical HOS state (see tripStopPlanning.js): a trailing
+  // unrecorded interval makes the clocks valid only THROUGH an earlier
+  // timestamp, so they can never be presented as current driving eligibility.
+  const hosState = resolveTripHosState(availability, hos);
+  const [hypotheticalOptIn, setHypotheticalOptIn] = useState(false);
+  const planBasis = resolvePlanBasis(hosState.state, hypotheticalOptIn);
+  const currentVerified = planBasis === PLAN_BASIS.VERIFIED_NOW;
+  const planAllowed = planBasis !== PLAN_BASIS.HIDDEN;
+  // Only current clocks are planned against. A hypothetical plan uses the
+  // standard fresh-day limits (cycle deliberately unknown), never the
+  // historical balances availability happens to still show.
+  const stopsHosBasis = currentVerified ? hos : FRESH_TRIP_HOS_BASIS;
+  const departureRest = currentVerified ? departureRestRequirement(hos) : { required: false, hours: null, reasons: [] };
 
   useEffect(() => { getFuelReceipts(30).then(setFuelReceipts); }, []);
   useEffect(() => {
@@ -100,6 +116,7 @@ export default function Trip() {
   const [stopSugg, setStopSugg] = useState(null);
   const [stopLoading, setStopLoading] = useState(false);
   const [stopError, setStopError] = useState(null);
+  const [stopBlocked, setStopBlocked] = useState(null);
   const [edits, setEdits] = useState(null);
   const [applied, setApplied] = useState(false);
 
@@ -125,11 +142,11 @@ export default function Trip() {
   };
 
   const checkFeasibility = () => {
-    if (!estimate || !hosVerified) return null;
+    if (!estimate || !planAllowed) return null;
     const neededHours = truckEtaHours(estimate, speedProfile) ?? estimate.hours;
-    const drivingRemaining = availability.driveRemainingMs / 3600000;
-    const windowRemaining = availability.windowRemainingMs / 3600000;
-    const cycleRemaining = availability.cycleRemainingHours;
+    const drivingRemaining = (stopsHosBasis.driving?.drivingRemainingMs ?? 0) / 3600000;
+    const windowRemaining = (stopsHosBasis.window14?.remainingMs ?? 0) / 3600000;
+    const cycleRemaining = stopsHosBasis.cycle?.cycleRemainingHours;
     const achievable = neededHours <= drivingRemaining && neededHours <= windowRemaining && neededHours <= cycleRemaining;
     return { neededHours, drivingRemaining, windowRemaining, cycleRemaining, achievable };
   };
@@ -141,22 +158,29 @@ export default function Trip() {
   // hos.cycle); planTripStops() only converts those hours into route miles —
   // it never recomputes an HOS rule of its own.
   //
-  // When the driver's ACTUAL current HOS cannot be verified (an invalid/
-  // gapped log, not just unverified cycle history), we do NOT silently return
-  // an empty plan. We plan against FRESH_TRIP_HOS_BASIS — the standard
-  // property-carrying limits as if starting a fresh, fully-rested day — and
-  // clearly label the result as an assumption (see freshHosFallbackNote
-  // banner below). This is still the ONE canonical planTripStops() function;
-  // only the input HOS numbers differ, never a second implementation.
-  const usingFreshHosFallback = !!(estimate && !estimate.error && !hosVerified);
-  const stopsHosBasis = hosVerified ? hos : FRESH_TRIP_HOS_BASIS;
-  const rawRouteStops = (estimate && !estimate.error)
-    ? planTripStops({ hos: stopsHosBasis, profileId: speedProfile, cycleType, totalMiles: estimate.miles })
-    : [];
+  // When the driver's ACTUAL current HOS cannot be verified as of now (an
+  // invalid log, or a trailing unrecorded stretch), this does NOT silently
+  // produce reachable stops: the plan is hidden until the driver explicitly
+  // opts into a hypothetical one, which then uses FRESH_TRIP_HOS_BASIS — the
+  // standard property-carrying limits as if starting a fresh, fully-rested
+  // day — and is labeled as an assumption (freshHosFallbackNote below). This
+  // is still the ONE canonical planTripStops() function; only the input HOS
+  // numbers differ, never a second implementation.
+  const usingHypotheticalBasis = !!(estimate && !estimate.error && !currentVerified);
+  // Reachable stop suggestions require HOS verified AS OF NOW. When it is only
+  // verified through an earlier timestamp (or not at all), nothing is planned
+  // until the driver explicitly opts into a hypothetical, labeled plan.
+  // planTripStopsGuarded() reuses the canonical planTripStops() simulation and
+  // only refuses a stop at ~mile 0 (a clock already exhausted at departure) —
+  // that becomes an explicit "rest required before departure" state, never a
+  // zero-distance lookup against the complianceStop API.
+  const routePlan = (estimate && !estimate.error && planAllowed)
+    ? planTripStopsGuarded({ hos: stopsHosBasis, profileId: speedProfile, cycleType, totalMiles: estimate.miles })
+    : { stops: [], departureRest };
   // Fuel range is a separate, non-HOS mileage heuristic — fills in fuel
   // opportunities on long stretches the break/rest cadence alone wouldn't cover.
   const routeStops = (estimate && !estimate.error)
-    ? withFuelOpportunities(rawRouteStops, estimate.miles, 500)
+    ? withFuelOpportunities(routePlan.stops, estimate.miles, 500)
     : [];
 
   // Real locations along the actual route (never invented) — resolved via the
@@ -164,6 +188,7 @@ export default function Trip() {
   // below, called once per planned stop mileage.
   const [resolvedStops, setResolvedStops] = useState([]);
   const [resolvingStops, setResolvingStops] = useState(false);
+  const [resolveNonce, setResolveNonce] = useState(0);
   useEffect(() => {
     let cancelled = false;
     async function resolveLocations() {
@@ -174,13 +199,21 @@ export default function Trip() {
       const out = [];
       for (const stop of routeStops) {
         if (cancelled) return;
-        let city = '', state = '', verified = false, lat = null, lng = null;
-        try {
-          const res = await base44.functions.invoke('complianceStop', { origin: originStr, destination: destStr, max_drive_miles: stop.mile });
-          const s = res?.data || res;
-          city = s?.stop_city || ''; state = s?.stop_state || ''; verified = !!s?.verified;
-          lat = s?.stop_lat ?? null; lng = s?.stop_lng ?? null;
-        } catch (e) { /* leave unresolved — never fabricate a location */ }
+        let city = '', state = '', verified = false, lat = null, lng = null, lookupFailed = false;
+        // Never send a zero/negative distance: the API boundary rejects it and
+        // there is nothing meaningful to look up. buildStopLookupRequest owns
+        // that rule, so the page cannot drift from the backend's own check.
+        const request = buildStopLookupRequest({ origin: originStr, destination: destStr, miles: stop.mile });
+        if (request.ok) {
+          try {
+            const res = await base44.functions.invoke('complianceStop', request.payload);
+            const s = res?.data || res;
+            city = s?.stop_city || ''; state = s?.stop_state || ''; verified = !!s?.verified;
+            lat = s?.stop_lat ?? null; lng = s?.stop_lng ?? null;
+          } catch (e) { lookupFailed = true; /* leave unresolved — never fabricate a location */ }
+        } else {
+          lookupFailed = true;
+        }
         // Truck-stop discovery is a SEPARATE lookup from the HOS-derived point
         // above: it asks a supported public POI source (OpenStreetMap/Overpass,
         // via truckStopSearch) what real, named truck stops exist near that
@@ -191,13 +224,13 @@ export default function Trip() {
           const ts = await findTruckStopsNearStop({ origin: originStr, destination: destStr, targetMiles: stop.mile });
           truckStops = rankTruckStops(ts?.pois || []);
         } catch (e) { truckStops = []; }
-        out.push({ ...stop, city, state, verified, lat, lng, truckStops });
+        out.push({ ...stop, city, state, verified, lat, lng, truckStops, lookupFailed });
       }
       if (!cancelled) { setResolvedStops(out); setResolvingStops(false); }
     }
     resolveLocations();
     return () => { cancelled = true; };
-  }, [estimate?.miles, usingFreshHosFallback, pickup.city, pickup.state, delivery.city, delivery.state]);
+  }, [estimate?.miles, planBasis, routeStops.length, resolveNonce, pickup.city, pickup.state, delivery.city, delivery.state]);
 
   const displayStops = resolvedStops.length === routeStops.length ? resolvedStops : routeStops;
 
@@ -230,15 +263,24 @@ export default function Trip() {
   };
 
   const fetchComplianceStop = async () => {
-    if (!estimate || !pickup.city || !delivery.city || !hosVerified) return;
-    setStopLoading(true); setStopError(null);
+    if (!estimate || !pickup.city || !delivery.city || !currentVerified) return;
+    setStopError(null); setStopBlocked(null);
+    // Zero (or negative) remaining distance is resolved LOCALLY: there is no
+    // stop to look up, so the complianceStop API is never called with it.
+    const request = buildStopLookupRequest({
+      origin: `${pickup.city}, ${pickup.state}`,
+      destination: `${delivery.city}, ${delivery.state}`,
+      miles: maxDriveMiles(hos, speedProfile),
+    });
+    if (!request.ok) {
+      setStopSugg(null); setEdits(null); setApplied(false);
+      setStopBlocked(request.error);
+      setStopLoading(false);
+      return;
+    }
+    setStopLoading(true);
     try {
-      const maxMiles = maxDriveMiles(hos, speedProfile);
-      const res = await base44.functions.invoke('complianceStop', {
-        origin: `${pickup.city}, ${pickup.state}`,
-        destination: `${delivery.city}, ${delivery.state}`,
-        max_drive_miles: maxMiles,
-      });
+      const res = await base44.functions.invoke('complianceStop', request.payload);
       const s = res?.data || res;
       if (!s || s.error) { setStopError(s?.error || t('trip.noStopFound')); setStopSugg(null); setEdits(null); }
       else {
@@ -254,11 +296,13 @@ export default function Trip() {
   };
 
   useEffect(() => {
-    if (hosVerified && autoAssist && estimate && feasibility && !feasibility.achievable && !stopSugg && !stopLoading && !stopError) {
+    // Single-stop suggestions are current-eligibility only: they are never
+    // produced from historical clocks or a hypothetical basis.
+    if (currentVerified && autoAssist && estimate && feasibility && !feasibility.achievable && !stopSugg && !stopLoading && !stopError && !stopBlocked) {
       fetchComplianceStop();
     }
-    if (!hosVerified || feasibility?.achievable) { setStopSugg(null); setEdits(null); setApplied(false); setStopError(null); }
-  }, [estimate, feasibility?.achievable, autoAssist, hosVerified]);
+    if (!currentVerified || feasibility?.achievable) { setStopSugg(null); setEdits(null); setApplied(false); setStopError(null); setStopBlocked(null); }
+  }, [estimate, feasibility?.achievable, autoAssist, currentVerified]);
 
   const applyEdits = () => {
     if (!edits) return;
@@ -311,6 +355,27 @@ export default function Trip() {
         </div>
       )}
 
+      {hosState.state === TRIP_HOS_STATE.VERIFIED_THROUGH && (
+        <div className="rounded-xl border border-warning/50 bg-warning-surface p-3 mb-4 text-warning-surface-foreground">
+          <div className="text-sm font-semibold">{t('trip.verifiedThroughTitle')}</div>
+          <p className="text-xs mt-1">{t('trip.verifiedThroughBody', { time: fmtClock(hosState.lastVerifiedAt, tz) })}</p>
+        </div>
+      )}
+
+      {departureRest.required && (
+        <div className="rounded-xl border border-error/40 bg-error-surface p-3 mb-4 text-error-surface-foreground">
+          <div className="text-sm font-semibold flex items-center gap-1">
+            <AlertTriangle className="w-4 h-4" /> {t('trip.restRequiredBeforeDepartureTitle')}
+          </div>
+          <p className="text-xs mt-1">
+            {t('trip.restRequiredBeforeDepartureBody', {
+              clocks: departureRest.reasons.map((r) => t(`trip.clock_${r}`)).join(', '),
+              rest: fmtHM(departureRest.hours),
+            })}
+          </p>
+        </div>
+      )}
+
       <div className="grid grid-cols-2 gap-2 mb-4">
         <div className="rounded-xl border border-border bg-card p-3 text-sm">
           <div className="text-xs text-muted-foreground">{t('trip.drivingAvailable')}</div>
@@ -329,6 +394,9 @@ export default function Trip() {
           {!availability.unavailable && !availability.cycleUnverified && availability.cycleRemainingHours === 0 && <div className="text-[10px] text-muted-foreground mt-1">{availability.driveBlockers.find(b => b.rule.includes('cycle'))?.message}</div>}
         </div>
       </div>
+      {!currentVerified && (
+        <p className="text-[11px] text-muted-foreground mb-4 -mt-2">{t('trip.clocksNotCurrentNote')}</p>
+      )}
       {hos.split.status === 'active' && (
         <div className="rounded-xl border border-blue-200 bg-blue-50 p-2 mb-4 text-xs text-blue-800">
           {t('trip.splitSleeperActiveNote')}
@@ -367,6 +435,9 @@ export default function Trip() {
               {!feasibility.achievable && (
                 <div className="text-xs text-error-surface-foreground mt-1">{t('trip.restRequiredNote')}</div>
               )}
+              {!currentVerified && (
+                <div className="text-[11px] text-muted-foreground mt-1">{t('trip.assumptionPlanBanner')}</div>
+              )}
             </div>
           )}
           <Button variant="outline" className="w-full mt-3" onClick={saveTrip}>{t('trip.savePlannedTrip')}</Button>
@@ -374,7 +445,28 @@ export default function Trip() {
       )}
       {estimate?.error && <div className="text-xs text-error mb-3">{t('trip.routeEstimateError')}</div>}
 
-      {estimate && !estimate.error && feasibility && !feasibility.achievable && autoAssist && (
+      {estimate && !estimate.error && !currentVerified && (
+        <div className="rounded-xl border border-border bg-card p-3 mb-4">
+          {planBasis === PLAN_BASIS.HIDDEN ? (
+            <>
+              <div className="text-sm font-semibold text-card-foreground">{t('trip.assumptionOptInTitle')}</div>
+              <p className="text-xs text-muted-foreground mt-1">{t('trip.assumptionOptInBody')}</p>
+              <Button size="sm" variant="outline" className="mt-2" onClick={() => setHypotheticalOptIn(true)}>
+                {t('trip.assumptionOptInButton')}
+              </Button>
+            </>
+          ) : (
+            <div className="flex items-start justify-between gap-2">
+              <p className="text-xs text-warning-surface-foreground">{t('trip.assumptionPlanBanner')}</p>
+              <Button size="sm" variant="ghost" className="h-7 px-2 shrink-0 text-[11px]" onClick={() => setHypotheticalOptIn(false)}>
+                {t('trip.assumptionUseLogOnly')}
+              </Button>
+            </div>
+          )}
+        </div>
+      )}
+
+      {currentVerified && estimate && !estimate.error && feasibility && !feasibility.achievable && autoAssist && (
         <div className="rounded-xl border border-warning/50 bg-warning-surface p-4 mb-4">
           <div className="flex items-center gap-2 font-semibold text-sm text-warning-surface-foreground mb-2">
             <MapPin className="w-4 h-4" /> {t('trip.hosRestStopSuggestion')}
@@ -384,6 +476,7 @@ export default function Trip() {
           </div>
 
           {stopLoading && <div className="text-xs text-muted-foreground flex items-center gap-2"><RefreshCw className="w-3.5 h-3.5 animate-spin" /> {t('trip.findingRestStop')}</div>}
+          {stopBlocked === 'no_drive_distance' && <div className="text-xs text-error-surface-foreground mb-1">{t('trip.noDriveDistance')}</div>}
           {stopError && <div className="text-xs text-error mb-1">{t('trip.stopResolveError', { error: stopError })} <button className="underline" onClick={fetchComplianceStop}>{t('common.retry')}</button></div>}
 
           {stopSugg && edits && (
@@ -432,7 +525,7 @@ export default function Trip() {
         </div>
       )}
 
-      {estimate && !estimate.error && feasibility && !feasibility.achievable && !autoAssist && !stopSugg && (
+      {currentVerified && estimate && !estimate.error && feasibility && !feasibility.achievable && !autoAssist && !stopSugg && (
         <div className="rounded-xl border border-border bg-card p-3 mb-4">
           <Button size="sm" variant="outline" className="w-full" onClick={fetchComplianceStop} disabled={stopLoading}>
             <MapPin className="w-3.5 h-3.5 mr-1" /> {stopLoading ? t('trip.findingRestStopShort') : t('trip.suggestRestStop')}
@@ -446,7 +539,7 @@ export default function Trip() {
             <Clock className="w-4 h-4" /> {t('trip.suggestedStopsAlongRoute')}
           </div>
           <p className="text-[11px] text-muted-foreground mb-3">{t('trip.suggestedStopsIntro')}</p>
-          {usingFreshHosFallback && (
+          {usingHypotheticalBasis && (
             <div className="rounded-lg border border-warning/40 bg-warning-surface p-2 text-[11px] text-warning-surface-foreground mb-3">
               {t('trip.freshHosFallbackNote')}
             </div>
@@ -488,6 +581,11 @@ export default function Trip() {
                       <Plus className="w-3 h-3 mr-1" /> {t('common.add')}
                     </Button>
                   </div>
+                  {stop.lookupFailed && (
+                    <div className="text-[10px] text-muted-foreground italic mt-1">
+                      {t('trip.stopLookupUnavailable', { mile: Math.round(stop.mile) })}
+                    </div>
+                  )}
                   {showTruckStops && (
                     <div className="mt-2 pt-2 border-t border-border/60">
                       {topStops.length > 0 ? (
@@ -532,6 +630,11 @@ export default function Trip() {
               );
             })}
           </div>
+          {displayStops.some((s) => s.lookupFailed) && (
+            <Button size="sm" variant="outline" className="w-full mt-2" onClick={() => setResolveNonce((n) => n + 1)}>
+              <RefreshCw className="w-3.5 h-3.5 mr-1" /> {t('trip.retryLocations')}
+            </Button>
+          )}
           <p className="text-[10px] text-muted-foreground mt-2">{t('trip.truckerPathRequiresApp')}</p>
         </div>
       )}

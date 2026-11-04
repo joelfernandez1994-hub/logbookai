@@ -1,5 +1,6 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.40';
 import { geocode, drivingRoute, reverseGeocode, pointAtMiles, haversineMi } from '../../shared/routing.ts';
+import { validateMaxDriveMiles } from '../../shared/stopRequest.ts';
 
 // complianceStop — suggests a REAL, verified stopping point located at (or
 // just before) the driver's remaining compliant driving distance along the
@@ -14,10 +15,17 @@ export default async function(req) {
     const body = await req.json();
     const origin = (body.origin || '').trim();
     const destination = (body.destination || '').trim();
-    const maxDriveMiles = Number(body.max_drive_miles);
-    if (!origin || !destination || !maxDriveMiles || maxDriveMiles <= 0) {
-      return Response.json({ error: 'origin, destination, and a positive max_drive_miles are required' }, { status: 400 });
+    if (!origin || !destination) {
+      return Response.json({ error: 'origin and destination are required' }, { status: 400 });
     }
+    // Zero/negative distance is rejected here as well as blocked client-side
+    // (base44/shared/stopRequest.ts is the one shared rule): a request with no
+    // remaining driving distance cannot resolve a meaningful stop.
+    const maxMilesCheck = validateMaxDriveMiles(body.max_drive_miles);
+    if (!maxMilesCheck.ok) {
+      return Response.json({ error: maxMilesCheck.error }, { status: 400 });
+    }
+    const maxDriveMiles = maxMilesCheck.miles;
 
     const o = await geocode(origin);
     const d = await geocode(destination);
